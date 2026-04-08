@@ -1,0 +1,8 @@
+.env
+node_modules/
+settings.json
+*.log
+dice_logs.json
+seen_links.json
+posted_news.json
+mod_exclude.json
