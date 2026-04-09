@@ -17,18 +17,18 @@ const CONFIG = {
     ATTACK_CHANNEL_ID: '1476939503510884638',
 
     FEEDS: [
+        // --- 一般的・他愛ないニュースソース ---
+        { url: 'https://news.livedoor.com/topics/rss/top.xml',      genre: '一般',     emoji: '📰', color: 0x95A5A6 },
+        { url: 'https://news.livedoor.com/topics/rss/ent.xml',      genre: '芸能',     emoji: '💃', color: 0xE91E63 },
+        { url: 'https://www.j-cast.com/index.xml',                  genre: 'ネタ',     emoji: '📣', color: 0xF1C40F },
+        { url: 'https://natalie.mu/music/rss/news',                genre: '音楽',     emoji: '🎵', color: 0x1ABC9C },
+        { url: 'https://rocketnews24.com/feed/',                    genre: 'ネタ',     emoji: '🚀', color: 0xE67E22 },
+        
+        // --- 既存の専門ソース ---
         { url: 'https://feeds.gizmodo.jp/rss/gizmodo',              genre: 'ガジェット', emoji: '📱', color: 0x00B4D8 },
-        { url: 'https://rss.itmedia.co.jp/rss/2.0/itmedia_all.xml', genre: 'テック',     emoji: '💻', color: 0x0077B6 },
-        { url: 'https://feed.rss20.jp/rss/pc_watch',                genre: 'PC',         emoji: '🖥️', color: 0x023E8A },
         { url: 'https://annict.com/anime.rss',                      genre: 'アニメ',     emoji: '🎌', color: 0xFF6B6B },
-        { url: 'https://akiba-souken.com/rss/',                     genre: 'アキバ系',   emoji: '🏮', color: 0xFF4D6D },
-        { url: 'https://seiyuanime.com/feed/',                      genre: '声優',       emoji: '🎙️', color: 0xF72585 },
         { url: 'https://www.famitsu.com/rss/feed_news.rdf',         genre: 'ゲーム',     emoji: '🎮', color: 0x7B2FBE },
-        { url: 'https://jp.ign.com/feed.xml',                       genre: 'ゲーム',     emoji: '🕹️', color: 0x6A0DAD },
-        { url: 'https://nijisanji.jp/news/rss.xml',                 genre: 'VTuber',     emoji: '🌸', color: 0xFF85A1 },
-        { url: 'https://hololive.hololivepro.com/feed',             genre: 'VTuber',     emoji: '🎤', color: 0x4CC9F0 },
         { url: 'https://blog.livedoor.jp/dqnplus/index.rdf',        genre: '話題',       emoji: '🔥', color: 0xFB5607 },
-        { url: 'https://alfalfalfa.com/index.rdf',                  genre: 'まとめ',     emoji: '📣', color: 0xFF9E00 },
     ],
 };
 
@@ -48,11 +48,14 @@ function savePostedUrl(url) {
 }
 
 /* =========================
-   🤖 ジャンル別プロンプト
+   🤖 ジャンル別プロンプト（修正版）
 ========================= */
 function buildPrompt(genre) {
     const base  = 'あなたはニュース解説の「ともちゃん」です。';
     const rules = {
+        '一般':   '世の中の他愛ないニュースや季節の話題を、近所のお姉さんのような親しみやすい口調で2〜3行で解説してください。',
+        'ネタ':   'ネットで話題の面白いネタやユニークなニュースを、少し遊び心を交えて2〜3行で紹介・解説してください。',
+        '音楽':   '最新の音楽チャートやアーティストの話題を、リスナー目線で2〜3行で分かりやすく伝えてください。',
         '声優':   '声優・アニメ界隈のニュースを、ファン目線で親しみやすく2〜3行で解説してください。結婚・引退などセンシティブな話題は事実を淡々と伝えてください。',
         'VTuber': 'VTuber関連のニュースを、界隈に詳しいファン目線で2〜3行で解説してください。',
         'ゲーム': 'ゲームニュースを、ゲーマー目線で2〜3行で解説してください。発売日・価格・注目点を含めてください。',
@@ -139,12 +142,12 @@ async function sendTomoNews(client) {
             .setTitle(targetItem.title.substring(0, 50))
             .setURL(targetItem.link)
             .setDescription(aiText)
-            .setColor(0x2B2D31);
+            .setColor(targetFeed.color || 0x2B2D31);
 
         const webhook = await getWebhook(channel);
         const payload = {
             embeds:    [embed],
-            username:  'ともちゃんニュース通信',
+            username:  `${targetFeed.emoji} ともちゃんニュース`,
             avatarURL: CONFIG.TOMO_AVATAR_URL,
         };
 
