@@ -490,12 +490,9 @@ async function instantDeleteAndRecode(message) {
     // ② 削除
     if (message.deletable) await message.delete().catch(() => {});
 
-    // ③ 再投稿
-    let finalContent = recodeText(message.content);
-    if (!finalContent) finalContent = '*(Message Removed)*';
-
-    const replyPrefix = await buildReplyPrefix(message);
-    finalContent = `${replyPrefix}${finalContent}${hideUserId(message.author.id)}`;
+    // ③ 再投稿（内容は変換せずそのまま）
+    const replyPrefix  = await buildReplyPrefix(message);
+    const finalContent = `${replyPrefix}${message.content || '\u200b'}${hideUserId(message.author.id)}`;
 
     const opts = {
         content:         finalContent,
