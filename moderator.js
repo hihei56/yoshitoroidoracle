@@ -3,6 +3,7 @@
 
 const axios  = require('axios');
 const { OpenAI } = require('openai');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getModExcludeList } = require('./exclude_manager');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -508,6 +509,78 @@ async function instantDeleteAndRecode(message) {
 }
 
 /* =========================
+   🖼️ 画像削除ボタン
+   投稿者本人が任意でメッセージを削除できるボタンを送る。
+   - customId にメッセージIDと投稿者IDを埋め込み（DBレス設計）
+   - 5分後に自動削除（タイマーはメモリ上のMapで管理）
+========================= */
+const IMAGE_MIME_RE          = /^image\//;
+const AUTO_DELETE_MS         = 5 * 60 * 1000;          // 5分
+const pendingImageDeletions  = new Map();               // msgId → { timer }
+
+function hasImageAttachment(attachments) {
+    return [...attachments.values()].some(a => IMAGE_MIME_RE.test(a.contentType ?? ''));
+}
+
+async function sendImageDeleteButton(message) {
+    if (!hasImageAttachment(message.attachments)) return;
+
+    const customId = `del_img:${message.author.id}:${message.id}`;
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(customId)
+            .setLabel('削除')
+            .setStyle(ButtonStyle.Danger),
+    );
+
+    let controlMsg;
+    try {
+        controlMsg = await message.reply({
+            content: '-# 投稿者のみ削除可',
+            components: [row],
+            allowedMentions: { parse: [] },
+        });
+    } catch (e) {
+        console.error('[DelBtn] 送信失敗:', e.message);
+        return;
+    }
+
+    const timer = setTimeout(async () => {
+        pendingImageDeletions.delete(message.id);
+        await controlMsg.delete().catch(() => {});
+    }, AUTO_DELETE_MS);
+
+    pendingImageDeletions.set(message.id, { timer });
+}
+
+// index.js の InteractionCreate から呼ばれる
+async function handleImageDeleteButton(interaction) {
+    const [, authorId, msgId] = interaction.customId.split(':');
+
+    // 投稿者以外は拒否
+    if (interaction.user.id !== authorId) {
+        return interaction.reply({ content: '削除できるのは投稿者本人のみです。', ephemeral: true });
+    }
+
+    // タイマーキャンセル
+    const pending = pendingImageDeletions.get(msgId);
+    if (pending) {
+        clearTimeout(pending.timer);
+        pendingImageDeletions.delete(msgId);
+    }
+
+    // 元メッセージを削除
+    try {
+        const orig = await interaction.channel.messages.fetch(msgId);
+        if (orig?.deletable) await orig.delete();
+    } catch {}
+
+    // ボタンメッセージ（control message）を削除
+    await interaction.deferUpdate().catch(() => {});
+    await interaction.deleteReply().catch(() => {});
+}
+
+/* =========================
    🔥 メイン処理
 ========================= */
 async function handleModerator(message) {
@@ -550,6 +623,11 @@ async function handleModerator(message) {
 
     if (await handleSensitivePost(message)) return;
     if (await handlePseudoReply(message))   return;
+
+    // モデレーションを通過した投稿に画像があれば削除ボタンを表示
+    if (message.attachments.size > 0) {
+        sendImageDeleteButton(message).catch(e => console.error('[DelBtn]:', e));
+    }
 }
 
-module.exports = { handleModerator };
+module.exports = { handleModerator, handleImageDeleteButton };
