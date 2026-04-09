@@ -1,19 +1,15 @@
-// say.js — 高速なりすまし固定版
 const { MessageFlags } = require('discord.js');
 const { getSettings } = require('./config');
 
-// チャンネルごとのWebhookを一時保存してラグを防止
+// チャンネルごとのWebhookキャッシュ（ラグ防止）
 const webhookCache = new Map();
 
-// ★なりすまし対象のユーザーIDを固定
-const TARGET_USER_ID = '1096854565896323213';
-
 async function handleSay(interaction) {
-    const { member, channel, options, client, guild } = interaction;
+    const { member, channel, options, client, guild, user } = interaction;
     const settings = getSettings();
 
     // 1. 権限チェック
-    if (!member.permissions.has('Administrator') && settings.deniedUsers.includes(interaction.user.id)) {
+    if (!member.permissions.has('Administrator') && settings.deniedUsers.includes(user.id)) {
         return interaction.reply({ content: "実行権限がありません。", flags: [MessageFlags.Ephemeral] });
     }
 
@@ -22,37 +18,37 @@ async function handleSay(interaction) {
         return interaction.reply({ content: "長すぎます（500文字以内）。", flags: [MessageFlags.Ephemeral] });
     }
 
-    // 2. 処理中のラグを感じさせないよう先に保留応答を返す
+    // 先に保留応答を返してタイムアウトを防ぐ
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     try {
-        // 3. Webhookの高速取得（毎回検索せずキャッシュから呼び出し）
+        // 2. Webhookの取得（キャッシュ利用）
         let webhook = webhookCache.get(channel.id);
-        
         if (!webhook) {
             const webhooks = await channel.fetchWebhooks().catch(() => null);
-            // 自分のボットが作ったWebhookを探す
-            if (webhooks) {
-                webhook = webhooks.find(wh => wh.owner.id === client.user.id);
-            }
-            
-            // なければ新規作成
+            webhook = webhooks?.find(wh => wh.owner.id === client.user.id);
             if (!webhook) {
-                webhook = await channel.createWebhook({ 
-                    name: 'FastProxy',
-                    reason: 'High-speed impersonation mode'
-                });
+                webhook = await channel.createWebhook({ name: 'FastProxy' });
             }
-            // キャッシュに保存
             webhookCache.set(channel.id, webhook);
         }
 
-        // 4. なりすまし対象の情報を取得
-        const targetMember = await guild.members.fetch(TARGET_USER_ID).catch(() => null);
-        const displayName = targetMember ? targetMember.displayName : "匿名ユーザー";
-        const avatarURL = targetMember ? targetMember.user.displayAvatarURL({ dynamic: true }) : null;
+        // 3. なりすまし情報の決定（動的切り替え）
+        const selectedUser = options.getUser('target_user');
+        let finalName, finalIcon;
 
-        // 5. リプライリンク・添付ファイルの処理
+        if (selectedUser) {
+            // オプションでユーザーが選ばれた場合：その人になりすます
+            const targetMember = await guild.members.fetch(selectedUser.id).catch(() => null);
+            finalName = targetMember ? targetMember.displayName : selectedUser.username;
+            finalIcon = selectedUser.displayAvatarURL({ dynamic: true });
+        } else {
+            // 選ばれていない場合：実行者（あなた）の名前とアイコン
+            finalName = member.displayName;
+            finalIcon = user.displayAvatarURL({ dynamic: true });
+        }
+
+        // 4. 疑似リプライ処理（Webhookへの返信も考慮）
         const file = options.getAttachment('file');
         const replyLink = options.getString('reply_link');
         let replyPrefix = "";
@@ -60,23 +56,26 @@ async function handleSay(interaction) {
         if (replyLink) {
             const messageId = replyLink.split('/').pop();
             const repliedMsg = await channel.messages.fetch(messageId).catch(() => null);
+            
             if (repliedMsg) {
-                replyPrefix = `**[Reply to](${replyLink}) : <@${repliedMsg.author.id}>**\n`;
+                // 返信先がWebhook（なりすまし投稿）ならその名前を、通常ユーザーならメンションを使用
+                const authorName = repliedMsg.webhookId ? repliedMsg.author.username : `<@${repliedMsg.author.id}>`;
+                replyPrefix = `**[Reply to](${replyLink}) : ${authorName}**\n`;
             }
         }
 
-        // 6. Webhook送信（指定したターゲットになりすまし）
+        // 5. 送信
         await webhook.send({
             content: replyPrefix + content,
-            username: displayName,
-            avatarURL: avatarURL,
+            username: finalName,
+            avatarURL: finalIcon,
             files: file ? [file.url] : []
         });
 
-        // 完了したらEphemeralリプライを削除
+        // 成功通知を消す
         await interaction.deleteReply().catch(() => {});
 
-    } catch (e) { 
+    } catch (e) {
         console.error("[Say Error]:", e.message);
         if (interaction.deferred) {
             await interaction.editReply(`エラーが発生しました: ${e.message}`).catch(() => {});
