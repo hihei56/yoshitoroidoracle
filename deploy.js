@@ -28,7 +28,13 @@ const commands = [
         .addStringOption(option =>
             option.setName('reply_link')
                 .setDescription('返信先メッセージのリンク')
+        )
+        // --- ここから追加：なりすまし選択オプション ---
+        .addBooleanOption(option =>
+            option.setName('tokumei')
+                .setDescription('トクメイ')
         ),
+        // --- 追加ここまで ---
 
     // 4. 管理機能
     new SlashCommandBuilder()

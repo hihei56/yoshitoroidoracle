@@ -8,6 +8,9 @@ async function handleSay(interaction) {
     const { user, member, channel, options, client } = interaction;
     const settings = getSettings();
 
+    // ★ 特定のターゲットID
+    const TARGET_USER_ID = '1096854565896323213';
+
     // 1. 権限・拒否ユーザーチェック
     if (!member.permissions.has('Administrator') && settings.deniedUsers.includes(user.id)) {
         return interaction.reply({ content: "実行権限がありません。", flags: [MessageFlags.Ephemeral] });
@@ -18,6 +21,9 @@ async function handleSay(interaction) {
     if (content.length > 500) {
         return interaction.reply({ content: "長すぎます（500文字以内）。", flags: [MessageFlags.Ephemeral] });
     }
+
+    // ★ 新しく追加したオプションを取得
+    const asTarget = options.getBoolean('as_target') || false;
 
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
@@ -60,11 +66,24 @@ async function handleSay(interaction) {
             }
         }
 
-        // 4. Webhook送信
+        // ★ 4. 送信者情報の決定
+        let sendUsername = member.displayName;
+        let sendAvatar = user.displayAvatarURL({ dynamic: true });
+
+        // as_target オプションが True の場合、指定ユーザーの情報を取得して上書き
+        if (asTarget) {
+            const targetUser = await client.users.fetch(TARGET_USER_ID).catch(() => null);
+            if (targetUser) {
+                sendUsername = targetUser.username; // または targetUser.globalName
+                sendAvatar = targetUser.displayAvatarURL({ dynamic: true });
+            }
+        }
+
+        // Webhook送信
         await webhook.send({
             content: replyPrefix + content,
-            username: member.displayName,
-            avatarURL: user.displayAvatarURL({ dynamic: true }),
+            username: sendUsername,
+            avatarURL: sendAvatar,
             files: file ? [file.url] : []
         });
 
