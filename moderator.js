@@ -199,16 +199,41 @@ const HATE_REGEX = new RegExp([
     '(?:ムスリム|イスラム|ユダヤ|LGBT|障害者)(?:は)?(?:消えろ|いなくなれ|死ね|殺せ)',
     // 差別的な集団排除スローガン（日本語）
     '(?:人種|民族|外国人)(?:を)?(?:浄化|根絶|駆逐)',
+    // 命の価値の否定（相模原事件犯人の思想に直結する表現）
+    '生きるに値しない命',
+    '生きる価値(?:の)?ない(?:命|人間|存在)',
+    '(?:障害者|精神障害者|知的障害者)(?:は)?(?:生きる価値がない|社会のお荷物|不要な存在)',
+    // 複合差別（属性を重ねた攻撃）
+    '(?:ゲイ|同性愛者|LGBT)(?:で)?(?:黒人|外国人|ユダヤ)',  // 属性スタックによるヘイト
+].join('|'), 'i');
+
+// ── 障害者差別語・現代スラング ──
+// 「ガイジ」「かたわ」等は文脈によらずほぼ侮蔑用途のみ
+// ただし「アスペ」は自己言及・啓発文脈もあるため誤検知に注意
+const DISABILITY_HATE_REGEX = new RegExp([
+    // 旧来の差別語（現代ではほぼ侮蔑以外で使われない）
+    'かたわ',         // 身体障害者への強い蔑称
+    'びっこ',         // 足の不自由な人への蔑称
+    'めくら',         // 視覚障害者への蔑称
+    'つんぼ',         // 聴覚障害者への蔑称
+    'いざり',         // 這って移動する障害者への蔑称
+    '知恵遅れ',       // 知的障害者への蔑称
+    // 現代ネットスラング（障害者を馬鹿にする用途が圧倒的多数）
+    'ガイジ',         // 障害児の略。「バカ」「障害者レベル」の強い侮蔑語
+    'ハッタショ',     // 発達障害者（はったつしょうがいしゃ）の略
+    'アスペ',         // アスペルガー症候群の略。発達障害侮蔑の定番
+    'スペ(?:め|かよ|すぎ|だろ|だな|ども)', // 「スペック不足」のスペ、アスペの略でも使われる（単体はFP多い）
 ].join('|'), 'i');
 
 function checkNgWords(text) {
     const matched = [];
-    if (LOLI_SHOTA_REGEX.test(text))    matched.push('loli_shota');
-    if (AGE_REGEX.test(text))           matched.push('age');
-    if (THREAT_REGEX.test(text))        matched.push('threat');
-    if (DRUG_REGEX.test(text))          matched.push('drug');
-    if (SELF_HARM_PROMO_REGEX.test(text)) matched.push('self_harm_promo');
-    if (HATE_REGEX.test(text))          matched.push('hate_speech');
+    if (LOLI_SHOTA_REGEX.test(text))       matched.push('loli_shota');
+    if (AGE_REGEX.test(text))              matched.push('age');
+    if (THREAT_REGEX.test(text))           matched.push('threat');
+    if (DRUG_REGEX.test(text))             matched.push('drug');
+    if (SELF_HARM_PROMO_REGEX.test(text))  matched.push('self_harm_promo');
+    if (HATE_REGEX.test(text))             matched.push('hate_speech');
+    if (DISABILITY_HATE_REGEX.test(text))  matched.push('disability_hate');
     return { hit: matched.length > 0, matched };
 }
 
