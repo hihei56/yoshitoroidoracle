@@ -469,6 +469,7 @@ async function handleSensitivePost(message) {
     const opts = {
         content:         (cleanContent || '\u200b') + hideUserId(message.author.id),
         files,
+        components:      [buildDeleteButtonRow(message.author.id)],
         username:        message.member?.displayName || message.author.username,
         avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
         allowedMentions: { parse: ['users'] },
@@ -499,6 +500,7 @@ async function instantDeleteAndRecode(message) {
     const opts = {
         content:         finalContent,
         files,
+        components:      hasImageAttachment(message.attachments) ? [buildDeleteButtonRow(message.author.id)] : [],
         username:        message.member?.displayName || message.author.username,
         avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
         allowedMentions: { parse: ['users'] },
@@ -510,72 +512,34 @@ async function instantDeleteAndRecode(message) {
 
 /* =========================
    🖼️ 画像削除ボタン
-   投稿者本人が任意でメッセージを削除できるボタンを送る。
-   - customId にメッセージIDと投稿者IDを埋め込み（DBレス設計）
-   - 5分後に自動削除（タイマーはメモリ上のMapで管理）
+   webhookメッセージ自体にボタンを埋め込む方式。
+   - customId = del_img:authorId のみ（DBレス・タイマー不要）
+   - クリックで interaction.message（= webhookメッセージ本体）を削除
 ========================= */
-const IMAGE_MIME_RE          = /^image\//;
-const AUTO_DELETE_MS         = 5 * 60 * 1000;          // 5分
-const pendingImageDeletions  = new Map();               // msgId → { timer }
+const IMAGE_MIME_RE = /^image\//;
 
 function hasImageAttachment(attachments) {
     return [...attachments.values()].some(a => IMAGE_MIME_RE.test(a.contentType ?? ''));
 }
 
-async function sendImageDeleteButton(message) {
-    if (!hasImageAttachment(message.attachments)) return;
-
-    const customId = `del_img:${message.author.id}:${message.id}`;
-    const row = new ActionRowBuilder().addComponents(
+function buildDeleteButtonRow(authorId) {
+    return new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-            .setCustomId(customId)
+            .setCustomId(`del_img:${authorId}`)
             .setLabel('削除')
             .setStyle(ButtonStyle.Danger),
     );
-
-    let controlMsg;
-    try {
-        controlMsg = await message.reply({
-            content: '-# 投稿者のみ削除可',
-            components: [row],
-            allowedMentions: { parse: [] },
-        });
-    } catch (e) {
-        console.error('[DelBtn] 送信失敗:', e.message);
-        return;
-    }
-
-    const timer = setTimeout(async () => {
-        pendingImageDeletions.delete(message.id);
-        await controlMsg.delete().catch(() => {});
-    }, AUTO_DELETE_MS);
-
-    pendingImageDeletions.set(message.id, { timer });
 }
 
 // index.js の InteractionCreate から呼ばれる
 async function handleImageDeleteButton(interaction) {
-    const [, authorId, msgId] = interaction.customId.split(':');
+    const authorId = interaction.customId.split(':')[1];
 
-    // 投稿者以外は拒否
     if (interaction.user.id !== authorId) {
         return interaction.reply({ content: '削除できるのは投稿者本人のみです。', ephemeral: true });
     }
 
-    // タイマーキャンセル
-    const pending = pendingImageDeletions.get(msgId);
-    if (pending) {
-        clearTimeout(pending.timer);
-        pendingImageDeletions.delete(msgId);
-    }
-
-    // 元メッセージを削除
-    try {
-        const orig = await interaction.channel.messages.fetch(msgId);
-        if (orig?.deletable) await orig.delete();
-    } catch {}
-
-    // ボタンメッセージ（control message）を削除
+    // interaction.message = ボタンがついたwebhookメッセージそのもの
     await interaction.deferUpdate().catch(() => {});
     await interaction.deleteReply().catch(() => {});
 }
@@ -624,9 +588,22 @@ async function handleModerator(message) {
     if (await handleSensitivePost(message)) return;
     if (await handlePseudoReply(message))   return;
 
-    // モデレーションを通過した投稿に画像があれば削除ボタンを表示
-    if (message.attachments.size > 0) {
-        sendImageDeleteButton(message).catch(e => console.error('[DelBtn]:', e));
+    // モデレーション通過かつ画像あり → webhookで再投稿して削除ボタンを付与
+    if (hasImageAttachment(message.attachments)) {
+        const files = await downloadFiles(message.attachments);
+        if (message.deletable) await message.delete().catch(() => {});
+        const replyPrefix = await buildReplyPrefix(message);
+        const body = recodeText(message.content) || '\u200b';
+        const opts = {
+            content:         `${replyPrefix}${body}${hideUserId(message.author.id)}`,
+            files,
+            components:      [buildDeleteButtonRow(message.author.id)],
+            username:        message.member?.displayName || message.author.username,
+            avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
+            allowedMentions: { parse: ['users'] },
+        };
+        if (message.channel.isThread()) opts.threadId = message.channel.id;
+        await sendWebhook(message.channel, opts);
     }
 }
 
