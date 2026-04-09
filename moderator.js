@@ -578,30 +578,17 @@ async function handleModerator(message) {
     if ((hit || aiResult.flagged) && !isExempt) {
         const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
         logDeletion({ message, matched: allMatched });
-        await instantDeleteAndRecode(message);
+        // ここで「NGワード時のみ」画像を含めた再投稿 & 削除ボタン付与が行われる
+        await instantDeleteAndRecode(message); 
         return;
     }
 
+    // 特殊な投稿の処理
     if (await handleSensitivePost(message)) return;
     if (await handlePseudoReply(message))   return;
 
-    // モデレーション通過かつ画像あり → webhookで再投稿して削除ボタンを付与
-    if (hasImageAttachment(message.attachments)) {
-        const files = await downloadFiles(message.attachments);
-        if (message.deletable) await message.delete().catch(() => {});
-        const replyPrefix = await buildReplyPrefix(message);
-        const body = recodeText(message.content) || '\u200b';
-        const opts = {
-            content:         `${replyPrefix}${body}${hideUserId(message.author.id)}`,
-            files,
-            components:      [buildDeleteButtonRow(message.author.id)],
-            username:        message.member?.displayName || message.author.username,
-            avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
-            allowedMentions: { parse: ['users'] },
-        };
-        if (message.channel.isThread()) opts.threadId = message.channel.id;
-        await sendWebhook(message.channel, opts);
-    }
+    // ここにあった「無条件画像Webhook化」のブロックを削除したことで、
+    // モデレーションを通過した普通の画像投稿はそのままユーザーの投稿として残ります。
 }
 
 module.exports = { handleModerator, handleImageDeleteButton };
