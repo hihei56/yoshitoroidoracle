@@ -20,12 +20,8 @@ const AI_WEBHOOKS = [
     new WebhookClient({ url: process.env.AI_WEBHOOK3 })
 ];
 
-// ===== RSS =====
-const RSS_URLS = [
-    "https://nitter.net/electlone/rss",
-    "https://nitter.tiekoetter.com/electlone/rss",
-    "https://nitter.poast.org/electlone/rss"
-];
+// ===== Fly RSS =====
+const RSS_URL = "https://rssproxy.fly.dev/rss";
 
 // ===== 永続化 =====
 const SEEN_LINKS_FILE = process.env.FLY_APP_NAME
@@ -50,6 +46,16 @@ function saveSeenLinks() {
     } catch (e) {
         console.error("保存失敗:", e.message);
     }
+}
+
+// ===== URL変換 =====
+function convertToTwitterUrl(url) {
+    if (!url) return url;
+
+    return url
+        .replace("nitter.net", "x.com")
+        .replace("nitter.tiekoetter.com", "x.com")
+        .replace("nitter.poast.org", "x.com");
 }
 
 // ===== 画像取得 =====
@@ -93,7 +99,8 @@ async function postTweet(item, client) {
     let raw = he.decode(item.contentSnippet || item.title || "");
     const imageUrl = findImageUrl(item);
 
-    // URL削除
+    const tweetUrl = convertToTwitterUrl(item.link);
+
     const quoteRegex = /https?:\/\/(?:twitter\.com|x\.com)\/\S+/g;
     const quotes = raw.match(quoteRegex);
 
@@ -109,7 +116,7 @@ async function postTweet(item, client) {
         .setColor('#1DA1F2')
         .setAuthor({ name: "electlone", url: "https://x.com/electlone" })
         .setTitle("🔗 Xで見る")
-        .setURL(item.link)
+        .setURL(tweetUrl)
         .setFooter({ text: "不対電子研究所" });
 
     if (item.isoDate) embed.setTimestamp(new Date(item.isoDate));
@@ -128,13 +135,11 @@ async function postTweet(item, client) {
         const channel = await client.channels.fetch(msg.channel_id);
         const message = await channel.messages.fetch(msg.id);
 
-        // ===== スレッド =====
         const thread = await message.startThread({
             name: "💬 コメント欄",
             autoArchiveDuration: 60
         });
 
-        // ===== AI返信 =====
         const reply = await generateAIReply(raw);
 
         if (reply) {
@@ -157,14 +162,12 @@ async function postTweet(item, client) {
     }
 }
 
-// ===== RSS取得 =====
+// ===== RSS取得（Fly版）=====
 let lastFail = 0;
-let lastSuccessURL = null;
 
 async function checkRSS(client) {
     const now = Date.now();
 
-    // クールダウン
     if (now - lastFail < 5 * 60 * 1000) {
         console.log("⏸ クールダウン中");
         return;
@@ -172,25 +175,12 @@ async function checkRSS(client) {
 
     let feed = null;
 
-    // 成功したURL優先
-    const urls = lastSuccessURL
-        ? [lastSuccessURL, ...RSS_URLS.filter(u => u !== lastSuccessURL)]
-        : RSS_URLS;
-
-    for (const url of urls) {
-        try {
-            feed = await parser.parseURL(url);
-            lastSuccessURL = url;
-            console.log("✅ RSS成功:", url);
-            break;
-        } catch {
-            console.log("❌ RSS失敗:", url);
-        }
-    }
-
-    if (!feed) {
+    try {
+        feed = await parser.parseURL(RSS_URL);
+        console.log("✅ RSS成功:", RSS_URL);
+    } catch {
         lastFail = now;
-        console.log("💀 全RSS死亡");
+        console.log("💀 RSS死亡");
         return;
     }
 
