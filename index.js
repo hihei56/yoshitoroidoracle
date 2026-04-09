@@ -8,7 +8,7 @@ const { Client, GatewayIntentBits, Events } = require('discord.js');
 const { initScheduler }          = require('./scheduler');
 const { handleSay }              = require('./say');
 const { handleDeathmatch }       = require('./deathmatch');
-const { handleModerator }        = require('./moderator');
+const { handleModerator, handleImageDeleteButton } = require('./moderator');
 const { handleAdmin }            = require('./admin');
 const { handleJoker }            = require('./joker');
 const { checkRSS }               = require('./rssBot');
@@ -60,6 +60,11 @@ client.on(Events.MessageCreate, async m => {
 });
 
 client.on(Events.InteractionCreate, async i => {
+    // 画像削除ボタン（権限チェック不要・投稿者本人のみ許可はハンドラ内で処理）
+    if (i.isButton() && i.customId.startsWith('del_img:')) {
+        return handleImageDeleteButton(i).catch(e => console.error('[DelImg]:', e));
+    }
+
     if (!i.isChatInputCommand()) return;
 
     if (!hasPermission(i.member)) {
