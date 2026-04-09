@@ -1,97 +1,83 @@
+// say.js — 高速なりすまし固定版
 const { MessageFlags } = require('discord.js');
 const { getSettings } = require('./config');
 
-// メモリ上にキャッシュして、毎回サーバーに問い合わせるのを防ぐ（ラグ対策）
+// チャンネルごとのWebhookを一時保存してラグを防止
 const webhookCache = new Map();
 
+// ★なりすまし対象のユーザーIDを固定
+const TARGET_USER_ID = '1096854565896323213';
+
 async function handleSay(interaction) {
-    const { user, member, channel, options, client } = interaction;
+    const { member, channel, options, client, guild } = interaction;
     const settings = getSettings();
 
-    // ★ 特定のターゲットID
-    const TARGET_USER_ID = '1096854565896323213';
-
-    // 1. 権限・拒否ユーザーチェック
-    if (!member.permissions.has('Administrator') && settings.deniedUsers.includes(user.id)) {
+    // 1. 権限チェック
+    if (!member.permissions.has('Administrator') && settings.deniedUsers.includes(interaction.user.id)) {
         return interaction.reply({ content: "実行権限がありません。", flags: [MessageFlags.Ephemeral] });
     }
 
-    // 文字数制限 (スパム対策)
     const content = options.getString('content') || "";
     if (content.length > 500) {
         return interaction.reply({ content: "長すぎます（500文字以内）。", flags: [MessageFlags.Ephemeral] });
     }
 
-    // ★ 新しく追加したオプションを取得
-    const asTarget = options.getBoolean('as_target') || false;
-
+    // 2. 処理中のラグを感じさせないよう先に保留応答を返す
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     try {
-        // 2. Webhookの取得（キャッシュ優先）
+        // 3. Webhookの高速取得（毎回検索せずキャッシュから呼び出し）
         let webhook = webhookCache.get(channel.id);
         
         if (!webhook) {
             const webhooks = await channel.fetchWebhooks().catch(() => null);
+            // 自分のボットが作ったWebhookを探す
             if (webhooks) {
                 webhook = webhooks.find(wh => wh.owner.id === client.user.id);
             }
             
+            // なければ新規作成
             if (!webhook) {
                 webhook = await channel.createWebhook({ 
                     name: 'FastProxy',
-                    reason: 'Say command functionality'
-                }).catch(() => null);
+                    reason: 'High-speed impersonation mode'
+                });
             }
-            
-            if (webhook) webhookCache.set(channel.id, webhook);
+            // キャッシュに保存
+            webhookCache.set(channel.id, webhook);
         }
 
-        if (!webhook) throw new Error("Webhookの作成に失敗しました。権限を確認してください。");
+        // 4. なりすまし対象の情報を取得
+        const targetMember = await guild.members.fetch(TARGET_USER_ID).catch(() => null);
+        const displayName = targetMember ? targetMember.displayName : "匿名ユーザー";
+        const avatarURL = targetMember ? targetMember.user.displayAvatarURL({ dynamic: true }) : null;
 
-        // 3. リプライリンクの処理
+        // 5. リプライリンク・添付ファイルの処理
         const file = options.getAttachment('file');
         const replyLink = options.getString('reply_link');
         let replyPrefix = "";
 
         if (replyLink) {
-            // URLからメッセージIDを抽出
-            const parts = replyLink.split('/');
-            const messageId = parts[parts.length - 1];
-            
+            const messageId = replyLink.split('/').pop();
             const repliedMsg = await channel.messages.fetch(messageId).catch(() => null);
             if (repliedMsg) {
-                // メンション付きリプライを再現
                 replyPrefix = `**[Reply to](${replyLink}) : <@${repliedMsg.author.id}>**\n`;
             }
         }
 
-        // ★ 4. 送信者情報の決定
-        let sendUsername = member.displayName;
-        let sendAvatar = user.displayAvatarURL({ dynamic: true });
-
-        // as_target オプションが True の場合、指定ユーザーの情報を取得して上書き
-        if (asTarget) {
-            const targetUser = await client.users.fetch(TARGET_USER_ID).catch(() => null);
-            if (targetUser) {
-                sendUsername = targetUser.username; // または targetUser.globalName
-                sendAvatar = targetUser.displayAvatarURL({ dynamic: true });
-            }
-        }
-
-        // Webhook送信
+        // 6. Webhook送信（指定したターゲットになりすまし）
         await webhook.send({
             content: replyPrefix + content,
-            username: sendUsername,
-            avatarURL: sendAvatar,
+            username: displayName,
+            avatarURL: avatarURL,
             files: file ? [file.url] : []
         });
 
-        // 成功したらEphemeralリプライを消す
+        // 完了したらEphemeralリプライを削除
         await interaction.deleteReply().catch(() => {});
 
     } catch (e) { 
-        console.error("[Say Command Error]:", e.message);
+        console.error("[Say Error]:", e.message);
         if (interaction.deferred) {
             await interaction.editReply(`エラーが発生しました: ${e.message}`).catch(() => {});
         }
