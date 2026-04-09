@@ -1,5 +1,6 @@
 // rssBot.js — Oracle Cloud対応版
 const Parser = require('rss-parser');
+const axios  = require('axios');
 const { WebhookClient, EmbedBuilder } = require('discord.js');
 const he     = require('he');
 const { OpenAI } = require('openai');
@@ -20,9 +21,10 @@ const AI_WEBHOOKS = [
 ];
 
 const RSS_URLS = [
-    'https://nitter.net/electlone/rss',
     'https://nitter.tiekoetter.com/electlone/rss',
     'https://nitter.poast.org/electlone/rss',
+    'https://nitter.privacyredirect.com/electlone/rss',
+    'https://nitter.lunar.icu/electlone/rss',
 ];
 
 // データパス（Oracle: DATA_DIR/seen_links.json）
@@ -126,11 +128,15 @@ async function checkRSS(client) {
     let feed = null;
     for (const url of RSS_URLS) {
         try {
-            feed = await parser.parseURL(url);
+            const response = await axios.get(url, {
+                timeout: 10_000,
+                headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TomoBot/1.0)' },
+            });
+            feed = await parser.parseString(response.data);
             console.log('[RSS] ✅ 取得成功:', url);
             break;
-        } catch {
-            console.log('[RSS] ❌ 失敗:', url);
+        } catch (e) {
+            console.log('[RSS] ❌ 失敗:', url, e.message);
         }
     }
 
