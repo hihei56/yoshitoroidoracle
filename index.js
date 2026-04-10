@@ -11,7 +11,7 @@ const { handleDeathmatch }       = require('./deathmatch');
 const { handleModerator, handleImageDeleteButton } = require('./moderator');
 const { handleAdmin, handleAdminButton } = require('./admin');
 const { handleJoker }            = require('./joker');
-const { checkRSS }               = require('./rssBot');
+const { initRSS }                = require('./rssBot');
 const { postRanking, handleRanking } = require('./ranking');
 const { handleTimeoutList }      = require('./timeoutlist');
 const { initSecurity, handlePermList } = require('./security');
@@ -43,8 +43,7 @@ client.once(Events.ClientReady, async c => {
     initScheduler(client);
     initSecurity(client);
 
-    checkRSS(client);
-    setInterval(() => checkRSS(client), 30 * 60 * 1000);
+    initRSS(client);
 
     if (DEBUG_MODE) {
         postRanking(client).catch(e => console.error('[Ranking] 起動時エラー:', e));

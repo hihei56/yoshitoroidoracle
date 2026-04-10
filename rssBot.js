@@ -1,10 +1,11 @@
 const Parser = require('rss-parser');
+const cron = require('node-cron');
 const { WebhookClient, EmbedBuilder } = require('discord.js');
 const he = require('he');
 const { OpenAI } = require('openai');
 const { resolveDataPath, ensureDir, readJson, writeJson } = require('./dataPath');
 
-const parser = new Parser({ timeout: 5000 });
+const rssParser = new Parser({ timeout: 10000 });
 
 // ===== OpenAI (Groq) =====
 const openai = new OpenAI({
@@ -13,7 +14,7 @@ const openai = new OpenAI({
 });
 
 // ===== Webhook =====
-const UNTAI = new WebhookClient({ url: process.env.UNTAI_WEBHOOK });
+const UNTAI_WEBHOOK = new WebhookClient({ url: process.env.UNTAI_WEBHOOK });
 const AI_WEBHOOKS = [
     new WebhookClient({ url: process.env.AI_WEBHOOK1 }),
     new WebhookClient({ url: process.env.AI_WEBHOOK2 }),
@@ -23,14 +24,14 @@ const AI_WEBHOOKS = [
 // ===== Fly RSS =====
 const RSS_URL = "https://rssproxy.fly.dev/rss";
 
-// ===== 永続化（resolveDataPath でOracle/Fly/local 統一）=====
+// ===== 永続化 =====
 const SEEN_LINKS_FILE = resolveDataPath('seen_links.json');
 ensureDir(SEEN_LINKS_FILE);
 
 let seenLinks = readJson(SEEN_LINKS_FILE, []);
 
 function saveSeenLinks() {
-    if (seenLinks.length > 100) seenLinks = seenLinks.slice(-100);
+    if (seenLinks.length > 200) seenLinks = seenLinks.slice(-200);
     writeJson(SEEN_LINKS_FILE, seenLinks);
 }
 
@@ -98,10 +99,9 @@ async function postTweet(item, client) {
 
     if (item.isoDate) embed.setTimestamp(new Date(item.isoDate));
 
-    // ── Webhook送信 ──
     let msg;
     try {
-        msg = await UNTAI.send({
+        msg = await UNTAI_WEBHOOK.send({
             content:    raw + quoteBlock,
             embeds:     [embed],
             files:      imageUrl ? [{ attachment: imageUrl }] : [],
@@ -113,14 +113,14 @@ async function postTweet(item, client) {
         return;
     }
 
-    // webhook送信成功 → seenLinks を即更新（スレッド失敗でも重複投稿を防ぐ）
+    // 投稿成功 → 即座にseenLinksを更新（スレッド失敗でも重複投稿を防ぐ）
     seenLinks.push(item.link);
     saveSeenLinks();
     console.log("[RSS] ✅ 投稿成功:", (item.title ?? '').slice(0, 50));
 
     if (!client) return;
 
-    // ── スレッド作成・AI返信（失敗しても投稿成功扱い）──
+    // スレッド + AI返信（失敗しても投稿は成功扱い）
     try {
         const channel = await client.channels.fetch(msg.channel_id);
         const message = await channel.messages.fetch(msg.id);
@@ -139,38 +139,36 @@ async function postTweet(item, client) {
     }
 }
 
-// ===== RSS取得 =====
-let lastFail = 0;
-
+// ===== RSS取得・チェック =====
 async function checkRSS(client) {
-    const now = Date.now();
-    if (now - lastFail < 5 * 60 * 1000) {
-        console.log("[RSS] ⏸ クールダウン中");
-        return;
-    }
-
     let feed;
     try {
-        feed = await parser.parseURL(RSS_URL);
-        console.log("[RSS] ✅ フィード取得成功");
+        feed = await rssParser.parseURL(RSS_URL);
     } catch (e) {
-        lastFail = now;
-        console.error("[RSS] 💀 フィード取得失敗:", e.message);
+        console.error("[RSS] フィード取得失敗:", e.message);
         return;
     }
 
+    // 未投稿アイテムを抽出（内容が空のものだけ除外）
     const candidates = feed.items.filter(i =>
         !seenLinks.includes(i.link) &&
-        (i.contentSnippet?.length || i.title?.length || 0) > 30
+        (i.contentSnippet || i.title || "").trim().length > 0
     );
 
-    if (!candidates.length) {
-        console.log(`[RSS] 新規アイテムなし（既読${seenLinks.length}件、フィード${feed.items.length}件）`);
-        return;
-    }
+    console.log(`[RSS] フィード${feed.items.length}件 / 未投稿${candidates.length}件 / 既読${seenLinks.length}件`);
 
-    console.log(`[RSS] ${candidates.length}件の新規アイテム → 先頭1件を投稿`);
+    if (!candidates.length) return;
+
     await postTweet(candidates[0], client);
 }
 
-module.exports = { checkRSS };
+// ===== cron初期化（index.jsから呼ぶ）=====
+function initRSS(client) {
+    console.log("[RSS] ✅ 初期化 | 30分毎にチェック");
+    // 毎時0分・30分
+    cron.schedule('*/30 * * * *', () => checkRSS(client), { timezone: 'Asia/Tokyo' });
+    // 起動時に即チェック
+    checkRSS(client);
+}
+
+module.exports = { initRSS, checkRSS };
