@@ -3,6 +3,7 @@ const axios  = require('axios');
 const { OpenAI } = require('openai');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getModExcludeList } = require('./exclude_manager');
+const whStore = require('./webhook_store');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -258,59 +259,92 @@ function recodeText(text) {
     return c.trim();
 }
 
-const webhookCache    = new Map();
-const webhookPromises = new Map();
-const WEBHOOK_CACHE_TTL = 24 * 60 * 60 * 1000;
+/* =========================
+   📍 Webhook管理（Tupperbox方式: ID+tokenをファイル永続化）
+   優先度: メモリキャッシュ → ファイル復元 → Discord API取得/新規作成
+   bot再起動後も fetchWebhooks() 不要で即座に使える
+========================= */
+const webhookCache    = new Map(); // channelId → { wh, ts }
+const webhookPromises = new Map(); // 同時リクエスト防止
 
 async function getOrCreateWebhook(channel) {
     const target = channel.isThread() ? channel.parent : channel;
     if (!target) return null;
     const key = target.id;
 
+    // 1. メモリキャッシュ（最速）
     const cached = webhookCache.get(key);
-    if (cached && Date.now() - cached.timestamp < WEBHOOK_CACHE_TTL) return cached.webhook;
+    if (cached) return cached.wh;
 
+    // 同時リクエスト防止
     if (webhookPromises.has(key)) return webhookPromises.get(key);
 
     const promise = (async () => {
+        // 2. ファイルに保存済みのトークンから即復元（API呼び出し不要）
+        const stored = whStore.get(key);
+        if (stored) {
+            webhookCache.set(key, { wh: stored });
+            return stored;
+        }
+
+        // 3. Discord APIで取得 or 新規作成（初回 / ファイルにない場合のみ）
         try {
             const hooks = await target.fetchWebhooks();
             let wh = hooks.find(h => h.token);
             if (!wh) wh = await target.createWebhook({ name: 'Moderator' });
-            webhookCache.set(key, { webhook: wh, timestamp: Date.now() });
+            whStore.set(key, wh);           // ファイルに永続化
+            webhookCache.set(key, { wh });  // メモリにも
             return wh;
         } catch (e) {
             console.error(`[Webhook] 取得失敗: ${e.message}`);
             return null;
-        } finally {
-            webhookPromises.delete(key);
         }
     })();
 
     webhookPromises.set(key, promise);
+    promise.finally(() => webhookPromises.delete(key));
     return promise;
+}
+
+// Webhookを無効化してキャッシュとファイルから削除
+function invalidateWebhook(channelId) {
+    webhookCache.delete(channelId);
+    whStore.remove(channelId);
 }
 
 async function sendWebhook(channel, options) {
     const target = channel.isThread() ? channel.parent : channel;
     const key    = target?.id;
 
-    // fetch failed 等のネットワークエラー時に指数バックオフでリトライ（最大3回）
-    const DELAYS = [1000, 3000, 8000];
-    for (let attempt = 0; attempt <= DELAYS.length; attempt++) {
+    // エラー種別に応じた戦略:
+    // - 404 Unknown Webhook (Webhook削除済み) → 即キャッシュ削除して再作成
+    // - ネットワーク瞬断 (fetch failed 等)   → 指数バックオフでリトライ
+    const NET_DELAYS = [1_000, 3_000, 8_000];
+
+    for (let attempt = 0; attempt <= NET_DELAYS.length; attempt++) {
         const wh = await getOrCreateWebhook(channel);
         if (!wh) return null;
         try {
             return await wh.send(options);
         } catch (e) {
-            if (key) webhookCache.delete(key);
-            const isLast = attempt === DELAYS.length;
-            if (isLast) {
-                console.error(`[Webhook] 投稿失敗（全リトライ消化）: ${e.message}`);
-                return null;
+            const isWebhookGone = e.status === 404 || e.code === 10015;
+
+            if (isWebhookGone) {
+                // Webhookが外部から削除された → 再作成して1回だけ即リトライ
+                if (key) invalidateWebhook(key);
+                console.warn('[Webhook] Webhook削除検知 → 再作成中...');
+                const newWh = await getOrCreateWebhook(channel);
+                if (!newWh) return null;
+                try { return await newWh.send(options); }
+                catch (e2) { console.error(`[Webhook] 再作成後も失敗: ${e2.message}`); return null; }
             }
-            console.warn(`[Webhook] 投稿失敗 attempt${attempt + 1}、${DELAYS[attempt]}ms後リトライ: ${e.message}`);
-            await new Promise(r => setTimeout(r, DELAYS[attempt]));
+
+            // ネットワークエラー → バックオフリトライ
+            if (key) webhookCache.delete(key);
+            const isLast = attempt === NET_DELAYS.length;
+            if (isLast) { console.error(`[Webhook] 投稿失敗（全リトライ消化）: ${e.message}`); return null; }
+            console.warn(`[Webhook] 投稿失敗 attempt${attempt + 1}, ${NET_DELAYS[attempt]}ms後リトライ: ${e.message}`);
+            await new Promise(r => setTimeout(r, NET_DELAYS[attempt]));
         }
     }
 }
