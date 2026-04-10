@@ -40,7 +40,11 @@ async function handleSay(interaction) {
     const { member, channel, options, client, guild, user } = interaction;
     const settings = getSettings();
 
-    if (!member.permissions.has('Administrator') && settings.deniedUsers.includes(user.id)) {
+    const isDenied = !member.permissions.has('Administrator') && (
+        settings.deniedUsers.includes(user.id) ||
+        (settings.deniedRoles ?? []).some(r => member.roles.cache.has(r))
+    );
+    if (isDenied) {
         return interaction.reply({ content: '実行権限がありません。', flags: [MessageFlags.Ephemeral] });
     }
 

@@ -9,7 +9,7 @@ const { initScheduler }          = require('./scheduler');
 const { handleSay }              = require('./say');
 const { handleDeathmatch }       = require('./deathmatch');
 const { handleModerator, handleImageDeleteButton } = require('./moderator');
-const { handleAdmin }            = require('./admin');
+const { handleAdmin, handleAdminButton } = require('./admin');
 const { handleJoker }            = require('./joker');
 const { checkRSS }               = require('./rssBot');
 const { postRanking, handleRanking } = require('./ranking');
@@ -63,6 +63,11 @@ client.on(Events.InteractionCreate, async i => {
     // 画像削除ボタン（権限チェック不要・投稿者本人のみ許可はハンドラ内で処理）
     if (i.isButton() && i.customId.startsWith('del_img:')) {
         return handleImageDeleteButton(i).catch(e => console.error('[DelImg]:', e));
+    }
+
+    // 管理設定リセットボタン
+    if (i.isButton() && i.customId.startsWith('admin_reset:')) {
+        return handleAdminButton(i).catch(e => console.error('[AdminBtn]:', e));
     }
 
     if (!i.isChatInputCommand()) return;

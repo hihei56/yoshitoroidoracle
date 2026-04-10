@@ -448,9 +448,11 @@ async function handleModerator(message) {
         return;
     }
 
+    const excl     = getModExcludeList();
     const isExempt =
         EXEMPT_ROLES.some(id => message.member?.roles.cache.has(id)) ||
-        getModExcludeList().includes(message.author.id);
+        excl.users.includes(message.author.id) ||
+        excl.roles.some(roleId => message.member?.roles.cache.has(roleId));
 
     const strippedContent  = stripTupperPrefix(rawContent);
     const normalized       = normalizeForDetection(strippedContent);

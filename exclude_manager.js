@@ -1,29 +1,33 @@
-// exclude_manager.js — Oracle Cloud対応版
+// exclude_manager.js — ユーザー・ロール両対応版
 const { resolveDataPath, ensureDir, readJson, writeJson } = require('./dataPath');
 
 const EXCLUDE_FILE = resolveDataPath('mod_exclude.json');
 ensureDir(EXCLUDE_FILE);
 
-let excludeList = readJson(EXCLUDE_FILE, []);
+// 旧形式（string[]）からの自動移行
+function load() {
+    const raw = readJson(EXCLUDE_FILE, { users: [], roles: [] });
+    if (Array.isArray(raw)) return { users: raw, roles: [] };
+    return { users: raw.users ?? [], roles: raw.roles ?? [] };
+}
 
-function getModExcludeList() { return excludeList; }
+let excludeData = load();
 
-function addToExcludeList(userId) {
-    if (!excludeList.includes(userId)) {
-        excludeList.push(userId);
-        writeJson(EXCLUDE_FILE, excludeList);
+function getModExcludeList() { return excludeData; }
+
+function updateModExcludeList(id, action, type = 'user') {
+    const key = type === 'role' ? 'roles' : 'users';
+    if (action === 'add') {
+        if (!excludeData[key].includes(id)) excludeData[key].push(id);
+    } else {
+        excludeData[key] = excludeData[key].filter(x => x !== id);
     }
+    writeJson(EXCLUDE_FILE, excludeData);
 }
 
-function removeFromExcludeList(userId) {
-    excludeList = excludeList.filter(id => id !== userId);
-    writeJson(EXCLUDE_FILE, excludeList);
+function resetModExcludeList() {
+    excludeData = { users: [], roles: [] };
+    writeJson(EXCLUDE_FILE, excludeData);
 }
 
-// admin.jsから呼ばれるadd/remove統合関数
-function updateModExcludeList(userId, action) {
-    if (action === 'add') addToExcludeList(userId);
-    else                  removeFromExcludeList(userId);
-}
-
-module.exports = { getModExcludeList, addToExcludeList, removeFromExcludeList, updateModExcludeList };
+module.exports = { getModExcludeList, updateModExcludeList, resetModExcludeList };

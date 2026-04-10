@@ -41,7 +41,7 @@ const commands = [
         .addSubcommand(subcommand =>
             subcommand
                 .setName('mod_skip')
-                .setDescription('特定のユーザーを検閲例外に設定します。')
+                .setDescription('ユーザー/ロールを検閲除外に設定します。')
                 .addStringOption(option =>
                     option.setName('action')
                         .setDescription('追加か解除を選択')
@@ -53,14 +53,17 @@ const commands = [
                 )
                 .addUserOption(option =>
                     option.setName('user')
-                        .setDescription('対象のユーザー')
-                        .setRequired(true)
+                        .setDescription('対象のユーザー（ロールと併用可）')
+                )
+                .addRoleOption(option =>
+                    option.setName('role')
+                        .setDescription('対象のロール（ユーザーと併用可）')
                 )
         )
         .addSubcommand(subcommand =>
             subcommand
                 .setName('say_deny')
-                .setDescription('特定のユーザーの代行権限を管理します。')
+                .setDescription('ユーザー/ロールのSay代行権限を管理します。')
                 .addStringOption(option =>
                     option.setName('action')
                         .setDescription('拒否か許可を選択')
@@ -72,9 +75,17 @@ const commands = [
                 )
                 .addUserOption(option =>
                     option.setName('user')
-                        .setDescription('対象のユーザー')
-                        .setRequired(true)
+                        .setDescription('対象のユーザー（ロールと併用可）')
                 )
+                .addRoleOption(option =>
+                    option.setName('role')
+                        .setDescription('対象のロール（ユーザーと併用可）')
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('status')
+                .setDescription('現在の管理設定を表示します。')
         ),
 
     // 5. ランキング（デバッグモード時のみ有効）
