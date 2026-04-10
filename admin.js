@@ -2,6 +2,10 @@ const { updateModExcludeList } = require('./exclude_manager');
 const { getSettings, saveSettings } = require('./config');
 
 async function handleAdmin(interaction) {
+    if (!interaction.member?.permissions.has('Administrator')) {
+        return interaction.reply({ content: '管理者のみ実行できます。', ephemeral: true });
+    }
+
     const sub = interaction.options.getSubcommand();
 
     if (sub === 'mod_skip') {
