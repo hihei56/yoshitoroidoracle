@@ -20,7 +20,7 @@ async function decorateName(baseName) {
             messages: [
                 {
                     role: 'system',
-                    content: 'ユーザーのDiscord名を受け取り、弱者男性の代弁者などを意味する語彙で修飾。絵文字などを使ってよい。名前だけ返せ。元の名前を維持。余計な説明は不要。'
+                    content: 'ユーザーのDiscord名を受け取り、弱者男性の代弁者などを意味する語彙で修飾。絵文字などを使ってよい。名前だけ返せ。元の名前を別表現に言い換え。余計な説明は不要。'
                 },
                 { role: 'user', content: baseName }
             ]
