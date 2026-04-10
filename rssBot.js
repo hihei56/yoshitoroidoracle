@@ -164,6 +164,10 @@ async function checkRSS(client) {
 
 // ===== cron初期化（index.jsから呼ぶ）=====
 function initRSS(client) {
+    if (!process.env.UNTAI_WEBHOOK) {
+        console.error("[RSS] ❌ UNTAI_WEBHOOK が未設定です。投稿できません。");
+        return;
+    }
     console.log("[RSS] ✅ 初期化 | 30分毎にチェック");
     // 毎時0分・30分
     cron.schedule('*/30 * * * *', () => checkRSS(client), { timezone: 'Asia/Tokyo' });

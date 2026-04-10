@@ -175,13 +175,19 @@ const DISABILITY_HATE_REGEX = new RegExp([
 
 function checkNgWords(text) {
     const matched = [];
-    if (LOLI_SHOTA_REGEX.test(text))       matched.push('loli_shota');
-    if (AGE_REGEX.test(text))              matched.push('age');
-    if (THREAT_REGEX.test(text))           matched.push('threat');
-    if (DRUG_REGEX.test(text))             matched.push('drug');
-    if (SELF_HARM_PROMO_REGEX.test(text))  matched.push('self_harm_promo');
-    if (HATE_REGEX.test(text))             matched.push('hate_speech');
-    if (DISABILITY_HATE_REGEX.test(text))  matched.push('disability_hate');
+
+    function testAndCapture(regex, label) {
+        const m = text.match(regex);
+        if (m) matched.push(`${label}(${m[0].slice(0, 20)})`);
+    }
+
+    testAndCapture(LOLI_SHOTA_REGEX,    'loli_shota');
+    testAndCapture(AGE_REGEX,           'age');
+    testAndCapture(THREAT_REGEX,        'threat');
+    testAndCapture(DRUG_REGEX,          'drug');
+    testAndCapture(SELF_HARM_PROMO_REGEX,'self_harm_promo');
+    testAndCapture(HATE_REGEX,          'hate_speech');
+    testAndCapture(DISABILITY_HATE_REGEX,'disability_hate');
     return { hit: matched.length > 0, matched };
 }
 
@@ -241,7 +247,7 @@ function logDeletion({ message, matched }) {
     const tag     = message.author.tag;
     const userId  = message.author.id;
     const channel = message.channel.name ?? message.channelId;
-    const preview = (message.content ?? '').slice(0, 80).replace(/\n/g, ' ');
+    const preview = (message.content ?? '').slice(0, 200).replace(/\n/g, ' ');
     console.warn(`[MOD] ${ts} | #${channel} | ${tag}(${userId}) | matched=${JSON.stringify(matched)} | "${preview}"`);
 }
 
