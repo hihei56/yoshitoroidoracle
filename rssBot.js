@@ -109,7 +109,7 @@ async function postTweet(item, client) {
             fetchReply: true,
         });
     } catch (e) {
-        console.error("[RSS] 投稿失敗:", e.message);
+        console.error("[RSS] 投稿失敗:", e.message, e.cause?.message ?? '', e.status ?? '');
         return;
     }
 
