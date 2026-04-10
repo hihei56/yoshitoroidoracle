@@ -79,8 +79,10 @@ const LOLI_SHOTA_REGEX = new RegExp([
     'ショタ','しょた','ｼｮﾀ','shota',
     'ロリコン','ろりこん','lolicon',
     'ショタコン','しょたこん','shotacon',
-    'ろ\\W*り','しょ\\W*た',
-    'l\\W*o\\W*l\\W*i','s\\W*h\\W*o\\W*t\\W*a',
+    // 注: ろ\W*り / しょ\W*た は削除
+    // 日本語の全文字が\Wに該当するため「でしょ…た」等で誤検知が多発する
+    // normalizeForDetection でスペース・記号を除去済みなので、
+    // リテラルの「ろり」「しょた」で十分カバーできる
     '幼女','幼男','キッズ',
     '小学生','中学生','小学校','中学校',
     'ペド','ぺど',
@@ -292,20 +294,23 @@ async function getOrCreateWebhook(channel) {
 async function sendWebhook(channel, options) {
     const target = channel.isThread() ? channel.parent : channel;
     const key    = target?.id;
-    const wh     = await getOrCreateWebhook(channel);
-    if (!wh) return null;
 
-    try {
-        return await wh.send(options);
-    } catch (e) {
-        if (key) webhookCache.delete(key);
-        console.error(`[Webhook] 送信失敗、リトライ: ${e.message}`);
+    // fetch failed 等のネットワークエラー時に指数バックオフでリトライ（最大3回）
+    const DELAYS = [1000, 3000, 8000];
+    for (let attempt = 0; attempt <= DELAYS.length; attempt++) {
+        const wh = await getOrCreateWebhook(channel);
+        if (!wh) return null;
         try {
-            const retry = await getOrCreateWebhook(channel);
-            return retry ? await retry.send(options) : null;
-        } catch (e2) {
-            console.error(`[Webhook] リトライ失敗: ${e2.message}`);
-            return null;
+            return await wh.send(options);
+        } catch (e) {
+            if (key) webhookCache.delete(key);
+            const isLast = attempt === DELAYS.length;
+            if (isLast) {
+                console.error(`[Webhook] 投稿失敗（全リトライ消化）: ${e.message}`);
+                return null;
+            }
+            console.warn(`[Webhook] 投稿失敗 attempt${attempt + 1}、${DELAYS[attempt]}ms後リトライ: ${e.message}`);
+            await new Promise(r => setTimeout(r, DELAYS[attempt]));
         }
     }
 }
