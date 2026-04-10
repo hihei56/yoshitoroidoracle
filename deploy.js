@@ -29,12 +29,10 @@ const commands = [
             option.setName('reply_link')
                 .setDescription('返信先メッセージのリンク')
         )
-        // --- ここから追加：なりすまし選択オプション ---
         .addBooleanOption(option =>
             option.setName('tokumei')
-                .setDescription('トクメイ')
+                .setDescription('true にすると全弱者男性を代弁する匿名アカウントとして送信')
         ),
-        // --- 追加ここまで ---
 
     // 4. 管理機能
     new SlashCommandBuilder()
