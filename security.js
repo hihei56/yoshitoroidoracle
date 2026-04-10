@@ -2,7 +2,7 @@
 const { EmbedBuilder, Events, PermissionsBitField } = require('discord.js');
 
 const OWNER_ID      = '1092367375355088947';
-const LOG_CHANNEL_ID = '1476939503510884638';
+const LOG_CHANNEL_ID = '1476943641242239056';
 
 // 監視対象の危険権限
 const DANGEROUS_PERMS = [
