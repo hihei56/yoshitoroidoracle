@@ -1,6 +1,4 @@
 // moderator.js — 最終版
-// NGワード検知 + sexual/minors APIチェック（画像・NGヒット時のみ）
-
 const axios  = require('axios');
 const { OpenAI } = require('openai');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
@@ -8,9 +6,6 @@ const { getModExcludeList } = require('./exclude_manager');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-/* =========================
-   🔐 ロール設定
-========================= */
 const EXEMPT_ROLES = [
     '1486178659130933278',
     '1477024387524857988',
@@ -25,9 +20,6 @@ const SENSITIVE_TRIGGER_EMOJI = '👶';
 const TUPPERBOX_APP_ID        = '431544605209788416';
 const TUPPERBOX_PREFIX_REGEX  = /^([a-zA-Z]+!)(.*)$/;
 
-/* =========================
-   🔐 ゼロ幅文字でUserIDを隠す
-========================= */
 const ZERO_WIDTH_MAP     = { '0': '\u200B', '1': '\u200C' };
 const REVERSE_ZERO_WIDTH = { '\u200B': '0', '\u200C': '1' };
 
@@ -42,31 +34,19 @@ function extractUserId(text) {
     try { return BigInt('0b' + bits).toString(); } catch { return null; }
 }
 
-/* =========================
-   🛡️ @everyone / @here / ロールメンション無害化
-========================= */
 function sanitizeMentions(text) {
     if (!text) return text;
     return text
         .replace(/@everyone/g, '@\u200beveryone')
-        .replace(/@here/g,     '@\u200bhere')
-        .replace(/@&\d+/g,     match => match.replace('@', '@\u200b'));
+        .replace(/@here/g,     '@\u200bhere');
 }
 
-/* =========================
-   🛡️ 権限チェック
-========================= */
 function hasModPermission(member) {
     if (!member) return false;
     if (member.permissions.has('Administrator')) return true;
     return ALLOWED_ROLES.some(id => member.roles.cache.has(id));
 }
 
-/* =========================
-   🚦 スパムトラッカー
-   - 10秒で5件
-   - 3秒で3件（バースト検知）
-========================= */
 const spamTracker = new Map();
 
 function checkSpam(userId) {
@@ -85,9 +65,6 @@ setInterval(() => {
     }
 }, 60_000);
 
-/* =========================
-   🔤 テキスト正規化（難読化・エスケープ対策）
-========================= */
 function normalizeForDetection(text) {
     if (!text) return '';
     return text
@@ -97,9 +74,6 @@ function normalizeForDetection(text) {
         .replace(/[\s\u3000_\-.,。、・「」『』【】〔〕《》〈〉（）()\[\]{}*★☆◆◇●○]/g, '');
 }
 
-/* =========================
-   🛡️ NGワード検知
-========================= */
 const LOLI_SHOTA_REGEX = new RegExp([
     'ロリ','ろり','ﾛﾘ','loli',
     'ショタ','しょた','ｼｮﾀ','shota',
@@ -208,9 +182,6 @@ function checkNgWords(text) {
     return { hit: matched.length > 0, matched };
 }
 
-/* =========================
-   📎 添付ファイル取得
-========================= */
 const DL_CONFIG = { MAX_FILES: 4, MAX_SIZE: 8 * 1024 * 1024, TIMEOUT: 4_000 };
 
 async function downloadFiles(attachments) {
@@ -223,16 +194,11 @@ async function downloadFiles(attachments) {
                 timeout: DL_CONFIG.TIMEOUT,
             });
             files.push({ attachment: Buffer.from(res.data), name: att.name || 'file' });
-        } catch {
-            // 弾かれても続行
-        }
+        } catch {}
     }
     return files;
 }
 
-/* =========================
-   🤖 AIテキストモデレーション
-========================= */
 const AI_THRESHOLDS = {
     'sexual/minors':            0.3,
     'hate':                     0.75,
@@ -249,14 +215,12 @@ const AI_THRESHOLDS = {
 
 async function checkAiModeration(text) {
     if (!text?.trim() || !process.env.OPENAI_API_KEY) return { flagged: false, reason: null };
-
     try {
         const result = await openai.moderations.create({
             model: 'omni-moderation-latest',
             input: text,
         });
         const scores = result.results[0]?.category_scores ?? {};
-
         for (const [cat, threshold] of Object.entries(AI_THRESHOLDS)) {
             if ((scores[cat] ?? 0) > threshold) {
                 return { flagged: true, reason: cat };
@@ -269,9 +233,6 @@ async function checkAiModeration(text) {
     }
 }
 
-/* =========================
-   📝 削除ログ
-========================= */
 function logDeletion({ message, matched }) {
     const ts      = new Date().toISOString();
     const tag     = message.author.tag;
@@ -281,9 +242,6 @@ function logDeletion({ message, matched }) {
     console.warn(`[MOD] ${ts} | #${channel} | ${tag}(${userId}) | matched=${JSON.stringify(matched)} | "${preview}"`);
 }
 
-/* =========================
-   ✨ テキスト整形
-========================= */
 function stripTupperPrefix(content) {
     if (!content) return content;
     const m = content.match(TUPPERBOX_PREFIX_REGEX);
@@ -298,9 +256,6 @@ function recodeText(text) {
     return c.trim();
 }
 
-/* =========================
-   📍 Webhook管理（Race Condition対策付き）
-========================= */
 const webhookCache    = new Map();
 const webhookPromises = new Map();
 const WEBHOOK_CACHE_TTL = 24 * 60 * 60 * 1000;
@@ -355,9 +310,6 @@ async function sendWebhook(channel, options) {
     }
 }
 
-/* =========================
-   💬 リプライ装飾
-========================= */
 async function buildReplyPrefix(message) {
     if (!message.reference?.messageId) return '';
     try {
@@ -376,9 +328,6 @@ async function buildReplyPrefix(message) {
     } catch { return ''; }
 }
 
-/* =========================
-   💬 疑似リプライ処理
-========================= */
 async function handlePseudoReply(message) {
     if (!hasModPermission(message.member)) return false;
     if (!message.reference?.messageId)     return false;
@@ -400,7 +349,7 @@ async function handlePseudoReply(message) {
         files:           [],
         username:        message.member?.displayName || message.author.username,
         avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
-        allowedMentions: { parse: ['users'], roles: [] },
+        allowedMentions: { parse: ['users'] },
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 
@@ -408,9 +357,6 @@ async function handlePseudoReply(message) {
     return true;
 }
 
-/* =========================
-   🔞 センシティブ投稿処理
-========================= */
 async function handleSensitivePost(message) {
     const hasPerm = SENSITIVE_ALLOWED_ROLES.some(id => message.member?.roles.cache.has(id));
     if (!hasPerm) return false;
@@ -433,7 +379,7 @@ async function handleSensitivePost(message) {
         components:      [buildDeleteButtonRow(message.author.id)],
         username:        message.member?.displayName || message.author.username,
         avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
-        allowedMentions: { parse: ['users'], roles: [] },
+        allowedMentions: { parse: ['users'] },
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 
@@ -441,9 +387,6 @@ async function handleSensitivePost(message) {
     return true;
 }
 
-/* =========================
-   🗑️ 削除 & Webhook再投稿
-========================= */
 async function instantDeleteAndRecode(message) {
     const files = await downloadFiles(message.attachments);
 
@@ -458,16 +401,13 @@ async function instantDeleteAndRecode(message) {
         components:      hasImageAttachment(message.attachments) ? [buildDeleteButtonRow(message.author.id)] : [],
         username:        message.member?.displayName || message.author.username,
         avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
-        allowedMentions: { parse: ['users'], roles: [] },
+        allowedMentions: { parse: ['users'] },
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 
     await sendWebhook(message.channel, opts);
 }
 
-/* =========================
-   🖼️ 画像削除ボタン
-========================= */
 const IMAGE_MIME_RE = /^image\//;
 
 function hasImageAttachment(attachments) {
@@ -494,9 +434,6 @@ async function handleImageDeleteButton(interaction) {
     await interaction.deleteReply().catch(() => {});
 }
 
-/* =========================
-   🔥 メイン処理
-========================= */
 async function handleModerator(message) {
     if (!message.content && !message.attachments.size) return;
     if (message.author.bot) return;

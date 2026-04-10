@@ -8,8 +8,7 @@ function sanitizeMentions(text) {
     if (!text) return text;
     return text
         .replace(/@everyone/g, '@\u200beveryone')
-        .replace(/@here/g,     '@\u200bhere')
-        .replace(/@&\d+/g,     match => match.replace('@', '@\u200b'));
+        .replace(/@here/g,     '@\u200bhere');
 }
 
 const webhookCache = new Map();
@@ -76,11 +75,10 @@ async function handleSay(interaction) {
         }
 
         await webhook.send({
-            content:         replyPrefix + content,
-            username:        finalName,
-            avatarURL:       finalIcon,
-            files:           file ? [file.url] : [],
-            allowedMentions: { parse: [], roles: [] },
+            content:  replyPrefix + content,
+            username: finalName,
+            avatarURL: finalIcon,
+            files:    file ? [file.url] : [],
         });
 
         await interaction.deleteReply().catch(() => {});
