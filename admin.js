@@ -1,6 +1,6 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getModExcludeList, updateModExcludeList, resetModExcludeList } = require('./exclude_manager');
-const { getSettings, saveSettings, resetSayDeny } = require('./config');
+const { getSettings, saveSettings, resetSayDeny, resetSayChannels } = require('./config');
 
 const COLOR = {
     add:    0x57F287, // 緑
@@ -17,18 +17,21 @@ function buildStatusEmbed() {
     const excl     = getModExcludeList();
     const settings = getSettings();
 
-    const fmtUsers = ids => ids.length ? ids.map(id => `<@${id}>`).join(' ')   : 'なし';
-    const fmtRoles = ids => ids.length ? ids.map(id => `<@&${id}>`).join(' ')  : 'なし';
+    const fmtUsers    = ids => ids.length ? ids.map(id => `<@${id}>`).join(' ')  : 'なし';
+    const fmtRoles    = ids => ids.length ? ids.map(id => `<@&${id}>`).join(' ') : 'なし';
+    const fmtChannels = ids => ids.length ? ids.map(id => `<#${id}>`).join(' ')  : '全チャンネル（無制限）';
 
     return new EmbedBuilder()
         .setTitle('🛡️ 管理設定')
         .setColor(COLOR.info)
         .addFields(
-            { name: '🔇 検閲除外 — ユーザー', value: fmtUsers(excl.users),            inline: true },
-            { name: '🔇 検閲除外 — ロール',   value: fmtRoles(excl.roles),            inline: true },
-            { name: '\u200b',                  value: '\u200b',                         inline: false },
-            { name: '🚫 Say拒否 — ユーザー',  value: fmtUsers(settings.deniedUsers),  inline: true },
-            { name: '🚫 Say拒否 — ロール',    value: fmtRoles(settings.deniedRoles),  inline: true },
+            { name: '🔇 検閲除外 — ユーザー', value: fmtUsers(excl.users),                           inline: true },
+            { name: '🔇 検閲除外 — ロール',   value: fmtRoles(excl.roles),                           inline: true },
+            { name: '\u200b',                  value: '\u200b',                                        inline: false },
+            { name: '🚫 Say拒否 — ユーザー',  value: fmtUsers(settings.deniedUsers),                 inline: true },
+            { name: '🚫 Say拒否 — ロール',    value: fmtRoles(settings.deniedRoles),                 inline: true },
+            { name: '\u200b',                  value: '\u200b',                                        inline: false },
+            { name: '📢 Say許可チャンネル',   value: fmtChannels(settings.allowedSayChannels ?? []), inline: false },
         )
         .setTimestamp();
 }
@@ -42,6 +45,10 @@ function buildStatusComponents() {
         new ButtonBuilder()
             .setCustomId('admin_reset:say_deny')
             .setLabel('Say拒否をリセット')
+            .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+            .setCustomId('admin_reset:say_channels')
+            .setLabel('Sayチャンネルをリセット')
             .setStyle(ButtonStyle.Danger),
     );
 }
@@ -127,6 +134,32 @@ async function handleAdmin(interaction) {
         });
     }
 
+    // ── Say許可チャンネル ──
+    if (sub === 'say_channel') {
+        const action  = interaction.options.getString('action');
+        const ch      = interaction.options.getChannel('channel');
+        const settings = getSettings();
+
+        if (action === 'add') {
+            if (!settings.allowedSayChannels.includes(ch.id)) settings.allowedSayChannels.push(ch.id);
+        } else {
+            settings.allowedSayChannels = settings.allowedSayChannels.filter(id => id !== ch.id);
+        }
+        saveSettings(settings);
+
+        const verb = action === 'add' ? '追加' : '解除';
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle(`📢 Say許可チャンネル — ${verb}`)
+                    .setColor(COLOR[action])
+                    .setDescription(`<#${ch.id}>`)
+                    .setTimestamp()
+            ],
+            ephemeral: true,
+        });
+    }
+
     // ── 現在の設定を表示 ──
     if (sub === 'status') {
         return interaction.reply({
@@ -147,8 +180,9 @@ async function handleAdminButton(interaction) {
     }
 
     const target = interaction.customId.split(':')[1];
-    if (target === 'mod_skip') resetModExcludeList();
-    if (target === 'say_deny') resetSayDeny();
+    if (target === 'mod_skip')    resetModExcludeList();
+    if (target === 'say_deny')    resetSayDeny();
+    if (target === 'say_channels') resetSayChannels();
 
     // embed をリセット後の状態に更新
     await interaction.update({

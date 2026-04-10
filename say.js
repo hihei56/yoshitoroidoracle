@@ -1,9 +1,11 @@
 // say.js
 const { MessageFlags } = require('discord.js');
-const { getSettings } = require('./config');
+const { getSettings }  = require('./config');
+const { getSession, createSession } = require('./say_sessions');
 const axios = require('axios');
 
 const TOKUMEI_USER_ID = '1419689848968581272';
+const MAX_CHARS       = 150;
 
 function sanitizeMentions(text) {
     if (!text) return text;
@@ -28,9 +30,9 @@ async function decorateName(baseName) {
             headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
             timeout: 5000,
         });
-        return res.data.choices[0].message.content.trim().slice(0, 32);
+        return res.data.choices[0].message.content.trim().slice(0, 28);
     } catch {
-        return `【代弁者】${baseName}`;
+        return `【代弁者】${baseName}`.slice(0, 28);
     }
 }
 
@@ -40,6 +42,7 @@ async function handleSay(interaction) {
     const { member, channel, options, client, guild, user } = interaction;
     const settings = getSettings();
 
+    // ── 権限チェック ──
     const isDenied = !member.permissions.has('Administrator') && (
         settings.deniedUsers.includes(user.id) ||
         (settings.deniedRoles ?? []).some(r => member.roles.cache.has(r))
@@ -48,51 +51,66 @@ async function handleSay(interaction) {
         return interaction.reply({ content: '実行権限がありません。', flags: [MessageFlags.Ephemeral] });
     }
 
+    // ── チャンネル制限チェック ──
+    const allowedChannels = settings.allowedSayChannels ?? [];
+    if (allowedChannels.length > 0) {
+        const checkId = channel.isThread() ? channel.parentId : channel.id;
+        if (!allowedChannels.includes(checkId)) {
+            return interaction.reply({ content: 'このチャンネルでは /say は使用できません。', flags: [MessageFlags.Ephemeral] });
+        }
+    }
+
+    // ── 文字数チェック ──
     const rawContent = options.getString('content') || '';
-    if (rawContent.length > 500) {
-        return interaction.reply({ content: '長すぎます（500文字以内）。', flags: [MessageFlags.Ephemeral] });
+    if (rawContent.length > MAX_CHARS) {
+        return interaction.reply({ content: `長すぎます（${MAX_CHARS}文字以内）。`, flags: [MessageFlags.Ephemeral] });
     }
 
     const content = sanitizeMentions(rawContent);
-
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     try {
+        // ── Webhook取得 ──
         const targetChannel = channel.isThread() ? channel.parent : channel;
-
         let webhook = webhookCache.get(targetChannel.id);
         if (!webhook) {
             const webhooks = await targetChannel.fetchWebhooks().catch(() => null);
             webhook = webhooks?.find(wh => wh.owner?.id === client.user.id);
-            if (!webhook) {
-                webhook = await targetChannel.createWebhook({ name: 'FastProxy' });
-            }
+            if (!webhook) webhook = await targetChannel.createWebhook({ name: 'FastProxy' });
             webhookCache.set(targetChannel.id, webhook);
         }
 
         const isTokumei = options.getBoolean('tokumei') === true;
-        let finalName, finalIcon;
+        let finalName, finalIcon, logSessionId;
 
         if (isTokumei) {
+            // tokumei: 特定アカウントの外見（セッション管理対象外）
             const tokumeiMember = await guild.members.fetch(TOKUMEI_USER_ID).catch(() => null);
             if (tokumeiMember) {
                 finalName = await decorateName(tokumeiMember.displayName);
                 finalIcon = tokumeiMember.user.displayAvatarURL({ dynamic: true });
             } else {
                 const tokumeiUser = await client.users.fetch(TOKUMEI_USER_ID).catch(() => null);
-                const baseName = tokumeiUser?.username ?? '弱者男性';
-                finalName = await decorateName(baseName);
+                finalName = await decorateName(tokumeiUser?.username ?? '弱者男性');
                 finalIcon = tokumeiUser?.displayAvatarURL({ dynamic: true }) ?? undefined;
             }
+            logSessionId = 'tokumei';
         } else {
-            finalName = member.displayName;
-            finalIcon = user.displayAvatarURL({ dynamic: true });
+            // 通常: 24時間セッションで名前+IDを固定
+            let session = getSession(user.id);
+            if (!session) {
+                const generated = await decorateName(member.displayName);
+                session = createSession(user.id, generated);
+            }
+            finalName    = `${session.name} [#${session.sessionId}]`;
+            finalIcon    = user.displayAvatarURL({ dynamic: true });
+            logSessionId = session.sessionId;
         }
 
+        // ── リプライ処理 ──
         const file      = options.getAttachment('file');
         const replyLink = options.getString('reply_link');
         let replyPrefix = '';
-
         if (replyLink) {
             const messageId  = replyLink.split('/').pop();
             const repliedMsg = await channel.messages.fetch(messageId).catch(() => null);
@@ -112,6 +130,12 @@ async function handleSay(interaction) {
             allowedMentions: { parse: [], roles: [] },
             ...(channel.isThread() && { threadId: channel.id }),
         });
+
+        // ── ログ ──
+        console.log(
+            `[SAY] ${new Date().toISOString()} | user=${user.id} | session=#${logSessionId}` +
+            ` | ch=#${channel.name}(${channel.id}) | "${rawContent.slice(0, 80)}"`
+        );
 
         await interaction.deleteReply().catch(() => {});
 

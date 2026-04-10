@@ -7,12 +7,13 @@ ensureDir(SETTINGS_PATH);
 function getSettings() {
     const data = readJson(SETTINGS_PATH, null);
     if (!data) {
-        const initial = { deniedUsers: [], deniedRoles: [] };
+        const initial = { deniedUsers: [], deniedRoles: [], allowedSayChannels: [] };
         writeJson(SETTINGS_PATH, initial);
         return initial;
     }
-    // 旧形式からの移行（deniedRolesが存在しない場合）
-    if (!data.deniedRoles) data.deniedRoles = [];
+    // 旧形式からの移行
+    if (!data.deniedRoles)        data.deniedRoles        = [];
+    if (!data.allowedSayChannels) data.allowedSayChannels = [];
     return data;
 }
 
@@ -27,4 +28,10 @@ function resetSayDeny() {
     saveSettings(s);
 }
 
-module.exports = { getSettings, saveSettings, resetSayDeny };
+function resetSayChannels() {
+    const s = getSettings();
+    s.allowedSayChannels = [];
+    saveSettings(s);
+}
+
+module.exports = { getSettings, saveSettings, resetSayDeny, resetSayChannels };

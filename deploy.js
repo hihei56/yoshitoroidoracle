@@ -84,6 +84,25 @@ const commands = [
         )
         .addSubcommand(subcommand =>
             subcommand
+                .setName('say_channel')
+                .setDescription('/say を許可するチャンネルを管理します。未設定時は全チャンネルで使用可能。')
+                .addStringOption(option =>
+                    option.setName('action')
+                        .setDescription('追加か解除を選択')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: '追加', value: 'add' },
+                            { name: '解除', value: 'remove' }
+                        )
+                )
+                .addChannelOption(option =>
+                    option.setName('channel')
+                        .setDescription('対象チャンネル')
+                        .setRequired(true)
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('status')
                 .setDescription('現在の管理設定を表示します。')
         ),
