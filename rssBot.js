@@ -1,5 +1,6 @@
 const Parser = require('rss-parser');
 const cron = require('node-cron');
+const axios = require('axios');
 const { WebhookClient, EmbedBuilder } = require('discord.js');
 const he = require('he');
 const { OpenAI } = require('openai');
@@ -75,6 +76,19 @@ async function generateAIReply(text) {
     }
 }
 
+// ===== 画像ダウンロード（失敗時はnull）=====
+async function downloadImage(url) {
+    if (!url) return null;
+    try {
+        const res = await axios.get(url, { responseType: 'arraybuffer', timeout: 8000 });
+        const ext  = url.split('?')[0].split('.').pop().toLowerCase() || 'jpg';
+        return { attachment: Buffer.from(res.data), name: `image.${ext}` };
+    } catch (e) {
+        console.warn("[RSS] 画像DLスキップ:", e.message);
+        return null;
+    }
+}
+
 // ===== 投稿 =====
 async function postTweet(item, client) {
     let raw = he.decode(item.contentSnippet || item.title || "");
@@ -99,12 +113,15 @@ async function postTweet(item, client) {
 
     if (item.isoDate) embed.setTimestamp(new Date(item.isoDate));
 
+    // 画像を事前DL（NitterのURLをOracleからURLのまま渡すとfetch failedになるため）
+    const imageFile = await downloadImage(imageUrl);
+
     let msg;
     try {
         msg = await UNTAI_WEBHOOK.send({
             content:    raw + quoteBlock,
             embeds:     [embed],
-            files:      imageUrl ? [{ attachment: imageUrl }] : [],
+            files:      imageFile ? [imageFile] : [],
             username:   "不対電子",
             fetchReply: true,
         });
