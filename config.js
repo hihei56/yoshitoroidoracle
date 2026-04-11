@@ -14,6 +14,7 @@ function getSettings() {
     // 旧形式からの移行
     if (!data.deniedRoles)        data.deniedRoles        = [];
     if (!data.allowedSayChannels) data.allowedSayChannels = [];
+    if (!data.anonLogChannelId)   data.anonLogChannelId   = null;
     return data;
 }
 

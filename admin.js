@@ -21,6 +21,8 @@ function buildStatusEmbed() {
     const fmtRoles    = ids => ids.length ? ids.map(id => `<@&${id}>`).join(' ') : 'なし';
     const fmtChannels = ids => ids.length ? ids.map(id => `<#${id}>`).join(' ')  : '全チャンネル（無制限）';
 
+    const logCh = settings.anonLogChannelId ? `<#${settings.anonLogChannelId}>` : '未設定';
+
     return new EmbedBuilder()
         .setTitle('🛡️ 管理設定')
         .setColor(COLOR.info)
@@ -28,10 +30,11 @@ function buildStatusEmbed() {
             { name: '🔇 検閲除外 — ユーザー', value: fmtUsers(excl.users),                           inline: true },
             { name: '🔇 検閲除外 — ロール',   value: fmtRoles(excl.roles),                           inline: true },
             { name: '\u200b',                  value: '\u200b',                                        inline: false },
-            { name: '🚫 Say拒否 — ユーザー',  value: fmtUsers(settings.deniedUsers),                 inline: true },
-            { name: '🚫 Say拒否 — ロール',    value: fmtRoles(settings.deniedRoles),                 inline: true },
+            { name: '🚫 Anon拒否 — ユーザー', value: fmtUsers(settings.deniedUsers),                 inline: true },
+            { name: '🚫 Anon拒否 — ロール',   value: fmtRoles(settings.deniedRoles),                 inline: true },
             { name: '\u200b',                  value: '\u200b',                                        inline: false },
-            { name: '📢 Say許可チャンネル',   value: fmtChannels(settings.allowedSayChannels ?? []), inline: false },
+            { name: '📢 Anon許可チャンネル',  value: fmtChannels(settings.allowedSayChannels ?? []), inline: false },
+            { name: '📋 Anonログチャンネル',  value: logCh,                                           inline: false },
         )
         .setTimestamp();
 }
@@ -158,6 +161,39 @@ async function handleAdmin(interaction) {
             ],
             ephemeral: true,
         });
+    }
+
+    // ── Anonログチャンネル ──
+    if (sub === 'log_channel') {
+        const ch       = interaction.options.getChannel('channel');
+        const settings = getSettings();
+        if (ch) {
+            settings.anonLogChannelId = ch.id;
+            saveSettings(settings);
+            return interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('📋 Anonログチャンネル — 設定')
+                        .setColor(COLOR.add)
+                        .setDescription(`<#${ch.id}>`)
+                        .setTimestamp()
+                ],
+                ephemeral: true,
+            });
+        } else {
+            settings.anonLogChannelId = null;
+            saveSettings(settings);
+            return interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('📋 Anonログチャンネル — 解除')
+                        .setColor(COLOR.remove)
+                        .setDescription('ログチャンネルを解除しました。')
+                        .setTimestamp()
+                ],
+                ephemeral: true,
+            });
+        }
     }
 
     // ── 現在の設定を表示 ──

@@ -99,6 +99,15 @@ const commands = [
         )
         .addSubcommand(subcommand =>
             subcommand
+                .setName('log_channel')
+                .setDescription('/anon の実行ログを送るチャンネルを設定します。未指定で解除。')
+                .addChannelOption(option =>
+                    option.setName('channel')
+                        .setDescription('ログ送信先チャンネル（省略で解除）')
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('status')
                 .setDescription('現在の管理設定を表示します。')
         ),

@@ -120,8 +120,24 @@ async function handleAnon(interaction) {
         });
 
         console.log(
-            `[ANON] ${new Date().toISOString()} | ch=#${channel.name}(${channel.id}) | name="${finalName}" | "${rawContent.slice(0, 80)}"`
+            `[ANON] ${new Date().toISOString()} | user=${user.id} | ch=#${channel.name}(${channel.id}) | name="${finalName}" | "${rawContent.slice(0, 80)}"`
         );
+
+        // ── 管理ログチャンネルに送信 ──
+        const logChannelId = settings.anonLogChannelId;
+        if (logChannelId) {
+            try {
+                const logCh = await client.channels.fetch(logChannelId);
+                await logCh.send(
+                    `\`[ANON]\` <t:${Math.floor(Date.now() / 1000)}:T> ` +
+                    `<@${user.id}> → **${finalName}**\n` +
+                    `📍 <#${channel.id}>\n` +
+                    `💬 ${rawContent.slice(0, 400)}`
+                );
+            } catch (e) {
+                console.warn('[ANON] ログ送信失敗:', e.message);
+            }
+        }
 
         await interaction.deleteReply().catch(() => {});
 
