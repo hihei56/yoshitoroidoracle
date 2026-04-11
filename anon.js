@@ -1,7 +1,6 @@
 // anon.js — /anon コマンド
 const { MessageFlags } = require('discord.js');
 const { getSettings }  = require('./config');
-const { getSession, createSession } = require('./say_sessions');
 const axios = require('axios');
 
 const TOKUMEI_USER_ID = '1419689848968581272';
@@ -72,13 +71,8 @@ async function handleAnon(interaction) {
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     try {
-        // ── 24時間セッションで「匿名の〇〇」名前を固定 ──
-        let session = getSession(user.id);
-        if (!session) {
-            const name = await generateAnonSuffix(member.displayName);
-            session = createSession(user.id, name);
-        }
-        const finalName = session.name; // 例: 「匿名の孤独な代弁者」
+        // ── 毎回AIで「匿名の〇〇」を生成（個人識別不可）──
+        const finalName = await generateAnonSuffix(member.displayName);
 
         // ── アバター取得（TOKUMEI_USER_IDのアイコン固定）──
         let finalIcon;
@@ -126,8 +120,7 @@ async function handleAnon(interaction) {
         });
 
         console.log(
-            `[ANON] ${new Date().toISOString()} | user=${user.id} | name="${finalName}"` +
-            ` | ch=#${channel.name}(${channel.id}) | "${rawContent.slice(0, 80)}"`
+            `[ANON] ${new Date().toISOString()} | ch=#${channel.name}(${channel.id}) | name="${finalName}" | "${rawContent.slice(0, 80)}"`
         );
 
         await interaction.deleteReply().catch(() => {});
