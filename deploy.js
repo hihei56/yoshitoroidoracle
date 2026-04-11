@@ -12,10 +12,10 @@ const commands = [
         .setName('joker')
         .setDescription('JOKERを実行。一か八かの制裁を下します。'),
 
-    // 3. メッセージ送信機能（代行）
+    // 3. 匿名発言機能
     new SlashCommandBuilder()
-        .setName('say')
-        .setDescription('匿名の弱者男性として発言します。')
+        .setName('anon')
+        .setDescription('匿名の〇〇として発言します。名前は24時間固定。')
         .addStringOption(option =>
             option.setName('content')
                 .setDescription('メッセージ内容（必須）')

@@ -6,7 +6,7 @@ require('dotenv').config();
 
 const { Client, GatewayIntentBits, Events } = require('discord.js');
 const { initScheduler }          = require('./scheduler');
-const { handleSay }              = require('./say');
+const { handleAnon }             = require('./anon');
 const { handleDeathmatch }       = require('./deathmatch');
 const { handleModerator, handleImageDeleteButton } = require('./moderator');
 const { handleAdmin, handleAdminButton } = require('./admin');
@@ -78,7 +78,7 @@ client.on(Events.InteractionCreate, async i => {
     try {
         if (i.commandName === 'timeoutlist') await handleTimeoutList(i);
         if (i.commandName === 'dice')        await handleDeathmatch(i);
-        if (i.commandName === 'say')         await handleSay(i);
+        if (i.commandName === 'anon')        await handleAnon(i);
         if (i.commandName === 'admin')       await handleAdmin(i);
         if (i.commandName === 'joker')       await handleJoker(i);
         if (i.commandName === 'permlist') await handlePermList(i);
