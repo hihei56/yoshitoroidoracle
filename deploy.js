@@ -15,7 +15,7 @@ const commands = [
     // 3. メッセージ送信機能（代行）
     new SlashCommandBuilder()
         .setName('say')
-        .setDescription('指定した内容をボットに喋らせます。')
+        .setDescription('匿名の弱者男性として発言します。')
         .addStringOption(option =>
             option.setName('content')
                 .setDescription('メッセージ内容（必須）')
@@ -28,10 +28,6 @@ const commands = [
         .addStringOption(option =>
             option.setName('reply_link')
                 .setDescription('返信先メッセージのリンク')
-        )
-        .addBooleanOption(option =>
-            option.setName('tokumei')
-                .setDescription('true にすると全弱者男性を代弁する匿名アカウントとして送信')
         ),
 
     // 4. 管理機能

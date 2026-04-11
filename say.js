@@ -1,10 +1,9 @@
 // say.js
 const { MessageFlags } = require('discord.js');
 const { getSettings }  = require('./config');
-const { getSession, createSession } = require('./say_sessions');
-const axios = require('axios');
 
 const TOKUMEI_USER_ID = '1419689848968581272';
+const FIXED_NAME      = '匿名の弱者男性';
 const MAX_CHARS       = 150;
 
 function sanitizeMentions(text) {
@@ -12,28 +11,6 @@ function sanitizeMentions(text) {
     return text
         .replace(/@everyone/g, '@\u200beveryone')
         .replace(/@here/g,     '@\u200bhere');
-}
-
-async function decorateName(baseName) {
-    try {
-        const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-            model: 'llama-3.1-8b-instant',
-            max_tokens: 30,
-            messages: [
-                {
-                    role: 'system',
-                    content: 'ユーザーのDiscord名を受け取り、元の名前を別表現に言い換え。弱者男性の代弁者などを意味する語彙で修飾。絵文字などを使ってよい。名前だけ返せ。余計な説明は不要。'
-                },
-                { role: 'user', content: baseName }
-            ]
-        }, {
-            headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
-            timeout: 5000,
-        });
-        return res.data.choices[0].message.content.trim().slice(0, 28);
-    } catch {
-        return `【代弁者】${baseName}`.slice(0, 28);
-    }
 }
 
 const webhookCache = new Map();
@@ -70,6 +47,17 @@ async function handleSay(interaction) {
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     try {
+        // ── アバター取得（TOKUMEI_USER_IDのアイコン固定）──
+        let finalIcon;
+        try {
+            const tokumeiMember = await guild.members.fetch(TOKUMEI_USER_ID).catch(() => null);
+            finalIcon = tokumeiMember
+                ? tokumeiMember.user.displayAvatarURL({ dynamic: true })
+                : (await client.users.fetch(TOKUMEI_USER_ID))?.displayAvatarURL({ dynamic: true });
+        } catch {
+            finalIcon = undefined;
+        }
+
         // ── Webhook取得 ──
         const targetChannel = channel.isThread() ? channel.parent : channel;
         let webhook = webhookCache.get(targetChannel.id);
@@ -78,33 +66,6 @@ async function handleSay(interaction) {
             webhook = webhooks?.find(wh => wh.owner?.id === client.user.id);
             if (!webhook) webhook = await targetChannel.createWebhook({ name: 'FastProxy' });
             webhookCache.set(targetChannel.id, webhook);
-        }
-
-        const isTokumei = options.getBoolean('tokumei') === true;
-        let finalName, finalIcon, logSessionId;
-
-        if (isTokumei) {
-            // tokumei: 特定アカウントの外見（セッション管理対象外）
-            const tokumeiMember = await guild.members.fetch(TOKUMEI_USER_ID).catch(() => null);
-            if (tokumeiMember) {
-                finalName = await decorateName(tokumeiMember.displayName);
-                finalIcon = tokumeiMember.user.displayAvatarURL({ dynamic: true });
-            } else {
-                const tokumeiUser = await client.users.fetch(TOKUMEI_USER_ID).catch(() => null);
-                finalName = await decorateName(tokumeiUser?.username ?? '弱者男性');
-                finalIcon = tokumeiUser?.displayAvatarURL({ dynamic: true }) ?? undefined;
-            }
-            logSessionId = 'tokumei';
-        } else {
-            // 通常: 24時間セッションで名前+IDを固定
-            let session = getSession(user.id);
-            if (!session) {
-                const generated = await decorateName(member.displayName);
-                session = createSession(user.id, generated);
-            }
-            finalName    = `${session.name} [#${session.sessionId}]`;
-            finalIcon    = user.displayAvatarURL({ dynamic: true });
-            logSessionId = session.sessionId;
         }
 
         // ── リプライ処理 ──
@@ -124,16 +85,15 @@ async function handleSay(interaction) {
 
         await webhook.send({
             content:         replyPrefix + content,
-            username:        finalName,
+            username:        FIXED_NAME,
             avatarURL:       finalIcon,
             files:           file ? [file.url] : [],
             allowedMentions: { parse: [], roles: [] },
             ...(channel.isThread() && { threadId: channel.id }),
         });
 
-        // ── ログ ──
         console.log(
-            `[SAY] ${new Date().toISOString()} | user=${user.id} | session=#${logSessionId}` +
+            `[SAY] ${new Date().toISOString()} | user=${user.id}` +
             ` | ch=#${channel.name}(${channel.id}) | "${rawContent.slice(0, 80)}"`
         );
 
