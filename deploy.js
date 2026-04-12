@@ -112,7 +112,26 @@ const commands = [
                 .setDescription('現在の管理設定を表示します。')
         ),
 
-    // 5. ランキング（デバッグモード時のみ有効）
+    // 5. 呪いコマンド（管理者のみ）
+    new SlashCommandBuilder()
+        .setName('curse')
+        .setDescription('ユーザーのメッセージを呪います（管理者のみ）。')
+        .addStringOption(opt =>
+            opt.setName('action')
+                .setDescription('操作を選択')
+                .setRequired(true)
+                .addChoices(
+                    { name: '🩸 呪いをかける', value: 'add'    },
+                    { name: '✨ 呪いを解く',   value: 'remove' },
+                    { name: '📋 一覧を見る',   value: 'list'   },
+                )
+        )
+        .addUserOption(opt =>
+            opt.setName('user')
+                .setDescription('対象ユーザー（list以外は必須）')
+        ),
+
+    // 6. ランキング（デバッグモード時のみ有効）
     new SlashCommandBuilder()
         .setName('ranking')
         .setDescription('配信者の同時接続数ランキングを今すぐ更新する（デバッグモード限定）'),

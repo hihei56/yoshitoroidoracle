@@ -4,6 +4,7 @@ const { OpenAI } = require('openai');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getModExcludeList } = require('./exclude_manager');
 const whStore = require('./webhook_store');
+const { isCursed } = require('./curse_manager');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -479,6 +480,60 @@ async function handleImageDeleteButton(interaction) {
     await interaction.deleteReply().catch(() => {});
 }
 
+/* =========================
+   👹 呪い文字化け処理
+========================= */
+// 文字化け用素材
+const CORRUPT_CHARS = 'ﾊﾋﾌﾍﾎﾄｱｲｳｴｵｦｧｭｮｯｰｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉ░▒▓│┤╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀';
+const ZALGO_MARKS  = [...'̴̷̸̡̢̨̧̛̍̎̄̅̿̑̒̓̔̽̾̈́͐͑͒͗͛ͅ'];
+
+function garbleText(text, rate) {
+    const r = rate ?? (0.30 + Math.random() * 0.10);
+    return [...text].map(c => {
+        if (c === '\n') return c;
+        const roll = Math.random();
+        if (roll < r) {
+            // 完全に別の文字に置換
+            return CORRUPT_CHARS[Math.floor(Math.random() * CORRUPT_CHARS.length)];
+        }
+        if (roll < r + 0.12) {
+            // Zalgoマーク付与（文字が崩れて見える）
+            const n = Math.floor(Math.random() * 3) + 1;
+            return c + ZALGO_MARKS.slice(0, n).join('');
+        }
+        return c;
+    }).join('');
+}
+
+function garbleName(name) {
+    // 名前は50%で文字化け
+    return garbleText(name, 0.50);
+}
+
+async function applyCurse(message) {
+    const files = await downloadFiles(message.attachments);
+    if (message.deletable) await message.delete().catch(() => {});
+
+    const garbledContent = garbleText(sanitizeMentions(message.content || '\u200b'));
+    const garbledName    = garbleName(message.member?.displayName || message.author.username);
+    // アバターURL: ユーザー本人のものをそのまま（外見の違和感は名前・内容で演出）
+    const avatarURL = message.member?.displayAvatarURL({ dynamic: true, size: 16 }) ?? undefined;
+
+    const replyPrefix = await buildReplyPrefix(message);
+
+    const opts = {
+        content:         replyPrefix + garbledContent + hideUserId(message.author.id),
+        files,
+        username:        garbledName,
+        avatarURL,
+        allowedMentions: { parse: [] },
+    };
+    if (message.channel.isThread()) opts.threadId = message.channel.id;
+
+    await sendWebhook(message.channel, opts);
+    console.info(`[CURSE] ${message.author.tag}(${message.author.id}) メッセージを文字化け再投稿`);
+}
+
 async function handleModerator(message) {
     if (!message.content && !message.attachments.size) return;
     if (message.author.bot) return;
@@ -515,6 +570,12 @@ async function handleModerator(message) {
         const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
         logDeletion({ message, matched: allMatched });
         await instantDeleteAndRecode(message);
+        return;
+    }
+
+    // 呪いユーザー: メッセージを文字化けして再投稿
+    if (isCursed(message.author.id) && !isExempt) {
+        await applyCurse(message);
         return;
     }
 
