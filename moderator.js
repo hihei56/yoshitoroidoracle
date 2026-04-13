@@ -365,11 +365,23 @@ async function buildReplyPrefix(message) {
             const extracted = extractUserId(ref.content);
             if (extracted) targetId = extracted;
         }
-        let parentRaw = [...(ref.content || '')].filter(c => !REVERSE_ZERO_WIDTH[c]).join('').trim();
-        const preview = parentRaw.length > 80
-            ? parentRaw.substring(0, 77).replace(/\n/g, ' ') + '...'
-            : parentRaw.replace(/\n/g, ' ');
-        const jumpUrl = `https://discord.com/channels/${message.guildId}/${message.channelId}/${ref.id}`;
+
+        // zero-width文字（userId埋め込み）を除去
+        let body = [...(ref.content || '')].filter(c => !REVERSE_ZERO_WIDTH[c]).join('').trim();
+
+        // webhook再投稿メッセージには先頭に "> Reply to:" 行が含まれるので除去して本文だけ取り出す
+        if (ref.webhookId) {
+            const lines = body.split('\n');
+            const firstNonQuote = lines.findIndex(l => !l.startsWith('>'));
+            if (firstNonQuote > 0) body = lines.slice(firstNonQuote).join('\n').trim();
+        }
+
+        const preview = body.length > 80
+            ? body.substring(0, 77).replace(/\n/g, ' ') + '...'
+            : body.replace(/\n/g, ' ');
+
+        const channelId = ref.channelId ?? message.channelId;
+        const jumpUrl   = `https://discord.com/channels/${message.guildId}/${channelId}/${ref.id}`;
         return `> [Reply to:](${jumpUrl}) <@${targetId}>\n> ${preview}\n`;
     } catch { return ''; }
 }

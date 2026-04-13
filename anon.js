@@ -14,8 +14,8 @@ function sanitizeMentions(text) {
         .replace(/@here/g,     '@\u200bhere');
 }
 
-// 「匿名の〇〇」の〇〇部分をAIで生成
-async function generateAnonSuffix(baseName) {
+// 「匿名の〇〇」の〇〇部分をAIで生成（ユーザー名に依存しない完全ランダム）
+async function generateAnonSuffix() {
     try {
         const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
             model: 'llama-3.1-8b-instant',
@@ -23,9 +23,9 @@ async function generateAnonSuffix(baseName) {
             messages: [
                 {
                     role: 'system',
-                    content: 'ユーザーのDiscord名を元に、「匿名の」の後に続く短い表現（15文字以内）を生成してください。弱者男性・代弁者・孤独な男・敗北した人生などの概念を使ってください。表現だけ返してください。余計な説明は不要。'
+                    content: 'ランダムに「匿名の」の後に続く短い表現（15文字以内）を生成してください。弱者男性・代弁者・孤独な男・敗北した人生・無敵の人などの概念を使ってください。毎回異なる表現にしてください。表現だけ返してください。余計な説明は不要。'
                 },
-                { role: 'user', content: baseName }
+                { role: 'user', content: '生成してください' }
             ]
         }, {
             headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
@@ -75,7 +75,7 @@ async function handleAnon(interaction) {
         // ── 24時間セッションで「匿名の〇〇」を固定 ──
         let session = getSession(user.id);
         if (!session) {
-            const name = await generateAnonSuffix(member.displayName);
+            const name = await generateAnonSuffix(); // ユーザー名に依存しないランダム生成
             session = createSession(user.id, name);
         }
         const finalName = session.name;
@@ -135,8 +135,9 @@ async function handleAnon(interaction) {
             try {
                 const logCh = await client.channels.fetch(logChannelId);
                 await logCh.send(
-                    `\`[ANON]\` <t:${Math.floor(Date.now() / 1000)}:T> ` +
-                    `<@${user.id}> → **${finalName}**\n` +
+                    `\`[ANON]\` <t:${Math.floor(Date.now() / 1000)}:T>\n` +
+                    `👤 ID: \`${user.id}\` / Nick: \`${member.displayName}\`\n` +
+                    `🎭 匿名名: **${finalName}**\n` +
                     `📍 <#${channel.id}>\n` +
                     `💬 ${rawContent.slice(0, 400)}`
                 );
