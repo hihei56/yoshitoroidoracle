@@ -108,11 +108,33 @@ const commands = [
         )
         .addSubcommand(subcommand =>
             subcommand
+                .setName('lurker_channel')
+                .setDescription('ROM専目覚ましの自動投稿チャンネルを設定します。未指定で解除。')
+                .addChannelOption(option =>
+                    option.setName('channel')
+                        .setDescription('投稿先チャンネル（省略で解除）')
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('status')
                 .setDescription('現在の管理設定を表示します。')
         ),
 
-    // 5. 呪いコマンド（管理者のみ）
+    // 5. ROM専目覚まし（管理者のみ）
+    new SlashCommandBuilder()
+        .setName('lurker')
+        .setDescription('3週間以上活動がないメンバーをランダムに4〜7名メンション（管理者のみ）。')
+        .addChannelOption(opt =>
+            opt.setName('channel')
+                .setDescription('投稿先チャンネル（省略時は設定済みチャンネル）')
+        )
+        .addBooleanOption(opt =>
+            opt.setName('force')
+                .setDescription('クールダウン無視して強制実行')
+        ),
+
+    // 6. 呪いコマンド（管理者のみ）
     new SlashCommandBuilder()
         .setName('curse')
         .setDescription('ユーザーのメッセージを呪います（管理者のみ）。')

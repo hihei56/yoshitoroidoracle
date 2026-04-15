@@ -15,6 +15,7 @@ function getSettings() {
     if (!data.deniedRoles)        data.deniedRoles        = [];
     if (!data.allowedSayChannels) data.allowedSayChannels = [];
     if (!data.anonLogChannelId)   data.anonLogChannelId   = null;
+    if (!data.lurkerChannelId)    data.lurkerChannelId    = null;
     return data;
 }
 

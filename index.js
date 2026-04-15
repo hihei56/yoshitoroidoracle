@@ -8,6 +8,8 @@ const { Client, GatewayIntentBits, Events } = require('discord.js');
 const { initScheduler }          = require('./scheduler');
 const { handleAnon }             = require('./anon');
 const { handleCurse }            = require('./curse');
+const { initLurker, handleLurker } = require('./lurker');
+const { recordActivity }         = require('./activity_tracker');
 const { handleDeathmatch }       = require('./deathmatch');
 const { handleModerator, handleImageDeleteButton } = require('./moderator');
 const { handleAdmin, handleAdminButton } = require('./admin');
@@ -45,6 +47,7 @@ client.once(Events.ClientReady, async c => {
     initSecurity(client);
 
     initRSS(client);
+    initLurker(client);
 
     if (DEBUG_MODE) {
         postRanking(client).catch(e => console.error('[Ranking] 起動時エラー:', e));
@@ -56,6 +59,7 @@ client.once(Events.ClientReady, async c => {
 
 client.on(Events.MessageCreate, async m => {
     if (m.author.bot || !m.guild) return;
+    recordActivity(m.author.id);
     handleModerator(m).catch(err => console.error('[Mod Error]:', err));
 });
 
@@ -81,6 +85,7 @@ client.on(Events.InteractionCreate, async i => {
         if (i.commandName === 'dice')        await handleDeathmatch(i);
         if (i.commandName === 'anon')        await handleAnon(i);
         if (i.commandName === 'curse')       await handleCurse(i);
+        if (i.commandName === 'lurker')      await handleLurker(i);
         if (i.commandName === 'admin')       await handleAdmin(i);
         if (i.commandName === 'joker')       await handleJoker(i);
         if (i.commandName === 'permlist') await handlePermList(i);
