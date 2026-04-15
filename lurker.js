@@ -13,6 +13,16 @@ const COOLDOWN_MS    = 6 * 60 * 60 * 1000;
 const COOLDOWN_FILE = resolveDataPath('lurker_cooldown.json');
 ensureDir(COOLDOWN_FILE);
 let lastPosted = readJson(COOLDOWN_FILE, { ts: 0 }).ts;
+
+const MEMBERS_TTL = 5 * 60 * 1000; // 5分キャッシュ
+let membersCache   = null;
+let membersCacheTs = 0;
+async function fetchMembers(guild) {
+    if (membersCache && Date.now() - membersCacheTs < MEMBERS_TTL) return membersCache;
+    membersCache   = await guild.members.fetch();
+    membersCacheTs = Date.now();
+    return membersCache;
+}
 function saveCooldown() {
     lastPosted = Date.now();
     writeJson(COOLDOWN_FILE, { ts: lastPosted });
@@ -125,7 +135,7 @@ async function postWakeup(client, guild, channelId, force = false) {
 
     const [channel, members] = await Promise.all([
         client.channels.fetch(channelId).catch(() => null),
-        guild.members.fetch(),
+        fetchMembers(guild),
     ]);
     if (!channel) return { skipped: true, reason: 'channel_not_found' };
 
