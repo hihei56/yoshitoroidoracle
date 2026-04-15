@@ -45,12 +45,6 @@ function saveCooldown() {
 
 /* ===== AI メッセージ生成 ===== */
 async function generateWakeupMessage(targets) {
-    const longest = Math.max(...targets.map(m => {
-        const last = getLastActivity(m.id);
-        return last ? Date.now() - last : Date.now() - (m.joinedTimestamp ?? 0);
-    }));
-    const weeksAway = Math.round(longest / (7 * 24 * 60 * 60 * 1000));
-
     const jstHour = new Date(
         new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })
     ).getHours();
@@ -58,28 +52,30 @@ async function generateWakeupMessage(targets) {
                     : jstHour >= 12 && jstHour < 18 ? '昼'
                     : '夜';
 
-    const urgency = weeksAway >= 6
-        ? `最長${weeksAway}週間も姿を見せていない。かなり切迫感がある。`
-        : `最長${weeksAway}週間ほど活動がない。やんわり声かけ。`;
+    // 朝は固定文（API不要）
+    if (timeOfDay === '朝') return 'みなさま、おはようございます〜😊';
 
-    const names = targets.map(m => m.displayName).join('、');
+    // 昼・夜はAI生成（短文）
+    const longest = Math.max(...targets.map(m => {
+        const last = getLastActivity(m.id);
+        return last ? Date.now() - last : Date.now() - (m.joinedTimestamp ?? 0);
+    }));
+    const weeksAway = Math.round(longest / (7 * 24 * 60 * 60 * 1000));
 
     try {
         const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
             model: 'llama-3.3-70b-versatile',
-            max_tokens: 120,
+            max_tokens: 60,
             messages: [
                 {
                     role: 'system',
                     content:
-                        'あなたはDiscordサーバーの一般メンバーです。' +
-                        'しばらく姿を見せていないメンバーに声をかけるメッセージを1文で生成してください。' +
-                        '絵文字を1〜2個使い、フレンドリーで自然な口調にしてください。' +
-                        'メンション（@名前）は含めないでください。メッセージ本文だけ返してください。',
+                        'Discordサーバーの一般メンバーとして、しばらく姿を見せていない人への短い一言を生成してください。' +
+                        '10〜20文字程度、絵文字1個、メンションなし、本文だけ返してください。',
                 },
                 {
                     role: 'user',
-                    content: `時間帯: ${timeOfDay}\n状況: ${urgency}\n対象メンバー名: ${names}`,
+                    content: `時間帯: ${timeOfDay}　最長${weeksAway}週間ぶり`,
                 },
             ],
         }, {
@@ -89,13 +85,7 @@ async function generateWakeupMessage(targets) {
         return res.data.choices[0].message.content.trim();
     } catch (e) {
         console.warn('[Lurker] AI生成失敗、フォールバック:', e.message);
-        // フォールバック
-        const fallbacks = {
-            朝: 'おはようございます！久しぶりに顔出してみてね😊',
-            昼: 'こんにちは〜！最近どうですか？😄',
-            夜: 'こんばんは！お久しぶりです✨',
-        };
-        return fallbacks[timeOfDay];
+        return timeOfDay === '昼' ? 'こんにちは〜！最近どうですか？😄' : 'こんばんは！お久しぶりです✨';
     }
 }
 

@@ -9,7 +9,7 @@ const { initScheduler }          = require('./scheduler');
 const { handleAnon }             = require('./anon');
 const { handleCurse }            = require('./curse');
 const { initLurker, handleLurker } = require('./lurker');
-const { recordActivity }         = require('./activity_tracker');
+const { recordActivity, backfillActivity } = require('./activity_tracker');
 const { handleDeathmatch }       = require('./deathmatch');
 const { handleModerator, handleImageDeleteButton } = require('./moderator');
 const { handleAdmin, handleAdminButton } = require('./admin');
@@ -48,6 +48,10 @@ client.once(Events.ClientReady, async c => {
 
     initRSS(client);
     initLurker(client);
+
+    // 起動時にチャンネル履歴から活動記録を補完
+    const guild = client.guilds.cache.first();
+    if (guild) backfillActivity(guild).catch(e => console.error('[Activity] バックフィルエラー:', e));
 
     if (DEBUG_MODE) {
         postRanking(client).catch(e => console.error('[Ranking] 起動時エラー:', e));
