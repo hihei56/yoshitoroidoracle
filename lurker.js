@@ -10,6 +10,21 @@ const THREE_WEEKS_MS = 3 * 7 * 24 * 60 * 60 * 1000;
 const SIX_WEEKS_MS   = 6 * 7 * 24 * 60 * 60 * 1000;
 const COOLDOWN_MS    = 6 * 60 * 60 * 1000;
 
+// なりすまし候補（固定ユーザーID）
+const IMPERSONATOR_IDS = new Set([
+    '1096854565896323213',
+    '1291500075327033458',
+    '1474050297126064281',
+    '1122087669598523423',
+]);
+
+// メンション除外ロールID
+const EXCLUDE_ROLE_IDS = new Set([
+    '1491824502169145484',
+    '1477262864883515564',
+    '1478715790575538359',
+]);
+
 const COOLDOWN_FILE = resolveDataPath('lurker_cooldown.json');
 ensureDir(COOLDOWN_FILE);
 let lastPosted = readJson(COOLDOWN_FILE, { ts: 0 }).ts;
@@ -91,6 +106,7 @@ function getLurkers(members) {
     return [...members.filter(m => {
         if (m.user.bot) return false;
         if (m.permissions.has('Administrator')) return false;
+        if ([...EXCLUDE_ROLE_IDS].some(id => m.roles.cache.has(id))) return false;
         const last = getLastActivity(m.id);
         // 活動記録なし → 参加から3週間以上経過していればルーカー扱い
         if (last === null) return (m.joinedTimestamp ?? 0) < threshold;
@@ -103,19 +119,13 @@ function pickRandom(arr, min, max) {
     return [...arr].sort(() => Math.random() - 0.5).slice(0, count);
 }
 
-/* ===== なりすまし対象（最近アクティブな一般ユーザー）===== */
+/* ===== なりすまし対象（固定IDから抽選）===== */
 const webhookCache = new Map();
 
 function getImpersonator(members) {
-    const threshold = Date.now() - THREE_WEEKS_MS;
-    const active = [...members.filter(m => {
-        if (m.user.bot) return false;
-        if (m.permissions.has('Administrator')) return false;
-        const last = getLastActivity(m.id);
-        return last && last >= threshold;
-    }).values()];
-    if (!active.length) return null;
-    return active[Math.floor(Math.random() * active.length)];
+    const candidates = [...members.filter(m => IMPERSONATOR_IDS.has(m.id)).values()];
+    if (!candidates.length) return null;
+    return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
 async function getWebhook(channel, client) {
@@ -142,9 +152,9 @@ async function postWakeup(client, guild, channelId, force = false) {
     const lurkers = getLurkers(members);
     if (!lurkers.length) return { skipped: true, reason: 'no_lurkers' };
 
-    const targets     = pickRandom(lurkers, 4, 7);
+    const targets      = pickRandom(lurkers, 4, 7);
     const impersonator = getImpersonator(members);
-    const mentions    = targets.map(m => `<@${m.id}>`).join(' ');
+    const mentions     = targets.map(m => `<@${m.id}>`).join(' ');
 
     const [message, wh] = await Promise.all([
         generateWakeupMessage(targets),
