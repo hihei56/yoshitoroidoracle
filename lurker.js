@@ -1,5 +1,6 @@
 // lurker.js — ROM専目覚まし
 const cron = require('node-cron');
+const axios = require('axios');
 const { MessageFlags } = require('discord.js');
 const { getLastActivity } = require('./activity_tracker');
 const { getSettings } = require('./config');
@@ -7,66 +8,84 @@ const { resolveDataPath, ensureDir, readJson, writeJson } = require('./dataPath'
 
 const THREE_WEEKS_MS = 3 * 7 * 24 * 60 * 60 * 1000;
 const SIX_WEEKS_MS   = 6 * 7 * 24 * 60 * 60 * 1000;
-const COOLDOWN_MS    = 6 * 60 * 60 * 1000; // 手動実行の連投防止
+const COOLDOWN_MS    = 6 * 60 * 60 * 1000;
 
 const COOLDOWN_FILE = resolveDataPath('lurker_cooldown.json');
 ensureDir(COOLDOWN_FILE);
 let lastPosted = readJson(COOLDOWN_FILE, { ts: 0 }).ts;
+
+const MEMBERS_TTL = 5 * 60 * 1000; // 5分キャッシュ
+let membersCache   = null;
+let membersCacheTs = 0;
+async function fetchMembers(guild) {
+    if (membersCache && Date.now() - membersCacheTs < MEMBERS_TTL) return membersCache;
+    membersCache   = await guild.members.fetch();
+    membersCacheTs = Date.now();
+    return membersCache;
+}
 function saveCooldown() {
     lastPosted = Date.now();
     writeJson(COOLDOWN_FILE, { ts: lastPosted });
 }
 
-/* ===== メッセージバリエーション ===== */
-const MSG_MORNING = [
-    'みなさま、おはようございます〜😊',
-    'おはよ〜！！今日も元気出していこ！😄',
-    'おはようございます✨ 最近どうですか？',
-    'おはようございます！久しぶりに顔出してみてね〜😊',
-];
-const MSG_AFTERNOON = [
-    'みなさん、こんにちは〜！😊',
-    'こんにちは〜✨ 最近どうですか？',
-    'こんにちは！久しぶりに話しかけてみてね😄',
-];
-const MSG_EVENING = [
-    'みなさん、こんばんは〜😊',
-    'こんばんは！今日も一日お疲れ様でした✨',
-    'こんばんは〜😊 ゆっくりしていってね',
-];
-// 6週間以上未活動の人向け（30%で使用）
-const MSG_URGENT = [
-    '生存確認〜！！最近全然見かけないですが元気にしてますか？😅',
-    'ちょっとちょっと！久しぶりすぎない？😂',
-    '遭難してない？？心配してたよ〜😂',
-    'ご無沙汰すぎます！まだ生きてますか〜？😅',
-    '久しぶり！アカウント乗っ取られてない？笑',
-];
-
-function pickMessage(targets) {
-    // 最長未活動メンバーで切迫度を判断
+/* ===== AI メッセージ生成 ===== */
+async function generateWakeupMessage(targets) {
     const longest = Math.max(...targets.map(m => {
         const last = getLastActivity(m.id);
         return last ? Date.now() - last : Date.now() - (m.joinedTimestamp ?? 0);
     }));
+    const weeksAway = Math.round(longest / (7 * 24 * 60 * 60 * 1000));
 
-    if (longest > SIX_WEEKS_MS && Math.random() < 0.30) {
-        return MSG_URGENT[Math.floor(Math.random() * MSG_URGENT.length)];
-    }
-
-    // JSTで時刻判定
     const jstHour = new Date(
         new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })
     ).getHours();
-    const pool = jstHour >= 5 && jstHour < 12 ? MSG_MORNING
-               : jstHour >= 12 && jstHour < 18 ? MSG_AFTERNOON
-               : MSG_EVENING;
-    return pool[Math.floor(Math.random() * pool.length)];
+    const timeOfDay = jstHour >= 5 && jstHour < 12 ? '朝'
+                    : jstHour >= 12 && jstHour < 18 ? '昼'
+                    : '夜';
+
+    const urgency = weeksAway >= 6
+        ? `最長${weeksAway}週間も姿を見せていない。かなり切迫感がある。`
+        : `最長${weeksAway}週間ほど活動がない。やんわり声かけ。`;
+
+    const names = targets.map(m => m.displayName).join('、');
+
+    try {
+        const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+            model: 'llama-3.3-70b-versatile',
+            max_tokens: 120,
+            messages: [
+                {
+                    role: 'system',
+                    content:
+                        'あなたはDiscordサーバーの一般メンバーです。' +
+                        'しばらく姿を見せていないメンバーに声をかけるメッセージを1文で生成してください。' +
+                        '絵文字を1〜2個使い、フレンドリーで自然な口調にしてください。' +
+                        'メンション（@名前）は含めないでください。メッセージ本文だけ返してください。',
+                },
+                {
+                    role: 'user',
+                    content: `時間帯: ${timeOfDay}\n状況: ${urgency}\n対象メンバー名: ${names}`,
+                },
+            ],
+        }, {
+            headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+            timeout: 8000,
+        });
+        return res.data.choices[0].message.content.trim();
+    } catch (e) {
+        console.warn('[Lurker] AI生成失敗、フォールバック:', e.message);
+        // フォールバック
+        const fallbacks = {
+            朝: 'おはようございます！久しぶりに顔出してみてね😊',
+            昼: 'こんにちは〜！最近どうですか？😄',
+            夜: 'こんばんは！お久しぶりです✨',
+        };
+        return fallbacks[timeOfDay];
+    }
 }
 
 /* ===== ルーカー取得 ===== */
-async function getLurkers(guild) {
-    const members = await guild.members.fetch();
+function getLurkers(members) {
     const threshold = Date.now() - THREE_WEEKS_MS;
 
     return [...members.filter(m => {
@@ -87,8 +106,7 @@ function pickRandom(arr, min, max) {
 /* ===== なりすまし対象（最近アクティブな一般ユーザー）===== */
 const webhookCache = new Map();
 
-async function getImpersonator(guild) {
-    const members = await guild.members.fetch();
+function getImpersonator(members) {
     const threshold = Date.now() - THREE_WEEKS_MS;
     const active = [...members.filter(m => {
         if (m.user.bot) return false;
@@ -115,18 +133,23 @@ async function postWakeup(client, guild, channelId, force = false) {
         return { skipped: true, reason: 'cooldown' };
     }
 
-    const channel = await client.channels.fetch(channelId).catch(() => null);
+    const [channel, members] = await Promise.all([
+        client.channels.fetch(channelId).catch(() => null),
+        fetchMembers(guild),
+    ]);
     if (!channel) return { skipped: true, reason: 'channel_not_found' };
 
-    const lurkers = await getLurkers(guild);
+    const lurkers = getLurkers(members);
     if (!lurkers.length) return { skipped: true, reason: 'no_lurkers' };
 
     const targets     = pickRandom(lurkers, 4, 7);
-    const impersonator = await getImpersonator(guild);
+    const impersonator = getImpersonator(members);
     const mentions    = targets.map(m => `<@${m.id}>`).join(' ');
-    const message     = pickMessage(targets);
 
-    const wh       = await getWebhook(channel, client);
+    const [message, wh] = await Promise.all([
+        generateWakeupMessage(targets),
+        getWebhook(channel, client),
+    ]);
     const username  = impersonator?.displayName ?? 'フレンドリーなユーザー';
     const avatarURL = impersonator?.user.displayAvatarURL({ dynamic: true }) ?? undefined;
 
