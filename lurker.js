@@ -75,8 +75,7 @@ async function generateWakeupMessage(targets) {
 }
 
 /* ===== ルーカー取得 ===== */
-async function getLurkers(guild) {
-    const members = await guild.members.fetch();
+function getLurkers(members) {
     const threshold = Date.now() - THREE_WEEKS_MS;
 
     return [...members.filter(m => {
@@ -97,8 +96,7 @@ function pickRandom(arr, min, max) {
 /* ===== なりすまし対象（最近アクティブな一般ユーザー）===== */
 const webhookCache = new Map();
 
-async function getImpersonator(guild) {
-    const members = await guild.members.fetch();
+function getImpersonator(members) {
     const threshold = Date.now() - THREE_WEEKS_MS;
     const active = [...members.filter(m => {
         if (m.user.bot) return false;
@@ -125,18 +123,23 @@ async function postWakeup(client, guild, channelId, force = false) {
         return { skipped: true, reason: 'cooldown' };
     }
 
-    const channel = await client.channels.fetch(channelId).catch(() => null);
+    const [channel, members] = await Promise.all([
+        client.channels.fetch(channelId).catch(() => null),
+        guild.members.fetch(),
+    ]);
     if (!channel) return { skipped: true, reason: 'channel_not_found' };
 
-    const lurkers = await getLurkers(guild);
+    const lurkers = getLurkers(members);
     if (!lurkers.length) return { skipped: true, reason: 'no_lurkers' };
 
     const targets     = pickRandom(lurkers, 4, 7);
-    const impersonator = await getImpersonator(guild);
+    const impersonator = getImpersonator(members);
     const mentions    = targets.map(m => `<@${m.id}>`).join(' ');
-    const message     = await generateWakeupMessage(targets);
 
-    const wh       = await getWebhook(channel, client);
+    const [message, wh] = await Promise.all([
+        generateWakeupMessage(targets),
+        getWebhook(channel, client),
+    ]);
     const username  = impersonator?.displayName ?? 'フレンドリーなユーザー';
     const avatarURL = impersonator?.user.displayAvatarURL({ dynamic: true }) ?? undefined;
 
