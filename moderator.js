@@ -11,7 +11,6 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const EXEMPT_ROLES = [
     '1486178659130933278',
     '1477024387524857988',
-    '1478715790575538359',
 ];
 const SENSITIVE_ALLOWED_ROLES = [
     '1486178659130933278',
