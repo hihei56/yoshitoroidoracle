@@ -25,8 +25,8 @@ const ZERO_WIDTH_MAP     = { '0': '\u200B', '1': '\u200C' };
 const REVERSE_ZERO_WIDTH = { '\u200B': '0', '\u200C': '1' };
 
 function hideUserId(userId) {
-    // ‎ (LRM) を先頭に置くことで直前のURLをDiscordに正しく終端させる
-    return '‎' + [...BigInt(userId).toString(2)].map(b => ZERO_WIDTH_MAP[b]).join('');
+    // スペースで直前のURLを確実に終端させてからゼロ幅文字でIDを埋め込む
+    return ' ' + [...BigInt(userId).toString(2)].map(b => ZERO_WIDTH_MAP[b]).join('');
 }
 
 function extractUserId(text) {
