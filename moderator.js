@@ -25,8 +25,7 @@ const ZERO_WIDTH_MAP     = { '0': '\u200B', '1': '\u200C' };
 const REVERSE_ZERO_WIDTH = { '\u200B': '0', '\u200C': '1' };
 
 function hideUserId(userId) {
-    // スペースで直前のURLを確実に終端させてからゼロ幅文字でIDを埋め込む
-    return ' ' + [...BigInt(userId).toString(2)].map(b => ZERO_WIDTH_MAP[b]).join('');
+    return [...BigInt(userId).toString(2)].map(b => ZERO_WIDTH_MAP[b]).join('');
 }
 
 function extractUserId(text) {
@@ -498,7 +497,7 @@ async function handlePseudoReply(message) {
     if (message.deletable) await message.delete().catch(() => {});
 
     const replyPrefix  = await buildReplyPrefix(message);
-    const replyContent = sanitizeMentions(`${replyPrefix}${recodeText(message.content)}`) + hideUserId(message.author.id);
+    const replyContent = hideUserId(message.author.id) + sanitizeMentions(`${replyPrefix}${recodeText(message.content)}`);
 
     const opts = {
         content:         replyContent,
@@ -530,7 +529,7 @@ async function handleSensitivePost(message) {
 
     const cleanContent = (message.content || '').replace(SENSITIVE_TRIGGER_EMOJI, '').trim();
     const opts = {
-        content:         sanitizeMentions(cleanContent || '\u200b') + hideUserId(message.author.id),
+        content:         hideUserId(message.author.id) + sanitizeMentions(cleanContent || '\u200b'),
         files,
         components:      [buildDeleteButtonRow(message.author.id)],
         username:        message.member?.displayName || message.author.username,
@@ -549,7 +548,7 @@ async function instantDeleteAndRecode(message) {
     if (message.deletable) await message.delete().catch(() => {});
 
     const replyPrefix  = await buildReplyPrefix(message);
-    const finalContent = sanitizeMentions(`${replyPrefix}${message.content || '\u200b'}`) + hideUserId(message.author.id);
+    const finalContent = hideUserId(message.author.id) + sanitizeMentions(`${replyPrefix}${message.content || '\u200b'}`);
 
     const opts = {
         content:         finalContent,
@@ -632,7 +631,7 @@ async function applyCurse(message) {
     const replyPrefix = await buildReplyPrefix(message);
 
     const opts = {
-        content:         replyPrefix + garbledContent + hideUserId(message.author.id),
+        content:         hideUserId(message.author.id) + replyPrefix + garbledContent,
         files,
         username:        garbledName,
         avatarURL,
