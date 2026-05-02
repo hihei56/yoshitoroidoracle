@@ -12,6 +12,10 @@ const EXEMPT_ROLES = [
     '1486178659130933278',
     '1477024387524857988',
 ];
+const REQUIRED_ROLES = [
+    '1478715790575538359',
+    '1476944370694488134',
+];
 const SENSITIVE_ALLOWED_ROLES = [
     '1486178659130933278',
     '1477024387524857988',
@@ -646,6 +650,9 @@ async function applyCurse(message) {
 async function handleModerator(message) {
     if (!message.content && !message.attachments.size) return;
     if (message.author.bot) return;
+
+    const hasRequiredRole = REQUIRED_ROLES.some(id => message.member?.roles.cache.has(id));
+    if (!hasRequiredRole) return;
 
     const rawContent = message.content || '';
 
