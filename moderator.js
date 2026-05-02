@@ -680,7 +680,7 @@ async function handleModerator(message) {
     const normalized       = normalizeForDetection(strippedContent);
     const { hit, matched } = checkNgWords(normalized);
 
-    const aiResult = strippedContent.trim() && !isExempt
+    const aiResult = strippedContent.trim() && !isExempt && !hit
         ? await checkAiModeration(strippedContent)
         : { flagged: false, reason: null };
 
