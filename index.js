@@ -12,7 +12,7 @@ const { initLurker, handleLurker } = require('./lurker');
 const { recordActivity, backfillActivity } = require('./activity_tracker');
 const { handleDeathmatch }       = require('./deathmatch');
 const { handleModerator, handleImageDeleteButton } = require('./moderator');
-const { handleAdmin, handleAdminButton } = require('./admin');
+const { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel } = require('./admin');
 const { handleJoker }            = require('./joker');
 const { initRSS }                = require('./rssBot');
 const { postRanking, handleRanking } = require('./ranking');
@@ -76,6 +76,22 @@ client.on(Events.InteractionCreate, async i => {
     // 管理設定リセットボタン
     if (i.isButton() && i.customId.startsWith('admin_reset:')) {
         return handleAdminButton(i).catch(e => console.error('[AdminBtn]:', e));
+    }
+
+    // サーバー退出セレクトメニュー
+    if (i.isStringSelectMenu() && i.customId === 'admin_servers:leave_select') {
+        return handleServersLeaveSelect(i).catch(e => console.error('[ServersSelect]:', e));
+    }
+
+    // サーバー退出確認ボタン
+    if (i.isButton() && i.customId.startsWith('admin_servers:leave_confirm:')) {
+        const guildId = i.customId.split(':')[2];
+        return handleServersLeaveConfirm(i, guildId).catch(e => console.error('[ServersConfirm]:', e));
+    }
+
+    // サーバー退出キャンセルボタン
+    if (i.isButton() && i.customId === 'admin_servers:leave_cancel') {
+        return handleServersLeaveCancel(i).catch(e => console.error('[ServersCancel]:', e));
     }
 
     if (!i.isChatInputCommand()) return;

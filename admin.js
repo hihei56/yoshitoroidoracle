@@ -1,4 +1,9 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const {
+    EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
+    StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
+} = require('discord.js');
+
+const HOME_GUILD_ID = '1476939502319698054';
 const { getModExcludeList, updateModExcludeList, resetModExcludeList } = require('./exclude_manager');
 const { getSettings, saveSettings, resetSayDeny, resetSayChannels } = require('./config');
 
@@ -225,6 +230,117 @@ async function handleAdmin(interaction) {
             ephemeral:  true,
         });
     }
+
+    // ── 加入サーバー一覧 ──
+    if (sub === 'servers') {
+        return handleServers(interaction);
+    }
+}
+
+/* =========================
+   🌐 加入サーバー一覧 & 退出
+========================= */
+async function handleServers(interaction) {
+    const guilds = interaction.client.guilds.cache;
+
+    const lines = [...guilds.values()].map((g, idx) =>
+        `${idx + 1}. **${g.name}** \`${g.id}\` — ${g.memberCount}人${g.id === HOME_GUILD_ID ? ' 🏠' : ''}`
+    );
+
+    const embed = new EmbedBuilder()
+        .setTitle(`🌐 加入サーバー一覧 (${guilds.size}件)`)
+        .setColor(COLOR.info)
+        .setDescription(lines.join('\n'))
+        .setTimestamp();
+
+    const leavable = [...guilds.values()].filter(g => g.id !== HOME_GUILD_ID);
+
+    if (leavable.length === 0) {
+        return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
+    const select = new StringSelectMenuBuilder()
+        .setCustomId('admin_servers:leave_select')
+        .setPlaceholder('退出するサーバーを選択...')
+        .addOptions(
+            leavable.map(g =>
+                new StringSelectMenuOptionBuilder()
+                    .setLabel(g.name.slice(0, 100))
+                    .setValue(g.id)
+                    .setDescription(`ID: ${g.id} — ${g.memberCount}人`.slice(0, 100))
+            )
+        );
+
+    return interaction.reply({
+        embeds:     [embed],
+        components: [new ActionRowBuilder().addComponents(select)],
+        ephemeral:  true,
+    });
+}
+
+async function handleServersLeaveSelect(interaction) {
+    if (!interaction.member?.permissions.has('Administrator')) {
+        return interaction.reply({ content: '管理者のみ実行できます。', ephemeral: true });
+    }
+
+    const guildId = interaction.values[0];
+    const guild   = interaction.client.guilds.cache.get(guildId);
+
+    if (!guild) {
+        return interaction.update({ content: 'サーバーが見つかりません。', embeds: [], components: [] });
+    }
+
+    const embed = new EmbedBuilder()
+        .setTitle('⚠️ サーバー退出の確認')
+        .setColor(0xFF6600)
+        .setDescription(`**${guild.name}** から退出しますか？`)
+        .addFields(
+            { name: 'サーバーID', value: guild.id,                   inline: true },
+            { name: 'メンバー数', value: `${guild.memberCount}人`,    inline: true },
+        )
+        .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`admin_servers:leave_confirm:${guildId}`)
+            .setLabel('退出する')
+            .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+            .setCustomId('admin_servers:leave_cancel')
+            .setLabel('キャンセル')
+            .setStyle(ButtonStyle.Secondary),
+    );
+
+    return interaction.update({ embeds: [embed], components: [row] });
+}
+
+async function handleServersLeaveConfirm(interaction, guildId) {
+    if (!interaction.member?.permissions.has('Administrator')) {
+        return interaction.reply({ content: '管理者のみ実行できます。', ephemeral: true });
+    }
+
+    const guild     = interaction.client.guilds.cache.get(guildId);
+    const guildName = guild?.name ?? guildId;
+
+    try {
+        await guild?.leave();
+        return interaction.update({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle('✅ サーバーから退出しました')
+                    .setColor(COLOR.remove)
+                    .setDescription(`**${guildName}** から退出しました。`)
+                    .setTimestamp(),
+            ],
+            components: [],
+        });
+    } catch (e) {
+        return interaction.update({ content: `退出に失敗しました: \`${e.message}\``, embeds: [], components: [] });
+    }
+}
+
+async function handleServersLeaveCancel(interaction) {
+    return interaction.update({ content: 'キャンセルしました。', embeds: [], components: [] });
 }
 
 /* =========================
@@ -248,4 +364,4 @@ async function handleAdminButton(interaction) {
     });
 }
 
-module.exports = { handleAdmin, handleAdminButton };
+module.exports = { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel };

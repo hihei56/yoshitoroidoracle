@@ -119,6 +119,11 @@ const commands = [
             subcommand
                 .setName('status')
                 .setDescription('現在の管理設定を表示します。')
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('servers')
+                .setDescription('ボットが加入しているサーバー一覧を表示し、退出操作ができます。')
         ),
 
     // 5. ROM専目覚まし（管理者のみ）
