@@ -489,7 +489,7 @@ async function buildReplyPrefix(message) {
 
         const channelId = ref.channelId ?? message.channelId;
         const jumpUrl   = `https://discord.com/channels/${message.guildId}/${channelId}/${ref.id}`;
-        return `[Reply to:](${jumpUrl}) <@${targetId}>\n> ${preview}\n`;
+        return `> [Reply to:](${jumpUrl}) <@${targetId}>\n> ${preview}\n`;
     } catch { return ''; }
 }
 
