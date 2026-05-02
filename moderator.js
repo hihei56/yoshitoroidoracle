@@ -12,10 +12,6 @@ const EXEMPT_ROLES = [
     '1486178659130933278',
     '1477024387524857988',
 ];
-const REQUIRED_ROLES = [
-    '1478715790575538359',
-    '1476944370694488134',
-];
 const SENSITIVE_ALLOWED_ROLES = [
     '1486178659130933278',
     '1477024387524857988',
@@ -29,7 +25,8 @@ const ZERO_WIDTH_MAP     = { '0': '\u200B', '1': '\u200C' };
 const REVERSE_ZERO_WIDTH = { '\u200B': '0', '\u200C': '1' };
 
 function hideUserId(userId) {
-    return [...BigInt(userId).toString(2)].map(b => ZERO_WIDTH_MAP[b]).join('');
+    // スペースで直前のURLを確実に終端させてからゼロ幅文字でIDを埋め込む
+    return ' ' + [...BigInt(userId).toString(2)].map(b => ZERO_WIDTH_MAP[b]).join('');
 }
 
 function extractUserId(text) {
@@ -470,11 +467,11 @@ async function buildReplyPrefix(message) {
         // zero-width文字（userId埋め込み）を除去
         let body = [...(ref.content || '')].filter(c => !REVERSE_ZERO_WIDTH[c]).join('').trim();
 
-        // webhook再投稿メッセージには先頭に "Reply to:" 行が含まれるので除去して本文だけ取り出す
+        // webhook再投稿メッセージには先頭に "> Reply to:" 行が含まれるので除去して本文だけ取り出す
         if (ref.webhookId) {
             const lines = body.split('\n');
-            const replyLineIdx = lines.findIndex(l => l.startsWith('[Reply to:]'));
-            if (replyLineIdx !== -1) body = lines.slice(replyLineIdx + 2).join('\n').trim();
+            const firstNonQuote = lines.findIndex(l => !l.startsWith('>'));
+            if (firstNonQuote > 0) body = lines.slice(firstNonQuote).join('\n').trim();
         }
 
         const preview = body.length > 80
@@ -483,7 +480,7 @@ async function buildReplyPrefix(message) {
 
         const channelId = ref.channelId ?? message.channelId;
         const jumpUrl   = `https://discord.com/channels/${message.guildId}/${channelId}/${ref.id}`;
-        return `[Reply to:](${jumpUrl}) <@${targetId}>\n${preview}\n`;
+        return `> [Reply to:](${jumpUrl}) <@${targetId}>\n> ${preview}\n`;
     } catch { return ''; }
 }
 
@@ -501,7 +498,7 @@ async function handlePseudoReply(message) {
     if (message.deletable) await message.delete().catch(() => {});
 
     const replyPrefix  = await buildReplyPrefix(message);
-    const replyContent = hideUserId(message.author.id) + sanitizeMentions(`${replyPrefix}${recodeText(message.content)}`);
+    const replyContent = sanitizeMentions(`${replyPrefix}${recodeText(message.content)}`) + hideUserId(message.author.id);
 
     const opts = {
         content:         replyContent,
@@ -533,7 +530,7 @@ async function handleSensitivePost(message) {
 
     const cleanContent = (message.content || '').replace(SENSITIVE_TRIGGER_EMOJI, '').trim();
     const opts = {
-        content:         hideUserId(message.author.id) + sanitizeMentions(cleanContent || '\u200b'),
+        content:         sanitizeMentions(cleanContent || '\u200b') + hideUserId(message.author.id),
         files,
         components:      [buildDeleteButtonRow(message.author.id)],
         username:        message.member?.displayName || message.author.username,
@@ -552,7 +549,7 @@ async function instantDeleteAndRecode(message) {
     if (message.deletable) await message.delete().catch(() => {});
 
     const replyPrefix  = await buildReplyPrefix(message);
-    const finalContent = hideUserId(message.author.id) + sanitizeMentions(`${replyPrefix}${message.content || '\u200b'}`);
+    const finalContent = sanitizeMentions(`${replyPrefix}${message.content || '\u200b'}`) + hideUserId(message.author.id);
 
     const opts = {
         content:         finalContent,
@@ -635,7 +632,7 @@ async function applyCurse(message) {
     const replyPrefix = await buildReplyPrefix(message);
 
     const opts = {
-        content:         hideUserId(message.author.id) + replyPrefix + garbledContent,
+        content:         replyPrefix + garbledContent + hideUserId(message.author.id),
         files,
         username:        garbledName,
         avatarURL,
@@ -650,9 +647,6 @@ async function applyCurse(message) {
 async function handleModerator(message) {
     if (!message.content && !message.attachments.size) return;
     if (message.author.bot) return;
-
-    const hasRequiredRole = REQUIRED_ROLES.some(id => message.member?.roles.cache.has(id));
-    if (!hasRequiredRole) return;
 
     const rawContent = message.content || '';
 
