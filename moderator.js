@@ -420,7 +420,7 @@ function invalidateWebhook(channelId) {
     whStore.remove(channelId);
 }
 
-async function sendWebhook(channel, options) {
+async function sendWebhook(channel, options, replyToMessageId = null) {
     const target = channel.isThread() ? channel.parent : channel;
     const key    = target?.id;
 
@@ -433,6 +433,21 @@ async function sendWebhook(channel, options) {
         const wh = await getOrCreateWebhook(channel);
         if (!wh) return null;
         try {
+            if (replyToMessageId) {
+                const threadId = channel.isThread() ? channel.id : undefined;
+                const qs = `?wait=true${threadId ? `&thread_id=${threadId}` : ''}`;
+                return await wh.client.rest.post(`/webhooks/${wh.id}/${wh.token}${qs}`, {
+                    body: {
+                        content:          options.content,
+                        username:         options.username,
+                        avatar_url:       options.avatarURL,
+                        allowed_mentions: options.allowedMentions,
+                        components:       options.components?.map(c => c.toJSON?.() ?? c),
+                        message_reference: { message_id: replyToMessageId },
+                    },
+                    auth: false,
+                });
+            }
             return await wh.send(options);
         } catch (e) {
             const isWebhookGone = e.status === 404 || e.code === 10015;
@@ -457,41 +472,6 @@ async function sendWebhook(channel, options) {
     }
 }
 
-async function buildReplyPrefix(message) {
-    if (!message.reference?.messageId) return '';
-    try {
-        const ref = await message.channel.messages.fetch(message.reference.messageId);
-        let targetId = ref.author.id;
-        if (ref.webhookId) {
-            const extracted = extractUserId(ref.content);
-            if (extracted) targetId = extracted;
-        }
-
-        // zero-width文字（userId埋め込み）を除去
-        let body = [...(ref.content || '')].filter(c => !REVERSE_ZERO_WIDTH[c]).join('').trim();
-
-        // webhook再投稿メッセージの先頭にある Reply to: ヘッダーを除去して本文だけ取り出す
-        if (ref.webhookId) {
-            const lines = body.split('\n');
-            // "> Reply to:" 形式（現行）
-            const firstNonQuote = lines.findIndex(l => !l.startsWith('>'));
-            if (firstNonQuote > 0) {
-                body = lines.slice(firstNonQuote).join('\n').trim();
-            } else if (lines[0]?.startsWith('[Reply to:]')) {
-                // "[Reply to:]" 形式（旧フォーマット、> なし）
-                body = lines.slice(2).join('\n').trim();
-            }
-        }
-
-        const preview = body.length > 80
-            ? body.substring(0, 77).replace(/\n/g, ' ') + '...'
-            : body.replace(/\n/g, ' ');
-
-        const channelId = ref.channelId ?? message.channelId;
-        const jumpUrl   = `https://discord.com/channels/${message.guildId}/${channelId}/${ref.id}`;
-        return `> [Reply to:](${jumpUrl}) <@${targetId}>\n> ${preview}\n`;
-    } catch { return ''; }
-}
 
 async function handlePseudoReply(message) {
     if (!hasModPermission(message.member)) return false;
@@ -506,11 +486,8 @@ async function handlePseudoReply(message) {
 
     if (message.deletable) await message.delete().catch(() => {});
 
-    const replyPrefix  = await buildReplyPrefix(message);
-    const replyContent = hideUserId(message.author.id) + sanitizeMentions(`${replyPrefix}${recodeText(message.content)}`);
-
     const opts = {
-        content:         replyContent,
+        content:         hideUserId(message.author.id) + sanitizeMentions(recodeText(message.content)),
         files:           [],
         username:        message.member?.displayName || message.author.username,
         avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
@@ -518,7 +495,7 @@ async function handlePseudoReply(message) {
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 
-    await sendWebhook(message.channel, opts);
+    await sendWebhook(message.channel, opts, ref.id);
     return true;
 }
 
@@ -557,8 +534,7 @@ async function instantDeleteAndRecode(message) {
 
     if (message.deletable) await message.delete().catch(() => {});
 
-    const replyPrefix  = await buildReplyPrefix(message);
-    const finalContent = hideUserId(message.author.id) + sanitizeMentions(`${replyPrefix}${message.content || '\u200b'}`);
+    const finalContent = hideUserId(message.author.id) + sanitizeMentions(message.content || '\u200b');
 
     const opts = {
         content:         finalContent,
@@ -570,7 +546,7 @@ async function instantDeleteAndRecode(message) {
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 
-    await sendWebhook(message.channel, opts);
+    await sendWebhook(message.channel, opts, message.reference?.messageId ?? null);
 }
 
 const IMAGE_MIME_RE = /^image\//;
@@ -638,10 +614,8 @@ async function applyCurse(message) {
     // アバターURL: ユーザー本人のものをそのまま（外見の違和感は名前・内容で演出）
     const avatarURL = message.member?.displayAvatarURL({ dynamic: true, size: 16 }) ?? undefined;
 
-    const replyPrefix = await buildReplyPrefix(message);
-
     const opts = {
-        content:         hideUserId(message.author.id) + replyPrefix + garbledContent,
+        content:         hideUserId(message.author.id) + garbledContent,
         files,
         username:        garbledName,
         avatarURL,
@@ -649,7 +623,7 @@ async function applyCurse(message) {
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 
-    await sendWebhook(message.channel, opts);
+    await sendWebhook(message.channel, opts, message.reference?.messageId ?? null);
     console.info(`[CURSE] ${message.author.tag}(${message.author.id}) メッセージを文字化け再投稿`);
 }
 
