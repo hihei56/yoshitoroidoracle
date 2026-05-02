@@ -470,11 +470,17 @@ async function buildReplyPrefix(message) {
         // zero-width文字（userId埋め込み）を除去
         let body = [...(ref.content || '')].filter(c => !REVERSE_ZERO_WIDTH[c]).join('').trim();
 
-        // webhook再投稿メッセージには先頭に "Reply to:" 行が含まれるので除去して本文だけ取り出す
+        // webhook再投稿メッセージの先頭にある Reply to: ヘッダーを除去して本文だけ取り出す
         if (ref.webhookId) {
             const lines = body.split('\n');
-            const replyLineIdx = lines.findIndex(l => l.startsWith('[Reply to:]'));
-            if (replyLineIdx !== -1) body = lines.slice(replyLineIdx + 2).join('\n').trim();
+            // "> Reply to:" 形式（現行）
+            const firstNonQuote = lines.findIndex(l => !l.startsWith('>'));
+            if (firstNonQuote > 0) {
+                body = lines.slice(firstNonQuote).join('\n').trim();
+            } else if (lines[0]?.startsWith('[Reply to:]')) {
+                // "[Reply to:]" 形式（旧フォーマット、> なし）
+                body = lines.slice(2).join('\n').trim();
+            }
         }
 
         const preview = body.length > 80
@@ -483,7 +489,7 @@ async function buildReplyPrefix(message) {
 
         const channelId = ref.channelId ?? message.channelId;
         const jumpUrl   = `https://discord.com/channels/${message.guildId}/${channelId}/${ref.id}`;
-        return `[Reply to:](${jumpUrl}) <@${targetId}>\n${preview}\n`;
+        return `> [Reply to:](${jumpUrl}) <@${targetId}>\n> ${preview}\n`;
     } catch { return ''; }
 }
 
