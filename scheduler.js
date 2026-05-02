@@ -14,7 +14,7 @@ const webhookCache = new Map();
 
 const CONFIG = {
     TOMO_AVATAR_URL:   'https://emojis.wiki/thumbs/emojis/lying-face.webp',
-    ATTACK_CHANNEL_ID: '1476939503510884638',
+    ATTACK_CHANNEL_ID: '1477007377038315653',
 
     FEEDS: [
         // --- 一般的・他愛ないニュースソース ---
