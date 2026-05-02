@@ -23,7 +23,7 @@ const CONFIG = {
         { url: 'https://www.j-cast.com/index.xml',                  genre: 'ネタ',     emoji: '📣', color: 0xF1C40F },
         { url: 'https://natalie.mu/music/rss/news',                genre: '音楽',     emoji: '🎵', color: 0x1ABC9C },
         { url: 'https://rocketnews24.com/feed/',                    genre: 'ネタ',     emoji: '🚀', color: 0xE67E22 },
-        
+
         // --- 既存の専門ソース ---
         { url: 'https://feeds.gizmodo.jp/rss/gizmodo',              genre: 'ガジェット', emoji: '📱', color: 0x00B4D8 },
         { url: 'https://annict.com/anime.rss',                      genre: 'アニメ',     emoji: '🎌', color: 0xFF6B6B },
@@ -168,14 +168,14 @@ async function sendTomoNews(client) {
 function initScheduler(client) {
     console.log(`[Scheduler] ✅ 初期化完了 | データ: ${POSTED_LOG_PATH}`);
 
-    // 9時・15時・21時（JST）
-    ['0 9 * * *', '0 15 * * *', '0 21 * * *'].forEach(expr => {
-        cron.schedule(expr, () => sendTomoNews(client), { timezone: 'Asia/Tokyo' });
-    });
+    // ニュース投稿: 一時停止中
+    // ['0 9 * * *', '0 15 * * *', '0 21 * * *'].forEach(expr => {
+    //     cron.schedule(expr, () => sendTomoNews(client), { timezone: 'Asia/Tokyo' });
+    // });
 
-    if (process.env.DEBUG_MODE === 'true') {
-        setTimeout(() => sendTomoNews(client), 3_000);
-    }
+    // if (process.env.DEBUG_MODE === 'true') {
+    //     setTimeout(() => sendTomoNews(client), 3_000);
+    // }
 }
 
 module.exports = { initScheduler };
