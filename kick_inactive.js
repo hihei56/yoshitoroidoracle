@@ -88,7 +88,7 @@ async function handleKickInactive(interaction) {
         .setDescription(lines.slice(0, 20).join('\n') + (lines.length > 20 ? `\n他${lines.length - 20}名…` : ''))
         .setTimestamp();
 
-    console.log(`[KickInactive] ✅ ${kicked}名キック / ${failed}名失敗 / 残り${Math.max(0, remaining)}名`);
+    console.log(`[KickInactive] ✅ ${kicked}名キック / ${failed}名失敗`);
     return interaction.editReply({ embeds: [embed] });
 }
 
