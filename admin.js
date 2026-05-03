@@ -6,6 +6,7 @@ const {
 const HOME_GUILD_ID = '1476939502319698054';
 const { getModExcludeList, updateModExcludeList, resetModExcludeList } = require('./exclude_manager');
 const { getSettings, saveSettings, resetSayDeny, resetSayChannels } = require('./config');
+const { handleKickInactive } = require('./kick_inactive');
 
 const COLOR = {
     add:    0x57F287, // 緑
@@ -234,6 +235,11 @@ async function handleAdmin(interaction) {
     // ── 加入サーバー一覧 ──
     if (sub === 'servers') {
         return handleServers(interaction);
+    }
+
+    // ── 無活動キック ──
+    if (sub === 'kick_inactive') {
+        return handleKickInactive(interaction);
     }
 }
 

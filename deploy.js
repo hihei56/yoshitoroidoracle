@@ -124,6 +124,15 @@ const commands = [
             subcommand
                 .setName('servers')
                 .setDescription('ボットが加入しているサーバー一覧を表示し、退出操作ができます。')
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('kick_inactive')
+                .setDescription('2週間無活動かつ保護ロールなしのメンバーをキックします（管理者のみ）。')
+                .addBooleanOption(opt =>
+                    opt.setName('dry_run')
+                        .setDescription('true=対象確認のみ（デフォルト）/ false=実際にキック')
+                )
         ),
 
     // 5. ROM専目覚まし（管理者のみ）
