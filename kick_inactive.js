@@ -3,7 +3,10 @@ const { EmbedBuilder, MessageFlags } = require('discord.js');
 const { getLastActivity } = require('./activity_tracker');
 
 const TWO_WEEKS_MS     = 14 * 24 * 60 * 60 * 1000;
-const PROTECTED_ROLE_ID = '1478715790575538359';
+const PROTECTED_ROLE_IDS = new Set([
+    '1478715790575538359',
+    '1491824502169145484',
+]);
 
 function getInactiveMembers(members) {
     const threshold = Date.now() - TWO_WEEKS_MS;
@@ -12,7 +15,7 @@ function getInactiveMembers(members) {
         if (m.user.bot) return false;
         if (m.permissions.has('Administrator')) return false;
         if (m.id === m.guild.ownerId) return false;
-        if (m.roles.cache.has(PROTECTED_ROLE_ID)) return false;
+        if ([...PROTECTED_ROLE_IDS].some(id => m.roles.cache.has(id))) return false;
 
         const last = getLastActivity(m.id);
         if (last === null) return (m.joinedTimestamp ?? 0) < threshold;
