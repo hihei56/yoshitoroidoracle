@@ -2,8 +2,7 @@
 const { EmbedBuilder, MessageFlags } = require('discord.js');
 const { getLastActivity } = require('./activity_tracker');
 
-const TWO_WEEKS_MS     = 14 * 24 * 60 * 60 * 1000;
-const KICK_INTERVAL_MS = 3000; // キック間隔（ミリ秒）
+const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
 
 const PROTECTED_ROLE_IDS = new Set([
     '1478715790575538359',
@@ -25,7 +24,17 @@ function getInactiveMembers(members) {
     }).values()];
 }
 
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function makeLine(m, now) {
+    const last = getLastActivity(m.id);
+    if (last !== null) {
+        const daysAgo = Math.floor((now - last) / DAY_MS);
+        return `• <@${m.id}> — 最終発言 **${daysAgo}日前**`;
+    }
+    const joinedDaysAgo = Math.floor((now - (m.joinedTimestamp ?? now)) / DAY_MS);
+    return `• <@${m.id}> — 発言記録なし（参加 ${joinedDaysAgo}日前）`;
+}
 
 async function handleKickInactive(interaction) {
     if (!interaction.member?.permissions.has('Administrator')) {
@@ -40,30 +49,36 @@ async function handleKickInactive(interaction) {
     const targets = getInactiveMembers(members);
 
     if (targets.length === 0) {
-        return interaction.editReply('対象者がいません（2週間以内に活動ありの人のみ）。');
+        return interaction.editReply('対象者がいません（全員2週間以内に活動あり）。');
     }
 
     const now = Date.now();
-    const makeLine = m => {
-        const last = getLastActivity(m.id);
-        const daysAgo = last
-            ? Math.floor((now - last) / (24 * 60 * 60 * 1000))
-            : Math.floor((now - (m.joinedTimestamp ?? now)) / (24 * 60 * 60 * 1000));
-        return `• <@${m.id}> — ${daysAgo}日間無活動`;
-    };
 
     if (dryRun) {
-        const lines = targets.map(makeLine);
+        // 発言記録なし vs 発言古い の2グループに分ける
+        const noRecord  = targets.filter(m => getLastActivity(m.id) === null);
+        const hasRecord = targets.filter(m => getLastActivity(m.id) !== null);
+
+        const noRecordLines  = noRecord.map(m => makeLine(m, now));
+        const hasRecordLines = hasRecord.map(m => makeLine(m, now));
+
+        const allLines = [...hasRecordLines, ...noRecordLines];
+        const preview  = allLines.slice(0, 25).join('\n') + (allLines.length > 25 ? `\n…他${allLines.length - 25}名` : '');
+
         const embed = new EmbedBuilder()
             .setTitle(`👢 キック対象プレビュー (全${targets.length}名)`)
             .setColor(0xFFA500)
-            .setDescription(lines.slice(0, 30).join('\n') + (lines.length > 30 ? `\n他${lines.length - 30}名…` : ''))
-            .setFooter({ text: `dry_run: false で実行（${KICK_INTERVAL_MS / 1000}秒間隔）` })
+            .addFields(
+                { name: '最終発言が2週間超', value: `${hasRecord.length}名`, inline: true },
+                { name: '発言記録なし',       value: `${noRecord.length}名`,  inline: true },
+            )
+            .setDescription(preview)
+            .setFooter({ text: 'dry_run: false で実際にキック実行' })
             .setTimestamp();
         return interaction.editReply({ embeds: [embed] });
     }
 
-    const lines = targets.map(makeLine);
+    const lines = targets.map(m => makeLine(m, now));
     let kicked = 0;
     let failed = 0;
 
@@ -74,7 +89,6 @@ async function handleKickInactive(interaction) {
         } catch {
             failed++;
         }
-        await sleep(KICK_INTERVAL_MS);
     }
 
     const embed = new EmbedBuilder()
@@ -85,10 +99,10 @@ async function handleKickInactive(interaction) {
             { name: '成功', value: `${kicked}名`,          inline: true },
             { name: '失敗', value: `${failed}名`,           inline: true },
         )
-        .setDescription(lines.slice(0, 20).join('\n') + (lines.length > 20 ? `\n他${lines.length - 20}名…` : ''))
+        .setDescription(lines.slice(0, 20).join('\n') + (lines.length > 20 ? `\n…他${lines.length - 20}名` : ''))
         .setTimestamp();
 
-    console.log(`[KickInactive] ✅ ${kicked}名キック / ${failed}名失敗 / 残り${Math.max(0, remaining)}名`);
+    console.log(`[KickInactive] ✅ ${kicked}名キック / ${failed}名失敗`);
     return interaction.editReply({ embeds: [embed] });
 }
 
