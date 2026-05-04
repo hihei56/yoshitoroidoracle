@@ -69,9 +69,10 @@ async function handleSay(interaction) {
         }
 
         // ── リプライ処理 ──
-        const file      = options.getAttachment('file');
-        const replyLink = options.getString('reply_link');
-        let replyPrefix = '';
+        const QUOTE_MAX   = 17;
+        const file        = options.getAttachment('file');
+        const replyLink   = options.getString('reply_link');
+        let replyPrefix   = '';
         if (replyLink) {
             const messageId  = replyLink.split('/').pop();
             const repliedMsg = await channel.messages.fetch(messageId).catch(() => null);
@@ -79,7 +80,12 @@ async function handleSay(interaction) {
                 const authorName = repliedMsg.webhookId
                     ? repliedMsg.author.username
                     : `<@${repliedMsg.author.id}>`;
-                replyPrefix = `**[Reply to](${replyLink}) : ${authorName}**\n`;
+                const rawQuote   = (repliedMsg.content || '').replace(/\n/g, ' ');
+                const quoteLine  = rawQuote.length > QUOTE_MAX
+                    ? rawQuote.slice(0, QUOTE_MAX) + '…'
+                    : rawQuote;
+                replyPrefix = `**[Reply to](${replyLink}) : ${authorName}**\n`
+                    + (quoteLine ? `> ${quoteLine}\n` : '');
             }
         }
 
