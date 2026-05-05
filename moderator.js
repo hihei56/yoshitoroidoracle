@@ -34,9 +34,13 @@ function hideUserId(userId) {
 
 function extractUserId(text) {
     if (!text) return null;
-    const bits = [...text].filter(c => REVERSE_ZERO_WIDTH[c]).map(c => REVERSE_ZERO_WIDTH[c]).join('');
-    if (!bits) return null;
-    try { return BigInt('0b' + bits).toString(); } catch { return null; }
+    const bits = [];
+    for (const c of text) {
+        if (REVERSE_ZERO_WIDTH[c]) bits.push(REVERSE_ZERO_WIDTH[c]);
+        else break;
+    }
+    if (!bits.length) return null;
+    try { return BigInt('0b' + bits.join('')).toString(); } catch { return null; }
 }
 
 function sanitizeMentions(text) {
