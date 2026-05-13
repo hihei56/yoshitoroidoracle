@@ -88,10 +88,6 @@ const LOLI_SHOTA_REGEX = new RegExp([
     'ショタ','しょた','ｼｮﾀ','shota',
     'ロリコン','ろりこん','lolicon',
     'ショタコン','しょたこん','shotacon',
-    // 注: ろ\W*り / しょ\W*た は削除
-    // 日本語の全文字が\Wに該当するため「でしょ…た」等で誤検知が多発する
-    // normalizeForDetection でスペース・記号を除去済みなので、
-    // リテラルの「ろり」「しょた」で十分カバーできる
     '幼女','幼男','キッズ',
     '小学生','中学生','小学校','中学校',
     'ペド','ぺど',
@@ -105,7 +101,6 @@ const LOLI_SHOTA_REGEX = new RegExp([
     'child\\W*porn','child\\W*abuse\\W*mater',
     'エプスタイン','🧒','👧','👦','🍼','🎒',
     '児童','未成年',
-    // ── 強化①：ガキ・幼児系 ──
     'ガキ','がき',
     '女児','男児','幼児',
     '乳児','乳幼児','園児','新生児',
@@ -118,20 +113,17 @@ const LOLI_SHOTA_REGEX = new RegExp([
     'map(?:community|pride|flag)',
     'hebephil','ephebophil',
     '子供(?:に|と)?(?:性的|わいせつ|えっち|エッチ)',
-    // ── 強化②：少女・少年・児 徹底規制 ──
-    '少女',                                    // 美少女・少女ゲーム等含む
-    '少年(?:愛|に性的|わいせつ)',              // 少年愛・性的文脈のみ（少年漫画は除外）
-    '児(?:ポ|童|の性|に性的|わいせつ)',        // 児ポ・児童性的など
+    '少女',
+    '少年(?:愛|に性的|わいせつ)',
+    '児(?:ポ|童|の性|に性的|わいせつ)',
     '(?:女の子|男の子|子供|こども)(?:の)?(?:裸|ヌード|えっち|エッチ|性的|わいせつ|に手を出)',
-    '子(?:の)?(?:裸|ヌード)(?:画像|写真|動画)', // 子の裸画像など性的文脈の「子」
+    '子(?:の)?(?:裸|ヌード)(?:画像|写真|動画)',
     '(?:保育|幼稚)園(?:児)?(?:に性的|わいせつ|えっち|エッチ)',
-    // ── 強化③：制服・学校用品の性的文脈 ──
-    'ランドセル',                              // 小学生を強く示唆
+    'ランドセル',
     '制服(?:えっち|エッチ|sex|ポルノ|わいせつ)',
     '体操着(?:えっち|エッチ|sex)',
     '水着(?:の子|の少女|の女児)',
     '放課後(?:えっち|エッチ|sex|わいせつ|に誘)',
-    // ── 強化④：英語追加 ──
     'jailbait',
     'preteen',
     'underage\\s*(?:sex|porn|nude|girl|boy)',
@@ -188,7 +180,6 @@ const SELF_HARM_PROMO_REGEX = new RegExp([
     '入水自殺(?:場所|方法)',
     '焼身自殺(?:の仕方|方法)',
     '電車(?:に飛び込む|で自殺)(?:方法|場所)',
-    // ── 追加強化 ──
     '(?:もう)?死(?:にたい|のう|んでしまいたい|にたくなった)',
     '生きていたくない',
     '生きてる意味(?:がない|ない|わからない)',
@@ -211,48 +202,41 @@ const HATE_REGEX = new RegExp([
     '生きる価値(?:の)?ない(?:命|人間|存在)',
     '(?:障害者|精神障害者|知的障害者)(?:は)?(?:生きる価値がない|社会のお荷物|不要な存在)',
     '(?:ゲイ|同性愛者|LGBT)(?:で)?(?:黒人|外国人|ユダヤ)',
-    // ── 黒人差別 ──
     'nigger','nigga',
     'n\\s*[-_]\\s*word',
     'ニガー','ニガ(?!ー)',
     '黒人(?:は|が|を|め|野郎|ども)?(?:死ね|消えろ|ゴミ|クズ|猿|バカ|出て行け|帰れ|嫌い)',
     '(?:死ね|消えろ|ゴミ|クズ|猿|害虫)(?:黒人)',
-    // ── ユダヤ差別・反ユダヤ ──
     'kike',
     'ユダヤ(?:の陰謀|が世界を支配|人め|人野郎|人を殺|人は出て行け)',
     'ホロコースト(?:は嘘|なかった|否定|でたらめ)',
     'holocaust\\s*(?:denial|lie|fake|hoax|didn)',
     'antisemit',
-    // ── 白人至上主義・ナチズム ──
     'white\\s*(?:power|supremac|nationalist|genocide)',
     'heil\\s*hitler',
     'ハイル\\s*ヒトラー',
     'ナチス(?:万歳|最高|を支持|賛美|正しい|復活)',
     '14\\s*words',
     '(?:88|卍)\\s*(?:heil|hell|万歳)',
-    'white\\s*lives\\s*matter(?!\\s*too)',  // BLM対抗文脈での使用
-    // ── アジア系差別 ──
+    'white\\s*lives\\s*matter(?!\\s*too)',
     'chink','チンク',
     'gook',
     '(?:朝鮮|韓国)人(?:は)?(?:ゴキブリ|害虫|寄生虫|猿|死ね|消えろ|出て行け)',
     '(?:中国|シナ)人(?:は)?(?:ゴキブリ|害虫|寄生虫|猿|死ね|消えろ)',
     'jap\\s*(?:die|kill|out)',
-    // ── 中東・イスラム差別 ──
     'towelhead','raghead',
     'sand\\s*n(?:igger|igga)',
     'camel\\s*jockey',
     'muslim\\s*(?:ban|terrorist|bomb)',
-    // ── 民族ヘイト一般 ──
     'ethnic\\s*cleansing',
     'race\\s*(?:war|traitor|mixing\\s*is)',
     'genocide\\s*(?:now|the|all)',
     '(?:民族|人種)(?:の)?浄化',
     '(?:外国人|移民)(?:排斥|根絶|駆逐)(?:せよ|しろ|万歳)',
     '売国(?:奴|者)',
-    // ── 特定民族への侮蔑呼称 ──
-    'spic','beaner','wetback',          // ヒスパニック系差別
-    'cracker(?:\\s*ass)?\\s*cracker',  // 白人への侮蔑（文脈によるが規制）
-    'slope','zipperhead',              // アジア系差別
+    'spic','beaner','wetback',
+    'cracker(?:\\s*ass)?\\s*cracker',
+    'slope','zipperhead',
     'curry\\s*(?:muncher|nigger)',
     'paki',
 ].join('|'), 'i');
@@ -268,7 +252,6 @@ const DISABILITY_HATE_REGEX = new RegExp([
     'ハッタショ',
     'アスペ',
     'スペ(?:め|かよ|すぎ|だろ|だな|ども)',
-    // ── 追加強化 ──
     'キチガイ','きちがい',
     '基地外',
     'メンヘラ(?:死ね|消えろ|うざ)',
@@ -315,17 +298,17 @@ async function downloadFiles(attachments) {
 }
 
 const AI_THRESHOLDS = {
-    'sexual/minors':            0.20,  // 0.30 → 0.20（未成年性的コンテンツ厳格化）
-    'hate':                     0.60,  // 0.75 → 0.60（差別的発言厳格化）
-    'hate/threatening':         0.55,  // 0.70 → 0.55
-    'harassment':               0.80,  // 0.85 → 0.80
-    'harassment/threatening':   0.70,  // 0.80 → 0.70
-    'self-harm':                0.70,  // 0.80 → 0.70（自傷・自殺関連厳格化）
-    'self-harm/intent':         0.55,  // 0.70 → 0.55
-    'self-harm/instructions':   0.45,  // 0.60 → 0.45
-    'sexual':                   0.90,  // 0.92 → 0.90
-    'violence':                 0.88,  // 0.90 → 0.88
-    'violence/graphic':         0.80,  // 0.85 → 0.80
+    'sexual/minors':            0.20,
+    'hate':                     0.60,
+    'hate/threatening':         0.55,
+    'harassment':               0.80,
+    'harassment/threatening':   0.70,
+    'self-harm':                0.70,
+    'self-harm/intent':         0.55,
+    'self-harm/instructions':   0.45,
+    'sexual':                   0.90,
+    'violence':                 0.88,
+    'violence/graphic':         0.80,
 };
 
 async function checkAiModeration(text) {
@@ -372,40 +355,34 @@ function recodeText(text) {
 }
 
 /* =========================
-   📍 Webhook管理（Tupperbox方式: ID+tokenをファイル永続化）
-   優先度: メモリキャッシュ → ファイル復元 → Discord API取得/新規作成
-   bot再起動後も fetchWebhooks() 不要で即座に使える
+   📍 Webhook管理
 ========================= */
-const webhookCache    = new Map(); // channelId → { wh, ts }
-const webhookPromises = new Map(); // 同時リクエスト防止
+const webhookCache    = new Map();
+const webhookPromises = new Map();
 
 async function getOrCreateWebhook(channel) {
     const target = channel.isThread() ? channel.parent : channel;
     if (!target) return null;
     const key = target.id;
 
-    // 1. メモリキャッシュ（最速）
     const cached = webhookCache.get(key);
     if (cached) return cached.wh;
 
-    // 同時リクエスト防止
     if (webhookPromises.has(key)) return webhookPromises.get(key);
 
     const promise = (async () => {
-        // 2. ファイルに保存済みのトークンから即復元（API呼び出し不要）
         const stored = whStore.get(key);
         if (stored) {
             webhookCache.set(key, { wh: stored });
             return stored;
         }
 
-        // 3. Discord APIで取得 or 新規作成（初回 / ファイルにない場合のみ）
         try {
             const hooks = await target.fetchWebhooks();
             let wh = hooks.find(h => h.token);
             if (!wh) wh = await target.createWebhook({ name: 'Moderator' });
-            whStore.set(key, wh);           // ファイルに永続化
-            webhookCache.set(key, { wh });  // メモリにも
+            whStore.set(key, wh);
+            webhookCache.set(key, { wh });
             return wh;
         } catch (e) {
             console.error(`[Webhook] 取得失敗: ${e.message}`);
@@ -418,7 +395,6 @@ async function getOrCreateWebhook(channel) {
     return promise;
 }
 
-// Webhookを無効化してキャッシュとファイルから削除
 function invalidateWebhook(channelId) {
     webhookCache.delete(channelId);
     whStore.remove(channelId);
@@ -428,9 +404,6 @@ async function sendWebhook(channel, options) {
     const target = channel.isThread() ? channel.parent : channel;
     const key    = target?.id;
 
-    // エラー種別に応じた戦略:
-    // - 404 Unknown Webhook (Webhook削除済み) → 即キャッシュ削除して再作成
-    // - ネットワーク瞬断 (fetch failed 等)   → 指数バックオフでリトライ
     const NET_DELAYS = [1_000, 3_000, 8_000];
 
     for (let attempt = 0; attempt <= NET_DELAYS.length; attempt++) {
@@ -442,7 +415,6 @@ async function sendWebhook(channel, options) {
             const isWebhookGone = e.status === 404 || e.code === 10015;
 
             if (isWebhookGone) {
-                // Webhookが外部から削除された → 再作成して1回だけ即リトライ
                 if (key) invalidateWebhook(key);
                 console.warn('[Webhook] Webhook削除検知 → 再作成中...');
                 const newWh = await getOrCreateWebhook(channel);
@@ -451,7 +423,6 @@ async function sendWebhook(channel, options) {
                 catch (e2) { console.error(`[Webhook] 再作成後も失敗: ${e2.message}`); return null; }
             }
 
-            // ネットワークエラー → バックオフリトライ
             if (key) webhookCache.delete(key);
             const isLast = attempt === NET_DELAYS.length;
             if (isLast) { console.error(`[Webhook] 投稿失敗（全リトライ消化）: ${e.message}`); return null; }
@@ -460,6 +431,8 @@ async function sendWebhook(channel, options) {
         }
     }
 }
+
+const QUOTE_MAX = 17;
 
 async function buildReplyPrefix(message) {
     if (!message.reference?.messageId) return '';
@@ -471,24 +444,20 @@ async function buildReplyPrefix(message) {
             if (extracted) targetId = extracted;
         }
 
-        // zero-width文字（userId埋め込み）を除去
         let body = [...(ref.content || '')].filter(c => !REVERSE_ZERO_WIDTH[c]).join('').trim();
 
-        // webhook再投稿メッセージの先頭にある Reply to: ヘッダーを除去して本文だけ取り出す
         if (ref.webhookId) {
             const lines = body.split('\n');
-            // "> Reply to:" 形式（現行）
             const firstNonQuote = lines.findIndex(l => !l.startsWith('>'));
             if (firstNonQuote > 0) {
                 body = lines.slice(firstNonQuote).join('\n').trim();
             } else if (lines[0]?.startsWith('[Reply to:]')) {
-                // "[Reply to:]" 形式（旧フォーマット、> なし）
                 body = lines.slice(2).join('\n').trim();
             }
         }
 
-        const preview = body.length > 80
-            ? body.substring(0, 77).replace(/\n/g, ' ') + '...'
+        const preview = body.length > QUOTE_MAX
+            ? body.substring(0, QUOTE_MAX).replace(/\n/g, ' ') + '…'
             : body.replace(/\n/g, ' ');
 
         const channelId = ref.channelId ?? message.channelId;
@@ -518,7 +487,7 @@ async function handlePseudoReply(message) {
         files:           [],
         username:        message.member?.displayName || message.author.username,
         avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
-        allowedMentions: { parse: ['users'] },
+        allowedMentions: { parse: [] },
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 
@@ -570,7 +539,7 @@ async function instantDeleteAndRecode(message) {
         components:      hasImageAttachment(message.attachments) ? [buildDeleteButtonRow(message.author.id)] : [],
         username:        message.member?.displayName || message.author.username,
         avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
-        allowedMentions: { parse: ['users'] },
+        allowedMentions: { parse: [] },
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 
@@ -606,7 +575,6 @@ async function handleImageDeleteButton(interaction) {
 /* =========================
    👹 呪い文字化け処理
 ========================= */
-// 文字化け用素材
 const CORRUPT_CHARS = 'ﾊﾋﾌﾍﾎﾄｱｲｳｴｵｦｧｭｮｯｰｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉ░▒▓│┤╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀';
 const ZALGO_MARKS  = [...'̴̷̸̡̢̨̧̛̍̎̄̅̿̑̒̓̔̽̾̈́͐͑͒͗͛ͅ'];
 
@@ -616,11 +584,9 @@ function garbleText(text, rate) {
         if (c === '\n') return c;
         const roll = Math.random();
         if (roll < r) {
-            // 完全に別の文字に置換
             return CORRUPT_CHARS[Math.floor(Math.random() * CORRUPT_CHARS.length)];
         }
         if (roll < r + 0.12) {
-            // Zalgoマーク付与（文字が崩れて見える）
             const n = Math.floor(Math.random() * 3) + 1;
             return c + ZALGO_MARKS.slice(0, n).join('');
         }
@@ -629,7 +595,6 @@ function garbleText(text, rate) {
 }
 
 function garbleName(name) {
-    // 名前は50%で文字化け
     return garbleText(name, 0.50);
 }
 
@@ -639,7 +604,6 @@ async function applyCurse(message) {
 
     const garbledContent = garbleText(sanitizeMentions(message.content || '\u200b'));
     const garbledName    = garbleName(message.member?.displayName || message.author.username);
-    // アバターURL: ユーザー本人のものをそのまま（外見の違和感は名前・内容で演出）
     const avatarURL = message.member?.displayAvatarURL({ dynamic: true, size: 16 }) ?? undefined;
 
     const replyPrefix = await buildReplyPrefix(message);
@@ -699,7 +663,6 @@ async function handleModerator(message) {
         return;
     }
 
-    // 呪いユーザー: メッセージを文字化けして再投稿
     if (isCursed(message.author.id) && !isExempt) {
         await applyCurse(message);
         return;
