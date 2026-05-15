@@ -129,6 +129,7 @@ const LOLI_SHOTA_REGEX = new RegExp([
     'underage\\s*(?:sex|porn|nude|girl|boy)',
     'child\\s*(?:sex|sexual|molest|abuse|exploit)',
     'girl\\s*(?:next\\s*door)?\\s*(?:underage|minor)',
+    'JK','JC','JS',
 ].join('|'), 'i');
 
 const AGE_REGEX = new RegExp([
@@ -239,6 +240,19 @@ const HATE_REGEX = new RegExp([
     'slope','zipperhead',
     'curry\\s*(?:muncher|nigger)',
     'paki',
+    // ジェンダー・性的指向関連
+    'ゲイ','げい',
+    'レズ','れず','レズビアン',
+    'ホモ','ほも',
+    'オカマ','おかま','お釜','オネエ',
+    'ニューハーフ','ﾆｭｰﾊｰﾌ',
+    'オナベ','おなべ',
+    'バイ(?:セクシャル|セクシュアル)',
+    'クィア','クエスチョニング',
+    'トランス(?:ジェンダー|セクシャル|女性|男性)',
+    'LGBT','LGBTQ',
+    '同性愛(?:者)?',
+    'ふたなり',
 ].join('|'), 'i');
 
 const DISABILITY_HATE_REGEX = new RegExp([
@@ -487,7 +501,7 @@ async function handlePseudoReply(message) {
         files:           [],
         username:        message.member?.displayName || message.author.username,
         avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
-        allowedMentions: { parse: [] },
+        allowedMentions: { parse: ['users'] },  // @everyone @here ロールメンション禁止、ユーザーメンションのみ許可
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 
