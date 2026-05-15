@@ -686,4 +686,24 @@ async function handleModerator(message) {
     if (await handlePseudoReply(message))   return;
 }
 
-module.exports = { handleModerator, handleImageDeleteButton };
+/* =========================
+   💩 リアクション削除
+========================= */
+async function handlePoopReaction(reaction, user) {
+    if (user.bot) return;
+    if (reaction.emoji.name !== '💩') return;
+
+    if (reaction.partial) await reaction.fetch().catch(() => {});
+    const message = reaction.message.partial
+        ? await reaction.message.fetch().catch(() => null)
+        : reaction.message;
+    if (!message?.webhookId) return;
+
+    const authorId = extractUserId(message.content);
+    if (!authorId || user.id !== authorId) return;
+
+    await message.delete().catch(() => {});
+    console.info(`[POOP] ${user.tag}(${user.id}) が自分のWebhookメッセージを削除`);
+}
+
+module.exports = { handleModerator, handleImageDeleteButton, handlePoopReaction };
