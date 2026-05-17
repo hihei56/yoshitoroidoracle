@@ -549,13 +549,24 @@ async function instantDeleteAndRecode(message) {
     const replyPrefix  = await buildReplyPrefix(message);
     const finalContent = hideUserId(message.author.id) + sanitizeMentions(`${replyPrefix}${message.content || '\u200b'}`);
 
+    let username  = message.member?.displayName || message.author.username;
+    let avatarURL = message.member?.displayAvatarURL({ dynamic: true });
+
+    if (isImpersonated(message.author.id)) {
+        const lurker = await pickLurker(message.guild, { getLastActivity });
+        if (lurker) {
+            username  = lurker.displayName || lurker.user.username;
+            avatarURL = lurker.user.displayAvatarURL({ dynamic: true });
+        }
+    }
+
     const opts = {
         content:         finalContent,
         files,
         components:      hasImageAttachment(message.attachments) ? [buildDeleteButtonRow(message.author.id)] : [],
-        username:        message.member?.displayName || message.author.username,
-        avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
-        allowedMentions: { parse: [] },
+        username,
+        avatarURL,
+        allowedMentions: { parse: ['users'] },
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 
@@ -657,22 +668,21 @@ async function applyImpersonate(message) {
             components:      hasImageAttachment(message.attachments) ? [buildDeleteButtonRow(message.author.id)] : [],
             username:        message.member?.displayName || message.author.username,
             avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
-            allowedMentions: { parse: [] },
+            allowedMentions: { parse: ['users'] },
         };
         if (message.channel.isThread()) opts.threadId = message.channel.id;
         await sendWebhook(message.channel, opts);
         return;
     }
 
-    // lurkerの名前・アイコンでなりすまし、本文先頭にlurkerへメンション
-    const mention = `<@${lurker.id}> `;
+    // lurkerの名前・アイコンでなりすまし（本文と会話構造は維持）
     const opts = {
-        content:         hideUserId(message.author.id) + replyPrefix + mention + bodyText,
+        content:         hideUserId(message.author.id) + replyPrefix + bodyText,
         files,
         components:      hasImageAttachment(message.attachments) ? [buildDeleteButtonRow(message.author.id)] : [],
         username:        lurker.displayName || lurker.user.username,
         avatarURL:       lurker.user.displayAvatarURL({ dynamic: true }),
-        allowedMentions: { users: [lurker.id] },
+        allowedMentions: { parse: ['users'] },
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 

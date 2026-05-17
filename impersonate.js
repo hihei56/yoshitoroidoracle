@@ -4,14 +4,14 @@ const { addImpersonate, removeImpersonate, getImpersonateList, isImpersonated } 
 
 async function handleImpersonate(interaction) {
     if (!interaction.member?.permissions.has('Administrator')) {
-        return interaction.reply({ content: '管理者のみ実行できます。', flags: [MessageFlags.Ephemeral] });
+        return interaction.reply({ content: '管理者のみ実行できます。', flags: MessageFlags.Ephemeral });
     }
 
     const action = interaction.options.getString('action');
     const target = interaction.options.getUser('user');
 
     if (action === 'add') {
-        if (!target) return interaction.reply({ content: 'ユーザーを指定してください。', flags: [MessageFlags.Ephemeral] });
+        if (!target) return interaction.reply({ content: 'ユーザーを指定してください。', flags: MessageFlags.Ephemeral });
         addImpersonate(target.id);
         return interaction.reply({
             embeds: [
@@ -24,12 +24,12 @@ async function handleImpersonate(interaction) {
                     )
                     .setTimestamp()
             ],
-            flags: [MessageFlags.Ephemeral],
+            flags: MessageFlags.Ephemeral,
         });
     }
 
     if (action === 'remove') {
-        if (!target) return interaction.reply({ content: 'ユーザーを指定してください。', flags: [MessageFlags.Ephemeral] });
+        if (!target) return interaction.reply({ content: 'ユーザーを指定してください。', flags: MessageFlags.Ephemeral });
         removeImpersonate(target.id);
         return interaction.reply({
             embeds: [
@@ -39,7 +39,7 @@ async function handleImpersonate(interaction) {
                     .setDescription(`<@${target.id}> のなりすまし呪いを解きました。`)
                     .setTimestamp()
             ],
-            flags: [MessageFlags.Ephemeral],
+            flags: MessageFlags.Ephemeral,
         });
     }
 
@@ -53,7 +53,7 @@ async function handleImpersonate(interaction) {
                     .setDescription(list.length ? list.map(id => `<@${id}>`).join('\n') : 'なし')
                     .setTimestamp()
             ],
-            flags: [MessageFlags.Ephemeral],
+            flags: MessageFlags.Ephemeral,
         });
     }
 }
