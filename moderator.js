@@ -687,11 +687,11 @@ async function handleModerator(message) {
 }
 
 /* =========================
-   💩 リアクション削除
+   💩 / ❌ リアクション削除
 ========================= */
 async function handlePoopReaction(reaction, user) {
     if (user.bot) return;
-    if (reaction.emoji.name !== '💩') return;
+    if (!['💩', '❌'].includes(reaction.emoji.name)) return;
 
     if (reaction.partial) await reaction.fetch().catch(() => {});
     const message = reaction.message.partial
@@ -703,7 +703,59 @@ async function handlePoopReaction(reaction, user) {
     if (!authorId || user.id !== authorId) return;
 
     await message.delete().catch(() => {});
-    console.info(`[POOP] ${user.tag}(${user.id}) が自分のWebhookメッセージを削除`);
+    console.info(`[${reaction.emoji.name}] ${user.tag}(${user.id}) が自分のWebhookメッセージを削除`);
 }
 
-module.exports = { handleModerator, handleImageDeleteButton, handlePoopReaction };
+/* =========================
+   😿 リアクション → Webhook化
+========================= */
+async function handleCryReaction(reaction, user) {
+    if (user.bot) return;
+    if (reaction.emoji.name !== '😿') return;
+
+    if (reaction.partial) await reaction.fetch().catch(() => {});
+    const message = reaction.message.partial
+        ? await reaction.message.fetch().catch(() => null)
+        : reaction.message;
+    if (!message) return;
+
+    // すでにWebhook化済みならスキップ
+    if (message.webhookId) return;
+
+    // 権限チェック：管理者 or モデレーター or 送信者本人
+    const guild  = message.guild;
+    const member = guild ? await guild.members.fetch(user.id).catch(() => null) : null;
+    const isAdmin  = member?.permissions.has('Administrator') ||
+                     ALLOWED_ROLES.some(id => member?.roles.cache.has(id));
+    const isAuthor = user.id === message.author?.id;
+
+    if (!isAdmin && !isAuthor) return;
+
+    // リアクションを除去（UIをきれいに保つ）
+    await reaction.remove().catch(() => {});
+
+    const files       = await downloadFiles(message.attachments);
+    const replyPrefix = await buildReplyPrefix(message);
+    const content     = sanitizeMentions(message.content || '');
+
+    const finalContent = hideUserId(message.author.id) +
+                         replyPrefix +
+                         (content || '\u200b');
+
+    const opts = {
+        content:         finalContent,
+        files,
+        components:      hasImageAttachment(message.attachments) ? [buildDeleteButtonRow(message.author.id)] : [],
+        username:        message.member?.displayName || message.author.username,
+        avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
+        allowedMentions: { parse: [] },
+    };
+    if (message.channel.isThread()) opts.threadId = message.channel.id;
+
+    if (message.deletable) await message.delete().catch(() => {});
+    await sendWebhook(message.channel, opts);
+
+    console.info(`[😿] ${user.tag}(${user.id}) が ${message.author.tag} のメッセージをWebhook化`);
+}
+
+module.exports = { handleModerator, handleImageDeleteButton, handlePoopReaction, handleCryReaction };

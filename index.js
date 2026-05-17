@@ -11,7 +11,7 @@ const { handleCurse }            = require('./curse');
 const { initLurker, handleLurker } = require('./lurker');
 const { recordActivity, backfillActivity } = require('./activity_tracker');
 const { handleDeathmatch }       = require('./deathmatch');
-const { handleModerator, handleImageDeleteButton, handlePoopReaction } = require('./moderator');
+const { handleModerator, handleImageDeleteButton, handlePoopReaction, handleCryReaction } = require('./moderator');
 const { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel } = require('./admin');
 const { handleJoker }            = require('./joker');
 const { initRSS }                = require('./rssBot');
@@ -28,7 +28,7 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildMessageReactions, // 💩リアクション削除用
+        GatewayIntentBits.GuildMessageReactions, // 💩❌😿リアクション用
     ],
 });
 
@@ -70,6 +70,7 @@ client.on(Events.MessageCreate, async m => {
 
 client.on(Events.MessageReactionAdd, async (reaction, user) => {
     handlePoopReaction(reaction, user).catch(e => console.error('[PoopReaction]:', e));
+    handleCryReaction(reaction, user).catch(e => console.error('[CryReaction]:', e));
 });
 
 client.on(Events.InteractionCreate, async i => {
