@@ -498,11 +498,22 @@ async function handlePseudoReply(message) {
     const replyPrefix  = await buildReplyPrefix(message);
     const replyContent = hideUserId(message.author.id) + sanitizeMentions(`${replyPrefix}${recodeText(message.content)}`);
 
+    let username  = message.member?.displayName || message.author.username;
+    let avatarURL = message.member?.displayAvatarURL({ dynamic: true });
+
+    if (isImpersonated(message.author.id)) {
+        const lurker = await pickLurker(message.guild, { getLastActivity });
+        if (lurker) {
+            username  = lurker.displayName || lurker.user.username;
+            avatarURL = lurker.user.displayAvatarURL({ dynamic: true });
+        }
+    }
+
     const opts = {
         content:         replyContent,
         files:           [],
-        username:        message.member?.displayName || message.author.username,
-        avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
+        username,
+        avatarURL,
         allowedMentions: { parse: ['users'] },  // @everyone @here ロールメンション禁止、ユーザーメンションのみ許可
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
