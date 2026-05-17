@@ -4,7 +4,7 @@ const { addCurse, removeCurse, getCursedList, isCursed } = require('./curse_mana
 
 async function handleCurse(interaction) {
     if (!interaction.member?.permissions.has('Administrator')) {
-        return interaction.reply({ content: '管理者のみ実行できます。', flags: [MessageFlags.Ephemeral] });
+        return interaction.reply({ content: '管理者のみ実行できます。', flags: MessageFlags.Ephemeral });
     }
 
     const action = interaction.options.getString('action');
@@ -20,7 +20,7 @@ async function handleCurse(interaction) {
                     .setDescription(`<@${target.id}> のメッセージに呪いをかけました。\n全ての発言が30〜40%文字化けします。`)
                     .setTimestamp()
             ],
-            flags: [MessageFlags.Ephemeral],
+            flags: MessageFlags.Ephemeral,
         });
     }
 
@@ -34,7 +34,7 @@ async function handleCurse(interaction) {
                     .setDescription(`<@${target.id}> の呪いを解きました。`)
                     .setTimestamp()
             ],
-            flags: [MessageFlags.Ephemeral],
+            flags: MessageFlags.Ephemeral,
         });
     }
 
@@ -48,7 +48,7 @@ async function handleCurse(interaction) {
                     .setDescription(list.length ? list.map(id => `<@${id}>`).join('\n') : 'なし')
                     .setTimestamp()
             ],
-            flags: [MessageFlags.Ephemeral],
+            flags: MessageFlags.Ephemeral,
         });
     }
 }
