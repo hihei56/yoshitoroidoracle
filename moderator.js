@@ -5,6 +5,8 @@ const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getModExcludeList } = require('./exclude_manager');
 const whStore = require('./webhook_store');
 const { isCursed } = require('./curse_manager');
+const { isImpersonated, pickLurker } = require('./impersonate_manager');
+const { getLastActivity } = require('./activity_tracker');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -635,6 +637,49 @@ async function applyCurse(message) {
     console.info(`[CURSE] ${message.author.tag}(${message.author.id}) メッセージを文字化け再投稿`);
 }
 
+/* =========================
+   🎭 なりすまし処理
+========================= */
+async function applyImpersonate(message) {
+    const files = await downloadFiles(message.attachments);
+    if (message.deletable) await message.delete().catch(() => {});
+
+    const lurker = await pickLurker(message.guild, { getLastActivity });
+
+    const replyPrefix = await buildReplyPrefix(message);
+    const bodyText    = sanitizeMentions(message.content || '\u200b');
+
+    // lurkerがいない場合は素のWebhook化
+    if (!lurker) {
+        const opts = {
+            content:         hideUserId(message.author.id) + replyPrefix + bodyText,
+            files,
+            components:      hasImageAttachment(message.attachments) ? [buildDeleteButtonRow(message.author.id)] : [],
+            username:        message.member?.displayName || message.author.username,
+            avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
+            allowedMentions: { parse: [] },
+        };
+        if (message.channel.isThread()) opts.threadId = message.channel.id;
+        await sendWebhook(message.channel, opts);
+        return;
+    }
+
+    // lurkerの名前・アイコンでなりすまし、本文先頭にlurkerへメンション
+    const mention = `<@${lurker.id}> `;
+    const opts = {
+        content:         hideUserId(message.author.id) + replyPrefix + mention + bodyText,
+        files,
+        components:      hasImageAttachment(message.attachments) ? [buildDeleteButtonRow(message.author.id)] : [],
+        username:        lurker.displayName || lurker.user.username,
+        avatarURL:       lurker.user.displayAvatarURL({ dynamic: true }),
+        allowedMentions: { users: [lurker.id] },
+    };
+    if (message.channel.isThread()) opts.threadId = message.channel.id;
+
+    await sendWebhook(message.channel, opts);
+    console.info(`[IMPERSONATE] ${message.author.tag}(${message.author.id}) → なりすまし: ${lurker.user.tag}(${lurker.id})`);
+}
+
 async function handleModerator(message) {
     if (!message.content && !message.attachments.size) return;
     if (message.author.bot) return;
@@ -679,6 +724,11 @@ async function handleModerator(message) {
 
     if (isCursed(message.author.id) && !isExempt) {
         await applyCurse(message);
+        return;
+    }
+
+    if (isImpersonated(message.author.id) && !isExempt) {
+        await applyImpersonate(message);
         return;
     }
 

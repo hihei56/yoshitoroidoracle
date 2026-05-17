@@ -1,209 +1,143 @@
+// index.js — Oracle Cloud対応版
+process.on('uncaughtException',  e => console.error('[Error]:', e));
+process.on('unhandledRejection', e => console.error('[Reject]:', e));
+
 require('dotenv').config();
-const { REST, Routes, SlashCommandBuilder } = require('discord.js');
 
-const commands = [
-    // 1. ダイス勝負
-    new SlashCommandBuilder()
-        .setName('dice')
-        .setDescription('1日1回のダイス勝負。当たると制限がかかる場合があります。'),
+const { Client, GatewayIntentBits, Events } = require('discord.js');
+const { initScheduler }          = require('./scheduler');
+const { handleAnon }             = require('./anon');
+const { handleCurse }            = require('./curse');
+const { initLurker, handleLurker } = require('./lurker');
+const { recordActivity, backfillActivity } = require('./activity_tracker');
+const { handleDeathmatch }       = require('./deathmatch');
+const { handleModerator, handleImageDeleteButton, handlePoopReaction, handleCryReaction } = require('./moderator');
+const { handleImpersonate } = require('./impersonate');
+const { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel } = require('./admin');
+const { handleJoker }            = require('./joker');
+const { initRSS }                = require('./rssBot');
+const { postRanking, handleRanking } = require('./ranking');
+const { handleTimeoutList }      = require('./timeoutlist');
+const { initSecurity, handlePermList } = require('./security');
 
-    // 2. JOKERシステム
-    new SlashCommandBuilder()
-        .setName('joker')
-        .setDescription('JOKERを実行。一か八かの制裁を下します。'),
+const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
+if (DEBUG_MODE) console.log('🐛 [Debug] デバッグモード有効');
 
-    // 3. 匿名発言機能
-    new SlashCommandBuilder()
-        .setName('anon')
-        .setDescription('匿名の〇〇として発言します。名前は24時間固定。')
-        .addStringOption(option =>
-            option.setName('content')
-                .setDescription('メッセージ内容（必須）')
-                .setRequired(true)
-        )
-        .addAttachmentOption(option =>
-            option.setName('file')
-                .setDescription('添付画像')
-        )
-        .addStringOption(option =>
-            option.setName('reply_link')
-                .setDescription('返信先メッセージのリンク')
-        ),
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMessageReactions, // 💩❌😿リアクション用
+    ],
+});
 
-    // 4. 管理機能
-    new SlashCommandBuilder()
-        .setName('admin')
-        .setDescription('管理設定。サブコマンドを選択してください。')
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('mod_skip')
-                .setDescription('ユーザー/ロールを検閲除外に設定します。')
-                .addStringOption(option =>
-                    option.setName('action')
-                        .setDescription('追加か解除を選択')
-                        .setRequired(true)
-                        .addChoices(
-                            { name: '追加', value: 'add' },
-                            { name: '解除', value: 'remove' }
-                        )
-                )
-                .addUserOption(option =>
-                    option.setName('user')
-                        .setDescription('対象のユーザー（ロールと併用可）')
-                )
-                .addRoleOption(option =>
-                    option.setName('role')
-                        .setDescription('対象のロール（ユーザーと併用可）')
-                )
-        )
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('say_deny')
-                .setDescription('ユーザー/ロールのSay代行権限を管理します。')
-                .addStringOption(option =>
-                    option.setName('action')
-                        .setDescription('拒否か許可を選択')
-                        .setRequired(true)
-                        .addChoices(
-                            { name: '拒否', value: 'deny' },
-                            { name: '許可', value: 'allow' }
-                        )
-                )
-                .addUserOption(option =>
-                    option.setName('user')
-                        .setDescription('対象のユーザー（ロールと併用可）')
-                )
-                .addRoleOption(option =>
-                    option.setName('role')
-                        .setDescription('対象のロール（ユーザーと併用可）')
-                )
-        )
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('say_channel')
-                .setDescription('/say を許可するチャンネルを管理します。未設定時は全チャンネルで使用可能。')
-                .addStringOption(option =>
-                    option.setName('action')
-                        .setDescription('追加か解除を選択')
-                        .setRequired(true)
-                        .addChoices(
-                            { name: '追加', value: 'add' },
-                            { name: '解除', value: 'remove' }
-                        )
-                )
-                .addChannelOption(option =>
-                    option.setName('channel')
-                        .setDescription('対象チャンネル')
-                        .setRequired(true)
-                )
-        )
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('log_channel')
-                .setDescription('/anon の実行ログを送るチャンネルを設定します。未指定で解除。')
-                .addChannelOption(option =>
-                    option.setName('channel')
-                        .setDescription('ログ送信先チャンネル（省略で解除）')
-                )
-        )
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('lurker_channel')
-                .setDescription('ROM専目覚ましの自動投稿チャンネルを設定します。未指定で解除。')
-                .addChannelOption(option =>
-                    option.setName('channel')
-                        .setDescription('投稿先チャンネル（省略で解除）')
-                )
-        )
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('status')
-                .setDescription('現在の管理設定を表示します。')
-        )
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('servers')
-                .setDescription('ボットが加入しているサーバー一覧を表示し、退出操作ができます。')
-        )
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('kick_inactive')
-                .setDescription('2週間無活動かつ保護ロールなしのメンバーをキックします（管理者のみ）。')
-                .addBooleanOption(opt =>
-                    opt.setName('dry_run')
-                        .setDescription('true=対象確認のみ（デフォルト）/ false=実際にキック')
-                )
-        ),
+const ALLOWED_ROLES = ['1476944370694488134', '1478715790575538359'];
 
-    // 5. ROM専目覚まし（管理者のみ）
-    new SlashCommandBuilder()
-        .setName('lurker')
-        .setDescription('3週間以上活動がないメンバーをランダムに4〜7名メンション（管理者のみ）。')
-        .addChannelOption(opt =>
-            opt.setName('channel')
-                .setDescription('投稿先チャンネル（省略時は設定済みチャンネル）')
-        )
-        .addBooleanOption(opt =>
-            opt.setName('force')
-                .setDescription('クールダウン無視して強制実行')
-        ),
+function hasPermission(member) {
+    if (!member) return false;
+    if (member.permissions.has('Administrator')) return true;
+    return ALLOWED_ROLES.some(id => member.roles.cache.has(id));
+}
 
-    // 6. 呪いコマンド（管理者のみ）
-    new SlashCommandBuilder()
-        .setName('curse')
-        .setDescription('ユーザーのメッセージを呪います（管理者のみ）。')
-        .addStringOption(opt =>
-            opt.setName('action')
-                .setDescription('操作を選択')
-                .setRequired(true)
-                .addChoices(
-                    { name: '🩸 呪いをかける', value: 'add'    },
-                    { name: '✨ 呪いを解く',   value: 'remove' },
-                    { name: '📋 一覧を見る',   value: 'list'   },
-                )
-        )
-        .addUserOption(opt =>
-            opt.setName('user')
-                .setDescription('対象ユーザー（list以外は必須）')
-        ),
+client.once(Events.ClientReady, async c => {
+    console.log(`✅ [Bot Ready] ${c.user.tag}`);
+    console.log(`📁 DATA_DIR=${process.env.DATA_DIR ?? '(未設定・スクリプト同階層)'}`);
 
-    // 6. ランキング（デバッグモード時のみ有効）
-    new SlashCommandBuilder()
-        .setName('ranking')
-        .setDescription('配信者の同時接続数ランキングを今すぐ更新する（デバッグモード限定）'),
+    initScheduler(client);
+    initSecurity(client);
 
-    // 6. タイムアウト一覧・延長
-    new SlashCommandBuilder()
-        .setName('timeoutlist')
-        .setDescription('現在タイムアウト中のメンバーを一覧表示し、タイムアウトを延長できます。'),
+    initRSS(client);
+    initLurker(client);
 
-    // 7. 危険権限保持者一覧
-    new SlashCommandBuilder()
-        .setName('permlist')
-        .setDescription('危険な権限を持つロール・メンバーを一覧表示します。'),
+    // 起動時にチャンネル履歴から活動記録を補完
+    const guild = client.guilds.cache.first();
+    if (guild) backfillActivity(guild).catch(e => console.error('[Activity] バックフィルエラー:', e));
 
-].map(command => command.toJSON());
-
-const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-
-(async () => {
-    try {
-        console.log('🧹 古いグローバルコマンドを掃除中...');
-        await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: [] });
-
-        console.log('🚀 最新のコマンドを登録中...');
-        if (process.env.GUILD_ID) {
-            await rest.put(
-                Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-                { body: commands }
-            );
-            console.log('✅ サーバー限定で登録完了');
-        } else {
-            await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
-            console.log('✅ グローバルで登録完了');
-        }
-        console.log('💡 Discordを Ctrl+R で再起動して確認してください。');
-    } catch (error) {
-        console.error('❌ 登録中にエラーが発生しました:', error);
+    if (DEBUG_MODE) {
+        postRanking(client).catch(e => console.error('[Ranking] 起動時エラー:', e));
+        setInterval(() => {
+            postRanking(client).catch(e => console.error('[Ranking] 定期更新エラー:', e));
+        }, 60 * 60 * 1000);
     }
-})();
+});
+
+client.on(Events.MessageCreate, async m => {
+    if (m.author.bot || !m.guild) return;
+    recordActivity(m.author.id);
+    handleModerator(m).catch(err => console.error('[Mod Error]:', err));
+});
+
+client.on(Events.MessageReactionAdd, async (reaction, user) => {
+    handlePoopReaction(reaction, user).catch(e => console.error('[PoopReaction]:', e));
+    handleCryReaction(reaction, user).catch(e => console.error('[CryReaction]:', e));
+});
+
+client.on(Events.InteractionCreate, async i => {
+    // 画像削除ボタン（権限チェック不要・投稿者本人のみ許可はハンドラ内で処理）
+    if (i.isButton() && i.customId.startsWith('del_img:')) {
+        return handleImageDeleteButton(i).catch(e => console.error('[DelImg]:', e));
+    }
+
+    // 管理設定リセットボタン
+    if (i.isButton() && i.customId.startsWith('admin_reset:')) {
+        return handleAdminButton(i).catch(e => console.error('[AdminBtn]:', e));
+    }
+
+    // サーバー退出セレクトメニュー
+    if (i.isStringSelectMenu() && i.customId === 'admin_servers:leave_select') {
+        return handleServersLeaveSelect(i).catch(e => console.error('[ServersSelect]:', e));
+    }
+
+    // サーバー退出確認ボタン
+    if (i.isButton() && i.customId.startsWith('admin_servers:leave_confirm:')) {
+        const guildId = i.customId.split(':')[2];
+        return handleServersLeaveConfirm(i, guildId).catch(e => console.error('[ServersConfirm]:', e));
+    }
+
+    // サーバー退出キャンセルボタン
+    if (i.isButton() && i.customId === 'admin_servers:leave_cancel') {
+        return handleServersLeaveCancel(i).catch(e => console.error('[ServersCancel]:', e));
+    }
+
+    if (!i.isChatInputCommand()) return;
+
+    if (!hasPermission(i.member)) {
+        return i.reply({ content: 'このボットを使用する権限がありません。', ephemeral: true });
+    }
+
+    try {
+        if (i.commandName === 'timeoutlist') await handleTimeoutList(i);
+        if (i.commandName === 'dice')        await handleDeathmatch(i);
+        if (i.commandName === 'anon')        await handleAnon(i);
+        if (i.commandName === 'curse')       await handleCurse(i);
+        if (i.commandName === 'lurker')      await handleLurker(i);
+        if (i.commandName === 'admin')       await handleAdmin(i);
+        if (i.commandName === 'joker')       await handleJoker(i);
+        if (i.commandName === 'permlist') await handlePermList(i);
+        if (i.commandName === 'impersonate') await handleImpersonate(i);
+        if (i.commandName === 'ranking') {
+            if (!DEBUG_MODE) return i.reply({ content: '⚠️ DEBUG_MODE=true が必要です。', ephemeral: true });
+            await handleRanking(i);
+        }
+    } catch (e) {
+        console.error('[Interaction Error]:', e);
+    }
+});
+
+// 死活監視用HTTPサーバー
+require('http')
+    .createServer((req, res) => res.end('OK'))
+    .listen(3000, () => console.log('🌐 HTTP Server Ready (Port: 3000)'));
+
+// グレースフルシャットダウン（pm2 stop / SIGTERM 対応）
+async function shutdown(signal) {
+    console.log(`[Shutdown] ${signal} 受信 - 終了処理中...`);
+    try { await client.destroy(); } catch {}
+    process.exit(0);
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));
+
+client.login(process.env.DISCORD_TOKEN);

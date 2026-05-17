@@ -12,6 +12,7 @@ const { initLurker, handleLurker } = require('./lurker');
 const { recordActivity, backfillActivity } = require('./activity_tracker');
 const { handleDeathmatch }       = require('./deathmatch');
 const { handleModerator, handleImageDeleteButton, handlePoopReaction, handleCryReaction } = require('./moderator');
+const { handleImpersonate } = require('./impersonate');
 const { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel } = require('./admin');
 const { handleJoker }            = require('./joker');
 const { initRSS }                = require('./rssBot');
@@ -115,6 +116,7 @@ client.on(Events.InteractionCreate, async i => {
         if (i.commandName === 'admin')       await handleAdmin(i);
         if (i.commandName === 'joker')       await handleJoker(i);
         if (i.commandName === 'permlist') await handlePermList(i);
+        if (i.commandName === 'impersonate') await handleImpersonate(i);
         if (i.commandName === 'ranking') {
             if (!DEBUG_MODE) return i.reply({ content: '⚠️ DEBUG_MODE=true が必要です。', ephemeral: true });
             await handleRanking(i);
