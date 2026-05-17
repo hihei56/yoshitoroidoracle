@@ -722,11 +722,12 @@ async function handleCryReaction(reaction, user) {
     // すでにWebhook化済みならスキップ
     if (message.webhookId) return;
 
-    // 権限チェック：管理者 or モデレーター or 送信者本人
+    // 権限チェック：管理者 or 指定ロール or 送信者本人
+    const CRY_ALLOWED_ROLES = ['1495971497016164492'];
     const guild  = message.guild;
     const member = guild ? await guild.members.fetch(user.id).catch(() => null) : null;
     const isAdmin  = member?.permissions.has('Administrator') ||
-                     ALLOWED_ROLES.some(id => member?.roles.cache.has(id));
+                     CRY_ALLOWED_ROLES.some(id => member?.roles.cache.has(id));
     const isAuthor = user.id === message.author?.id;
 
     if (!isAdmin && !isAuthor) return;
