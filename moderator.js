@@ -1,4 +1,4 @@
-// moderator.js — 最終版
+// moderator.js — コンフリクト解消版
 const axios  = require('axios');
 const { OpenAI } = require('openai');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
@@ -84,6 +84,8 @@ function normalizeForDetection(text) {
         .toLowerCase()
         .replace(/[\s\u3000_\-.,。、・「」『』【】〔〕《》〈〉（）()\[\]{}*★☆◆◇●○]/g, '');
 }
+
+// ... (Regex定義群は変更なしのため省略) ...
 
 const LOLI_SHOTA_REGEX = new RegExp([
     'ロリ','ろり','ﾛﾘ','loli',
@@ -242,7 +244,6 @@ const HATE_REGEX = new RegExp([
     'slope','zipperhead',
     'curry\\s*(?:muncher|nigger)',
     'paki',
-    // ジェンダー・性的指向関連
     'ゲイ','げい',
     'レズ','れず','レズビアン',
     'ホモ','ほも',
@@ -287,7 +288,7 @@ function checkNgWords(text) {
     }
 
     testAndCapture(LOLI_SHOTA_REGEX,    'loli_shota');
-    testAndCapture(AGE_REGEX,           'age');
+    testAndCapture(AGE_REGEX,            'age');
     testAndCapture(THREAT_REGEX,        'threat');
     testAndCapture(DRUG_REGEX,          'drug');
     testAndCapture(SELF_HARM_PROMO_REGEX,'self_harm_promo');
@@ -349,7 +350,7 @@ async function checkAiModeration(text) {
 
 function logDeletion({ message, matched }) {
     const ts      = new Date().toISOString();
-    const tag     = message.author.tag;
+    const tag      = message.author.tag;
     const userId  = message.author.id;
     const channel = message.channel.name ?? message.channelId;
     const preview = (message.content ?? '').slice(0, 200).replace(/\n/g, ' ');
@@ -371,7 +372,7 @@ function recodeText(text) {
 }
 
 /* =========================
-   📍 Webhook管理
+    📍 Webhook管理
 ========================= */
 const webhookCache    = new Map();
 const webhookPromises = new Map();
@@ -511,10 +512,10 @@ async function handlePseudoReply(message) {
 
     const opts = {
         content:         replyContent,
-        files:           [],
+        files:            [],
         username,
         avatarURL,
-        allowedMentions: { parse: ['users'] },  // @everyone @here ロールメンション禁止、ユーザーメンションのみ許可
+        allowedMentions: { parse: ['users'] },
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 
@@ -532,7 +533,7 @@ async function handleSensitivePost(message) {
 
     const files = [...message.attachments.values()].map(att => ({
         attachment: att.url,
-        name:       `SPOILER_${att.name || 'image.png'}`,
+        name:        `SPOILER_${att.name || 'image.png'}`,
     }));
 
     if (message.deletable) await message.delete().catch(() => {});
@@ -611,7 +612,7 @@ async function handleImageDeleteButton(interaction) {
 }
 
 /* =========================
-   👹 呪い文字化け処理
+    👹 呪い文字化け処理
 ========================= */
 const CORRUPT_CHARS = 'ﾊﾋﾌﾍﾎﾄｱｲｳｴｵｦｧｭｮｯｰｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉ░▒▓│┤╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀';
 const ZALGO_MARKS  = [...'̴̷̸̡̢̨̧̛̍̎̄̅̿̑̒̓̔̽̾̈́͐͑͒͗͛ͅ'];
@@ -660,7 +661,7 @@ async function applyCurse(message) {
 }
 
 /* =========================
-   🎭 なりすまし処理
+    🎭 なりすまし処理
 ========================= */
 async function applyImpersonate(message) {
     const files = await downloadFiles(message.attachments);
@@ -671,7 +672,6 @@ async function applyImpersonate(message) {
     const replyPrefix = await buildReplyPrefix(message);
     const bodyText    = sanitizeMentions(message.content || '\u200b');
 
-    // lurkerがいない場合は素のWebhook化
     if (!lurker) {
         const opts = {
             content:         hideUserId(message.author.id) + replyPrefix + bodyText,
@@ -686,7 +686,6 @@ async function applyImpersonate(message) {
         return;
     }
 
-    // lurkerの名前・アイコンでなりすまし（本文と会話構造は維持）
     const opts = {
         content:         hideUserId(message.author.id) + replyPrefix + bodyText,
         files,
@@ -758,7 +757,7 @@ async function handleModerator(message) {
 }
 
 /* =========================
-   💩 / ❌ リアクション削除
+    💩 / ❌ リアクション削除
 ========================= */
 async function handlePoopReaction(reaction, user) {
     if (user.bot) return;
@@ -778,7 +777,7 @@ async function handlePoopReaction(reaction, user) {
 }
 
 /* =========================
-   😿 リアクション → Webhook化
+    😿 リアクション → Webhook化
 ========================= */
 async function handleCryReaction(reaction, user) {
     if (user.bot) return;
@@ -790,10 +789,8 @@ async function handleCryReaction(reaction, user) {
         : reaction.message;
     if (!message) return;
 
-    // すでにWebhook化済みならスキップ
     if (message.webhookId) return;
 
-    // 権限チェック：管理者 or 指定ロール or 送信者本人
     const CRY_ALLOWED_ROLES = ['1495971497016164492'];
     const guild  = message.guild;
     const member = guild ? await guild.members.fetch(user.id).catch(() => null) : null;
@@ -803,12 +800,11 @@ async function handleCryReaction(reaction, user) {
 
     if (!isAdmin && !isAuthor) return;
 
-    // リアクションを除去（UIをきれいに保つ）
     await reaction.remove().catch(() => {});
 
     const files       = await downloadFiles(message.attachments);
     const replyPrefix = await buildReplyPrefix(message);
-    const content     = sanitizeMentions(message.content || '');
+    const content      = sanitizeMentions(message.content || '');
 
     const finalContent = hideUserId(message.author.id) +
                          replyPrefix +
@@ -820,7 +816,7 @@ async function handleCryReaction(reaction, user) {
         components:      hasImageAttachment(message.attachments) ? [buildDeleteButtonRow(message.author.id)] : [],
         username:        message.member?.displayName || message.author.username,
         avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
-        allowedMentions: { parse: [] },
+        allowedMentions: { parse: ['users'] },
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 
