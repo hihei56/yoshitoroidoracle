@@ -30,7 +30,25 @@ const commands = [
                 .setDescription('返信先メッセージのリンク')
         ),
 
-    // 4. 管理機能
+    // 4. lurkerなりすまし発言
+    new SlashCommandBuilder()
+        .setName('imp')
+        .setDescription('lurkerになりすまして発言します。')
+        .addStringOption(option =>
+            option.setName('content')
+                .setDescription('メッセージ内容（必須）')
+                .setRequired(true)
+        )
+        .addAttachmentOption(option =>
+            option.setName('file')
+                .setDescription('添付画像')
+        )
+        .addStringOption(option =>
+            option.setName('reply_link')
+                .setDescription('返信先メッセージのリンク')
+        ),
+
+    // 5. 管理機能
     new SlashCommandBuilder()
         .setName('admin')
         .setDescription('管理設定。サブコマンドを選択してください。')
@@ -135,7 +153,7 @@ const commands = [
                 )
         ),
 
-    // 5. ROM専目覚まし（管理者のみ）
+    // 6. ROM専目覚まし（管理者のみ）
     new SlashCommandBuilder()
         .setName('lurker')
         .setDescription('3週間以上活動がないメンバーをランダムに4〜7名メンション（管理者のみ）。')
@@ -148,7 +166,7 @@ const commands = [
                 .setDescription('クールダウン無視して強制実行')
         ),
 
-    // 6. 呪いコマンド（管理者のみ）
+    // 7. 呪いコマンド（管理者のみ）
     new SlashCommandBuilder()
         .setName('curse')
         .setDescription('ユーザーのメッセージを呪います（管理者のみ）。')
@@ -167,7 +185,7 @@ const commands = [
                 .setDescription('対象ユーザー（list以外は必須）')
         ),
 
-    // 7. なりすましコマンド（管理者のみ）
+    // 8. なりすましコマンド（管理者のみ）
     new SlashCommandBuilder()
         .setName('impersonate')
         .setDescription('ユーザーの発言をROM専のなりすましにします（管理者のみ）。')
@@ -186,17 +204,17 @@ const commands = [
                 .setDescription('対象ユーザー（list以外は必須）')
         ),
 
-    // 8. ランキング（デバッグモード時のみ有効）
+    // 9. ランキング（デバッグモード時のみ有効）
     new SlashCommandBuilder()
         .setName('ranking')
         .setDescription('配信者の同時接続数ランキングを今すぐ更新する（デバッグモード限定）'),
 
-    // 9. タイムアウト一覧・延長
+    // 10. タイムアウト一覧・延長
     new SlashCommandBuilder()
         .setName('timeoutlist')
         .setDescription('現在タイムアウト中のメンバーを一覧表示し、タイムアウトを延長できます。'),
 
-    // 10. 危険権限保持者一覧
+    // 11. 危険権限保持者一覧
     new SlashCommandBuilder()
         .setName('permlist')
         .setDescription('危険な権限を持つロール・メンバーを一覧表示します。'),
