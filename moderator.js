@@ -668,13 +668,16 @@ async function _getImpersonateLurker(guild) {
         return last < threshold;
     }).values()];
 
-    console.log(`[ImpersonateLurker] 候補数: ${lurkers.length}`);
+    console.log(`[ImpersonateLurker] 候補数: ${lurkers.length} / 全メンバー: ${members.size} / threshold: ${new Date(threshold).toISOString()}`);
 
     if (!lurkers.length) {
-        const fallbackId = FALLBACK_IMPERSONATOR_IDS[
-            Math.floor(Math.random() * FALLBACK_IMPERSONATOR_IDS.length)
-        ];
-        return guild.members.fetch(fallbackId).catch(() => null);
+        // フォールバック: 全IDを順番に試して最初に取得できたメンバーを返す
+        const shuffled = [...FALLBACK_IMPERSONATOR_IDS].sort(() => Math.random() - 0.5);
+        for (const id of shuffled) {
+            const m = await guild.members.fetch(id).catch(() => null);
+            if (m) return m;
+        }
+        return null;
     }
 
     // 前回と異なる人を優先
