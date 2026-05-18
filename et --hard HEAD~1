@@ -1,0 +1,96 @@
+[33maeddd49[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m update
+[33m73f2a1a[m update
+[33m1ea4db0[m update
+[33mf3aae1d[m update
+[33mf1c3a6b[m update
+[33mabcd1e6[m apply moderator updates
+[33mfd112a4[m update
+[33m424b4e2[m update
+[33m076606b[m 更新内容
+[33mfa52775[m 更新内容
+[33m319d9b7[m 更新内容
+[33m094f94e[m update
+[33m87fec10[m update
+[33m13cfc9e[m 更新内容
+[33m7ac8852[m fix: extractUserId が先頭ブロック以外のZW文字も拾いIDが巨大化するバグを修正
+[33m4dcd528[m Merge pull request #15 from hihei56/claude/mobile-quote-character-limit-0HyMb
+[33mcea42a4[m[33m ([m[1;31morigin/claude/mobile-quote-character-limit-0HyMb[m[33m)[m feat: リプライの引用文をモバイル1行に収まるよう17文字で切り詰め
+[33m2b7e83f[m Merge pull request #14 from hihei56/claude/fix-functionality-issues-WU9al
+[33mf20b4ab[m[33m ([m[1;31morigin/claude/fix-functionality-issues-WU9al[m[33m)[m feat: レート制限撤廃・非アクティブ検出の強化
+[33m7127ff7[m fix: kick_inactive の未定義変数 remaining を削除してクラッシュを修正
+[33ma70ad5d[m Merge pull request #13 from hihei56/claude/auto-kick-inactive-members-V5HKC
+[33m2bcd372[m[33m ([m[1;31morigin/claude/auto-kick-inactive-members-V5HKC[m[33m)[m fix: キックの上限撤廃、全対象を3秒間隔で一括処理
+[33md2c0ce1[m Merge pull request #12 from hihei56/claude/auto-kick-inactive-members-V5HKC
+[33m2505ec4[m fix: antinuke対策でキックを1回10名・3秒間隔に制限
+[33maae876f[m Merge pull request #11 from hihei56/claude/auto-kick-inactive-members-V5HKC
+[33m886e4f0[m fix: キック除外ロールに1491824502169145484を追加
+[33m9940f27[m Merge pull request #10 from hihei56/claude/auto-kick-inactive-members-V5HKC
+[33m4dd30b6[m feat: 2週間無活動メンバーの自動キック機能を追加
+[33mbb1f223[m Merge pull request #9 from hihei56/claude/check-permission-notifications-mXMLP
+[33m4fed179[m feat: /admin servers コマンドを追加（加入サーバー一覧・退出）
+[33mb1e7c5f[m perf: 正規表現ヒット時はAI判定をスキップ
+[33m1f1a3f6[m Revert "fix: Reply toヘッダーの引用符(>)を除去し引用元プレビューのみ縦棒表示"
+[33m2ee56a9[m fix: Reply toヘッダーの引用符(>)を除去し引用元プレビューのみ縦棒表示
+[33mc000355[m Revert "feat: reply表示をTupperbox形式（Discord native reply）に変更"
+[33ma6f81b5[m feat: reply表示をTupperbox形式（Discord native reply）に変更
+[33med6ab8b[m Merge pull request #7 from hihei56/claude/revert-quote-removal-XDahC
+[33m5432255[m[33m ([m[1;31morigin/claude/revert-quote-removal-XDahC[m[33m)[m fix: 旧フォーマット(> なし)のwebhookメッセージ参照時のプレビュー抽出に対応
+[33ma71de57[m revert: replyプレフィックスの引用符(>)を復元
+[33mfde0671[m Merge pull request #6 from hihei56/claude/fix-webhook-message-links-g7Bq2
+[33mf2f79fd[m[33m ([m[1;31morigin/claude/fix-webhook-message-links-g7Bq2[m[33m)[m fix: replyプレフィックスの引用符(>)を除去してフラットな表示に変更
+[33m1e8282d[m Merge pull request #5 from hihei56/claude/fix-webhook-message-links-g7Bq2
+[33m4a0cce8[m fix: ニュース投稿先チャンネルを変更
+[33m6a7e3cc[m feat: ロール未所持ユーザーのメッセージを無視する最低条件を追加
+[33md3f90da[m fix: 隠しユーザーIDを末尾→先頭に移動してURLリンクが壊れる問題を修正
+[33m051671e[m fix: webhookメッセージのURL末尾にゼロ幅文字が付いてリンクが壊れる問題を修正
+[33m2c62e08[m fix: 再送信メッセージのURL末尾にゼロ幅文字が付いてリンクが壊れる問題を修正
+[33maacdfae[m moderator.js: 児・子・少女・民族ヘイト徹底規制
+[33m787365a[m[33m ([m[1;31morigin/claude/enhance-moderation-filters-u8tHA[m[33m)[m moderator.js: EXEMPT_ROLESから1478715790575538359を削除
+[33m6496fe8[m moderator.js: 規制ワードを大幅強化
+[33m1becd6a[m feat(lurker): 朝メッセージ固定・昼夜AI短文・起動時活動バックフィル
+[33m60f7bad[m feat(lurker): なりすまし固定ID化・除外ロール設定
+[33md36af45[m lurker: AI メッセージ生成・パフォーマンス改善・レート制限修正 (#3)
+[33mdc7b71a[m feat(lurker): ROM専目覚まし機能追加
+[33m3353823[m fix(anon+mod): ログ形式修正・返信プレビューのquoteネスト解消
+[33md91e4ca[m feat(curse): /curseコマンド追加 — 対象ユーザーのメッセージを30-40%文字化け
+[33m3c82e10[m feat(anon): 24時間セッションで匿名名前を固定
+[33mfc9c3ed[m feat(anon): 管理ログチャンネル設定を追加
+[33m567fd63[m feat(anon): セッション廃止・毎回AI生成で完全匿名化
+[33m026578a[m feat(anon): /sayを/anonにリネーム、AI名前生成「匿名の〇〇」フォーマットで復活
+[33m464530f[m fix(rssBot): 画像をaxiosで事前DLしてBufferで送信（fetch failed対策）
+[33m8994a4d[m feat(say): 常時匿名化 — 名前「匿名の弱者男性」固定、tokumeiオプション廃止
+[33m1e409ab[m fix(rssBot): 投稿失敗時にerror causeとstatusも出力
+[33mb8d5b40[m fix(mod): マッチ単語をログに表示、プレビュー200文字化、RSS webhook未設定チェック追加
+[33mf7bf9dc[m fix(rssBot): 30文字フィルタ削除・cronに切り替え・変数名整理
+[33m4b9fb8a[m fix(rssBot): Oracle Cloud対応パス修正 + seenLinks更新タイミング修正
+[33m0b46074[m feat(webhook): Tupperbox方式のWebhook永続化・エラーハンドリング改善
+[33m9629762[m fix(moderator): 日本語テキストでの誤検知を修正・webhook再送ロジック改善
+[33me7db862[m feat(say): 文字数制限150字・チャンネル制限・24hセッションIDを実装
+[33m34d1364[m first commit
+[33m076d165[m feat(admin): embed対応・ロール設定・status表示・リセットボタンを追加
+[33m1f31117[m first commit
+[33mbd0dc0c[m first commit
+[33m4473a72[m fix(admin): adminコマンドをAdministrator権限所持者のみに制限
+[33me6b6598[m first commit
+[33m0b22e15[m first commit
+[33m1a91225[m deploy script update
+[33m8c148ea[m add rss proxy
+[33me685724[m add rss proxy
+[33md516b05[m add rss proxy
+[33m3d3dd83[m fix: NGワード時のみ画像がWebhook化されるように修正（道州制）
+[33mdcf821b[m add rss proxy
+[33m7cab40b[m fix conflict
+[33m6780087[m fix conflict
+[33m64a611e[m wip
+[33m500b3a4[m Merge pull request #2 from hihei56/claude/fix-rss-oracle-migration-67E8q
+[33me4257db[m Merge branch 'claude/discord-policy-detection-afBXU'
+[33m628e1f0[m fix: 検閲時のwebhook再投稿を原文そのままに変更
+[33mfad6da5[m refactor: 画像削除ボタンをwebhookメッセージ本体に統合
+[33m56fdcb1[m feat: 画像投稿に削除ボタンを追加
+[33m90cecea[m feat(moderator): 障害者差別語・命の否定表現の検知を追加
+[33me99a3ff[m Merge pull request #1 from hihei56/claude/discord-policy-detection-afBXU
+[33m0d98580[m feat(moderator): Discord ToS違反検知を大幅強化
+[33m557c406[m[33m ([m[1;31morigin/claude/fix-rss-oracle-migration-67E8q[m[33m)[m fix(rssBot): axiosでUser-Agent+タイムアウト付きRSS取得に変更
+[33mb902cc1[m fix: clean up dependencies
+[33m0e16eb9[m remove unused files
+[33m494a6f4[m initial commit

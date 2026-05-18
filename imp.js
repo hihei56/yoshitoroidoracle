@@ -1,8 +1,10 @@
 // imp.js — /imp コマンド
-// lurkerになりすまして発言する（1495971497016164492ロール + 管理者が実行可能）
+// lurkerになりすまして発言する（特定ロール + 管理者が実行可能）
 const { MessageFlags } = require('discord.js');
-const { pickLurker } = require('./impersonate_manager');
 const { getLastActivity } = require('./activity_tracker');
+
+// ★修正1: 独自のキャッシュをやめ、webhook_store を読み込む
+const webhookStore = require('./webhook_store');
 
 const ALLOWED_ROLE = '1495971497016164492';
 const MAX_CHARS    = 150;
@@ -32,7 +34,6 @@ function encodeId(id) {
     return [...BigInt(id).toString(2)].map(b => ZERO_WIDTH_MAP[b]).join('');
 }
 
-// Webhookメッセージ先頭のゼロ幅文字から { authorId, displayId } を取得
 function extractUserIds(text) {
     if (!text) return { authorId: null, displayId: null };
     const bits = [];
@@ -67,8 +68,8 @@ function sanitizeMentions(text) {
         .replace(/@here/g,     '@\u200bhere');
 }
 
-// 前回選んだlurkerIDを記録（連続で同じ人が出ないように）
-let lastLurkerId = null;
+// ★修正2: 前回選んだlurkerIDをギルド（サーバー）ごとに記録（マルチサーバー汚染対策）
+const lastLurkerIdMap = new Map();
 
 async function getLurker(guild) {
     const members = await guild.members.fetch().catch(() => null);
@@ -94,16 +95,16 @@ async function getLurker(guild) {
         return guild.members.fetch(fallbackId).catch(() => null);
     }
 
-    // 前回と異なる人を優先
-    const others = lurkers.filter(m => m.id !== lastLurkerId);
+    // サーバーごとの前回のIDを取得
+    const lastId = lastLurkerIdMap.get(guild.id);
+    const others = lurkers.filter(m => m.id !== lastId);
     const pool   = others.length > 0 ? others : lurkers;
 
     const picked = pool[Math.floor(Math.random() * pool.length)];
-    lastLurkerId = picked.id;
+    // サーバーごとの履歴を更新
+    lastLurkerIdMap.set(guild.id, picked.id);
     return picked;
 }
-
-const webhookCache = new Map();
 
 async function handleImp(interaction) {
     const { member, channel, options, client, guild, user } = interaction;
@@ -133,20 +134,20 @@ async function handleImp(interaction) {
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     try {
-        // ── lurker取得（毎回異なる人） ──
         const lurker = await getLurker(guild);
         if (!lurker) {
             return interaction.editReply('なりすまし対象が見つかりませんでした。');
         }
 
-        // ── Webhook取得 ──
+        // ★修正3: webhook_store を使用して取得・保存を行う
         const targetChannel = channel.isThread() ? channel.parent : channel;
-        let webhook = webhookCache.get(targetChannel.id);
+        let webhook = webhookStore.get(targetChannel.id);
+        
         if (!webhook) {
             const webhooks = await targetChannel.fetchWebhooks().catch(() => null);
             webhook = webhooks?.find(wh => wh.owner?.id === client.user.id);
             if (!webhook) webhook = await targetChannel.createWebhook({ name: 'ImpProxy' });
-            webhookCache.set(targetChannel.id, webhook);
+            webhookStore.set(targetChannel.id, webhook);
         }
 
         // ── リプライ処理 ──
@@ -160,14 +161,12 @@ async function handleImp(interaction) {
             if (repliedMsg) {
                 let authorName;
                 if (repliedMsg.webhookId) {
-                    // Webhookメッセージ: ゼロ幅文字からdisplayId（lurkerID）を取得
                     const { displayId } = extractUserIds(repliedMsg.content);
                     authorName = displayId ? `<@${displayId}>` : repliedMsg.author.username;
                 } else {
                     authorName = `<@${repliedMsg.author.id}>`;
                 }
 
-                // 本文からゼロ幅文字・SEPを除去してプレビュー生成
                 const cleanBody = [...(repliedMsg.content || '')]
                     .filter(c => !REVERSE_ZERO_WIDTH[c] && c !== ZERO_WIDTH_SEP)
                     .join('')
