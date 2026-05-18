@@ -1,4 +1,4 @@
-// moderator.js — 最終版
+// moderator.js
 const axios  = require('axios');
 const { OpenAI } = require('openai');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
@@ -27,22 +27,58 @@ const SENSITIVE_TRIGGER_EMOJI = '👶';
 const TUPPERBOX_APP_ID        = '431544605209788416';
 const TUPPERBOX_PREFIX_REGEX  = /^([a-zA-Z]+!)(.*)$/;
 
+// ─── フォールバック用固定ID（lurkerがいない場合） ───
+const FALLBACK_IMPERSONATOR_IDS = [
+    '1096854565896323213',
+    '1291500075327033458',
+    '1474050297126064281',
+    '1122087669598523423',
+];
+
+// ─── ゼロ幅文字エンコード ───
 const ZERO_WIDTH_MAP     = { '0': '\u200B', '1': '\u200C' };
 const REVERSE_ZERO_WIDTH = { '\u200B': '0', '\u200C': '1' };
+const ZERO_WIDTH_SEP     = '\u200D'; // 元IDとlurkerIDの区切り
 
 function hideUserId(userId) {
     return [...BigInt(userId).toString(2)].map(b => ZERO_WIDTH_MAP[b]).join('');
 }
 
-function extractUserId(text) {
-    if (!text) return null;
+// impersonate時: 元ID + SEP + lurkerID を埋め込む
+function hideUserIds(authorId, lurkerId) {
+    const encoded = hideUserId(authorId);
+    if (!lurkerId) return encoded;
+    return encoded + ZERO_WIDTH_SEP + hideUserId(lurkerId);
+}
+
+// { authorId, displayId } を返す
+// displayId = lurkerIDがあればそちら、なければauthorId
+function extractUserIds(text) {
+    if (!text) return { authorId: null, displayId: null };
     const bits = [];
     for (const c of text) {
         if (REVERSE_ZERO_WIDTH[c]) bits.push(REVERSE_ZERO_WIDTH[c]);
         else break;
     }
-    if (!bits.length) return null;
-    try { return BigInt('0b' + bits.join('')).toString(); } catch { return null; }
+    if (!bits.length) return { authorId: null, displayId: null };
+    try {
+        const authorId = BigInt('0b' + bits.join('')).toString();
+        const rest = [...text].slice(bits.length);
+        if (rest[0] !== ZERO_WIDTH_SEP) return { authorId, displayId: authorId };
+        const lurkerBits = [];
+        for (const c of rest.slice(1)) {
+            if (REVERSE_ZERO_WIDTH[c]) lurkerBits.push(REVERSE_ZERO_WIDTH[c]);
+            else break;
+        }
+        if (!lurkerBits.length) return { authorId, displayId: authorId };
+        const lurkerId = BigInt('0b' + lurkerBits.join('')).toString();
+        return { authorId, displayId: lurkerId };
+    } catch { return { authorId: null, displayId: null }; }
+}
+
+// 後方互換（💩リアクション削除判定など）
+function extractUserId(text) {
+    return extractUserIds(text).authorId;
 }
 
 function sanitizeMentions(text) {
@@ -189,6 +225,8 @@ const SELF_HARM_PROMO_REGEX = new RegExp([
     '消えてしまいたい',
     'suicide(?:\\s*method|\\s*how|\\s*spot|\\s*note|\\s*bridge)',
     'how\\s*to\\s*(?:kill\\s*myself|commit\\s*suicide|end\\s*(?:my\\s*)?life)',
+    // ── 追加: 「死」単体・関連表現 ──
+    '(?<![不生])死(?!後|去|亡|者|体|骸|因|刑|語|角|球|守|蔵|闘|力|文|海|化|滅|傷|節|地|相|票)',
 ].join('|'), 'i');
 
 const HATE_REGEX = new RegExp([
@@ -242,7 +280,6 @@ const HATE_REGEX = new RegExp([
     'slope','zipperhead',
     'curry\\s*(?:muncher|nigger)',
     'paki',
-    // ジェンダー・性的指向関連
     'ゲイ','げい',
     'レズ','れず','レズビアン',
     'ホモ','ほも',
@@ -287,7 +324,7 @@ function checkNgWords(text) {
     }
 
     testAndCapture(LOLI_SHOTA_REGEX,    'loli_shota');
-    testAndCapture(AGE_REGEX,           'age');
+    testAndCapture(AGE_REGEX,            'age');
     testAndCapture(THREAT_REGEX,        'threat');
     testAndCapture(DRUG_REGEX,          'drug');
     testAndCapture(SELF_HARM_PROMO_REGEX,'self_harm_promo');
@@ -349,7 +386,7 @@ async function checkAiModeration(text) {
 
 function logDeletion({ message, matched }) {
     const ts      = new Date().toISOString();
-    const tag     = message.author.tag;
+    const tag      = message.author.tag;
     const userId  = message.author.id;
     const channel = message.channel.name ?? message.channelId;
     const preview = (message.content ?? '').slice(0, 200).replace(/\n/g, ' ');
@@ -371,7 +408,7 @@ function recodeText(text) {
 }
 
 /* =========================
-   📍 Webhook管理
+    📍 Webhook管理
 ========================= */
 const webhookCache    = new Map();
 const webhookPromises = new Map();
@@ -455,12 +492,30 @@ async function buildReplyPrefix(message) {
     try {
         const ref = await message.channel.messages.fetch(message.reference.messageId);
         let targetId = ref.author.id;
+
         if (ref.webhookId) {
-            const extracted = extractUserId(ref.content);
-            if (extracted) targetId = extracted;
+            const { authorId, displayId } = extractUserIds(ref.content);
+
+            if (authorId) {
+                if (displayId && displayId !== authorId) {
+                    // 新形式: lurkerIDが埋め込まれている → そのまま使う
+                    targetId = displayId;
+                } else if (isImpersonated(authorId)) {
+                    // 旧形式 or lurkerなし投稿: impersonate対象なら改めてlurkerを引く
+                    const lurker = await _getImpersonateLurker(message.guild);
+                    targetId = lurker?.id ?? authorId;
+                } else {
+                    // 通常のWebhookメッセージ: 本人にメンション
+                    targetId = authorId;
+                }
+            }
         }
 
-        let body = [...(ref.content || '')].filter(c => !REVERSE_ZERO_WIDTH[c]).join('').trim();
+        // ゼロ幅文字・SEPを除去して本文を取得
+        let body = [...(ref.content || '')]
+            .filter(c => !REVERSE_ZERO_WIDTH[c] && c !== ZERO_WIDTH_SEP)
+            .join('')
+            .trim();
 
         if (ref.webhookId) {
             const lines = body.split('\n');
@@ -498,12 +553,23 @@ async function handlePseudoReply(message) {
     const replyPrefix  = await buildReplyPrefix(message);
     const replyContent = hideUserId(message.author.id) + sanitizeMentions(`${replyPrefix}${recodeText(message.content)}`);
 
+    let username  = message.member?.displayName || message.author.username;
+    let avatarURL = message.member?.displayAvatarURL({ dynamic: true });
+
+    if (isImpersonated(message.author.id)) {
+        const lurker = await _getImpersonateLurker(message.guild);
+        if (lurker) {
+            username  = lurker.displayName || lurker.user.username;
+            avatarURL = lurker.user.displayAvatarURL({ dynamic: true });
+        }
+    }
+
     const opts = {
         content:         replyContent,
-        files:           [],
-        username:        message.member?.displayName || message.author.username,
-        avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
-        allowedMentions: { parse: ['users'] },  // @everyone @here ロールメンション禁止、ユーザーメンションのみ許可
+        files:            [],
+        username,
+        avatarURL,
+        allowedMentions: { parse: ['users'] },
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 
@@ -521,16 +587,16 @@ async function handleSensitivePost(message) {
 
     const files = [...message.attachments.values()].map(att => ({
         attachment: att.url,
-        name:       `SPOILER_${att.name || 'image.png'}`,
+        name:        `SPOILER_${att.name || 'image.png'}`,
     }));
 
     if (message.deletable) await message.delete().catch(() => {});
 
     const cleanContent = (message.content || '').replace(SENSITIVE_TRIGGER_EMOJI, '').trim();
+    // ── 削除ボタン廃止: components を渡さない ──
     const opts = {
         content:         hideUserId(message.author.id) + sanitizeMentions(cleanContent || '\u200b'),
         files,
-        components:      [buildDeleteButtonRow(message.author.id)],
         username:        message.member?.displayName || message.author.username,
         avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
         allowedMentions: { parse: ['users'] },
@@ -549,47 +615,81 @@ async function instantDeleteAndRecode(message) {
     const replyPrefix  = await buildReplyPrefix(message);
     const finalContent = hideUserId(message.author.id) + sanitizeMentions(`${replyPrefix}${message.content || '\u200b'}`);
 
+    let username  = message.member?.displayName || message.author.username;
+    let avatarURL = message.member?.displayAvatarURL({ dynamic: true });
+
+    if (isImpersonated(message.author.id)) {
+        const lurker = await _getImpersonateLurker(message.guild);
+        if (lurker) {
+            username  = lurker.displayName || lurker.user.username;
+            avatarURL = lurker.user.displayAvatarURL({ dynamic: true });
+        }
+    }
+
+    // ── 削除ボタン廃止: components を渡さない ──
     const opts = {
         content:         finalContent,
         files,
-        components:      hasImageAttachment(message.attachments) ? [buildDeleteButtonRow(message.author.id)] : [],
-        username:        message.member?.displayName || message.author.username,
-        avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
-        allowedMentions: { parse: [] },
+        username,
+        avatarURL,
+        allowedMentions: { parse: ['users'] },
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 
     await sendWebhook(message.channel, opts);
 }
 
-const IMAGE_MIME_RE = /^image\//;
+/* =========================
+    🎭 lurker取得（ROM専・メッセージごとに異なる人）
+========================= */
 
-function hasImageAttachment(attachments) {
-    return [...attachments.values()].some(a => IMAGE_MIME_RE.test(a.contentType ?? ''));
-}
+// 前回選んだlurkerIDを記録（連続で同じ人が出ないように）
+let _lastLurkerId = null;
 
-function buildDeleteButtonRow(authorId) {
-    return new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId(`del_img:${authorId}`)
-            .setLabel('削除')
-            .setStyle(ButtonStyle.Danger),
-    );
-}
+async function _getImpersonateLurker(guild) {
+    const members = await guild.members.fetch().catch(() => null);
+    if (!members) return null;
 
-async function handleImageDeleteButton(interaction) {
-    const authorId = interaction.customId.split(':')[1];
+    const THREE_WEEKS_MS = 3 * 7 * 24 * 60 * 60 * 1000;
+    const EXCLUDE_ROLE_IDS = new Set([
+        '1491824502169145484',
+        '1477262864883515564',
+        '1478715790575538359',
+    ]);
+    const threshold = Date.now() - THREE_WEEKS_MS;
 
-    if (interaction.user.id !== authorId) {
-        return interaction.reply({ content: '削除できるのは投稿者本人のみです。', ephemeral: true });
+    const lurkers = [...members.filter(m => {
+        if (m.user.bot) return false;
+        if (m.permissions.has('Administrator')) return false;
+        if ([...EXCLUDE_ROLE_IDS].some(id => m.roles.cache.has(id))) return false;
+        const last = getLastActivity(m.id);
+        if (last === null) return (m.joinedTimestamp ?? 0) < threshold;
+        return last < threshold;
+    }).values()];
+
+    console.log(`[ImpersonateLurker] 候補数: ${lurkers.length} / 全メンバー: ${members.size} / threshold: ${new Date(threshold).toISOString()}`);
+
+    if (!lurkers.length) {
+        // フォールバック: 全IDを順番に試して最初に取得できたメンバーを返す
+        const shuffled = [...FALLBACK_IMPERSONATOR_IDS].sort(() => Math.random() - 0.5);
+        for (const id of shuffled) {
+            const m = await guild.members.fetch(id).catch(() => null);
+            if (m) return m;
+        }
+        return null;
     }
 
-    await interaction.deferUpdate().catch(() => {});
-    await interaction.deleteReply().catch(() => {});
+    // 前回と異なる人を優先
+    const others = lurkers.filter(m => m.id !== _lastLurkerId);
+    const pool   = others.length > 0 ? others : lurkers;
+
+    const picked = pool[Math.floor(Math.random() * pool.length)];
+    _lastLurkerId = picked.id;
+    return picked;
 }
 
 /* =========================
-   👹 呪い文字化け処理
+    👹 呪い文字化け処理
 ========================= */
 const CORRUPT_CHARS = 'ﾊﾋﾌﾍﾎﾄｱｲｳｴｵｦｧｭｮｯｰｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉ░▒▓│┤╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀';
 const ZALGO_MARKS  = [...'̴̷̸̡̢̨̧̛̍̎̄̅̿̑̒̓̔̽̾̈́͐͑͒͗͛ͅ'];
@@ -638,46 +738,32 @@ async function applyCurse(message) {
 }
 
 /* =========================
-   🎭 なりすまし処理
+    🎭 なりすまし処理
 ========================= */
 async function applyImpersonate(message) {
     const files = await downloadFiles(message.attachments);
     if (message.deletable) await message.delete().catch(() => {});
 
-    const lurker = await pickLurker(message.guild, { getLastActivity });
+    // キャッシュ付きlurker取得（効率化）
+    const lurker = await _getImpersonateLurker(message.guild);
 
     const replyPrefix = await buildReplyPrefix(message);
     const bodyText    = sanitizeMentions(message.content || '\u200b');
+    // 元ID + lurkerID を埋め込む（リプライ時にlurkerへメンションが飛ぶ）
+    const hiddenIds   = hideUserIds(message.author.id, lurker?.id ?? null);
 
-    // lurkerがいない場合は素のWebhook化
-    if (!lurker) {
-        const opts = {
-            content:         hideUserId(message.author.id) + replyPrefix + bodyText,
-            files,
-            components:      hasImageAttachment(message.attachments) ? [buildDeleteButtonRow(message.author.id)] : [],
-            username:        message.member?.displayName || message.author.username,
-            avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
-            allowedMentions: { parse: [] },
-        };
-        if (message.channel.isThread()) opts.threadId = message.channel.id;
-        await sendWebhook(message.channel, opts);
-        return;
-    }
-
-    // lurkerの名前・アイコンでなりすまし、本文先頭にlurkerへメンション
-    const mention = `<@${lurker.id}> `;
+    // ── 削除ボタン廃止: components を渡さない ──
     const opts = {
-        content:         hideUserId(message.author.id) + replyPrefix + mention + bodyText,
+        content:         hiddenIds + replyPrefix + bodyText,
         files,
-        components:      hasImageAttachment(message.attachments) ? [buildDeleteButtonRow(message.author.id)] : [],
-        username:        lurker.displayName || lurker.user.username,
-        avatarURL:       lurker.user.displayAvatarURL({ dynamic: true }),
-        allowedMentions: { users: [lurker.id] },
+        username:        lurker?.displayName || lurker?.user?.username || '匿名',
+        avatarURL:       lurker?.user?.displayAvatarURL({ dynamic: true }) ?? undefined,
+        allowedMentions: { parse: ['users'] },
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 
     await sendWebhook(message.channel, opts);
-    console.info(`[IMPERSONATE] ${message.author.tag}(${message.author.id}) → なりすまし: ${lurker.user.tag}(${lurker.id})`);
+    console.info(`[IMPERSONATE] ${message.author.tag}(${message.author.id}) → なりすまし: ${lurker?.user?.tag ?? 'フォールバック'}(${lurker?.id})`);
 }
 
 async function handleModerator(message) {
@@ -737,7 +823,7 @@ async function handleModerator(message) {
 }
 
 /* =========================
-   💩 / ❌ リアクション削除
+    💩 / ❌ リアクション削除
 ========================= */
 async function handlePoopReaction(reaction, user) {
     if (user.bot) return;
@@ -749,7 +835,7 @@ async function handlePoopReaction(reaction, user) {
         : reaction.message;
     if (!message?.webhookId) return;
 
-    const authorId = extractUserId(message.content);
+    const authorId = extractUserId(message.content); // 後方互換: authorIdで判定
     if (!authorId || user.id !== authorId) return;
 
     await message.delete().catch(() => {});
@@ -757,7 +843,7 @@ async function handlePoopReaction(reaction, user) {
 }
 
 /* =========================
-   😿 リアクション → Webhook化
+    😿 リアクション → Webhook化
 ========================= */
 async function handleCryReaction(reaction, user) {
     if (user.bot) return;
@@ -769,10 +855,8 @@ async function handleCryReaction(reaction, user) {
         : reaction.message;
     if (!message) return;
 
-    // すでにWebhook化済みならスキップ
     if (message.webhookId) return;
 
-    // 権限チェック：管理者 or 指定ロール or 送信者本人
     const CRY_ALLOWED_ROLES = ['1495971497016164492'];
     const guild  = message.guild;
     const member = guild ? await guild.members.fetch(user.id).catch(() => null) : null;
@@ -782,24 +866,23 @@ async function handleCryReaction(reaction, user) {
 
     if (!isAdmin && !isAuthor) return;
 
-    // リアクションを除去（UIをきれいに保つ）
     await reaction.remove().catch(() => {});
 
     const files       = await downloadFiles(message.attachments);
     const replyPrefix = await buildReplyPrefix(message);
-    const content     = sanitizeMentions(message.content || '');
+    const content      = sanitizeMentions(message.content || '');
 
     const finalContent = hideUserId(message.author.id) +
                          replyPrefix +
                          (content || '\u200b');
 
+    // ── 削除ボタン廃止: components を渡さない ──
     const opts = {
         content:         finalContent,
         files,
-        components:      hasImageAttachment(message.attachments) ? [buildDeleteButtonRow(message.author.id)] : [],
         username:        message.member?.displayName || message.author.username,
         avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
-        allowedMentions: { parse: [] },
+        allowedMentions: { parse: ['users'] },
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 
@@ -809,4 +892,9 @@ async function handleCryReaction(reaction, user) {
     console.info(`[😿] ${user.tag}(${user.id}) が ${message.author.tag} のメッセージをWebhook化`);
 }
 
-module.exports = { handleModerator, handleImageDeleteButton, handlePoopReaction, handleCryReaction };
+module.exports = {
+    handleModerator,
+    handlePoopReaction,
+    handleCryReaction,
+    // handleImageDeleteButton は廃止のためexport削除
+};
