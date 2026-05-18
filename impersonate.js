@@ -1,21 +1,10 @@
-// impersonate.js — /impersonate コマンド（管理者 または 運用ロール）
+// impersonate.js — /impersonate コマンド（管理者のみ）
 const { EmbedBuilder, MessageFlags } = require('discord.js');
-const { addImpersonate, removeImpersonate, getImpersonateList } = require('./impersonate_manager');
-
-// imp.js と同じ運用ロールIDを指定
-const ALLOWED_ROLE = '1495971497016164492';
+const { addImpersonate, removeImpersonate, getImpersonateList, isImpersonated } = require('./impersonate_manager');
 
 async function handleImpersonate(interaction) {
-    // ★修正4: Administratorハードコードを撤廃し、運用ロールも許可
-    const hasPermission =
-        interaction.member?.permissions.has('Administrator') ||
-        interaction.member?.roles.cache.has(ALLOWED_ROLE);
-
-    if (!hasPermission) {
-        return interaction.reply({ 
-            content: '実行権限がありません（管理者または運用ロールが必要です）。', 
-            flags: [MessageFlags.Ephemeral] 
-        });
+    if (!interaction.member?.permissions.has('Administrator')) {
+        return interaction.reply({ content: '管理者のみ実行できます。', flags: [MessageFlags.Ephemeral] });
     }
 
     const action = interaction.options.getString('action');

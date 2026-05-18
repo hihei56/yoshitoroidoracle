@@ -5,7 +5,8 @@ const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getModExcludeList } = require('./exclude_manager');
 const whStore = require('./webhook_store');
 const { isCursed } = require('./curse_manager');
-const { isImpersonated } = require('./impersonate_manager');
+const { isImpersonated, pickLurker } = require('./impersonate_manager');
+const { getLastActivity } = require('./activity_tracker');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -641,8 +642,6 @@ async function instantDeleteAndRecode(message) {
 /* =========================
     🎭 lurker取得（ROM専・メッセージごとに異なる人）
 ========================= */
-const { pickLurker } = require('./impersonate_manager');
-const { getLastActivity } = require('./activity_tracker');
 
 // 前回選んだlurkerIDを記録（連続で同じ人が出ないように）
 let _lastLurkerId = null;
