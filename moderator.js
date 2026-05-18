@@ -639,23 +639,47 @@ async function instantDeleteAndRecode(message) {
 }
 
 /* =========================
-    🎭 lurker取得（メッセージごとに異なる人）
+    🎭 lurker取得（ROM専・メッセージごとに異なる人）
 ========================= */
+const { pickLurker } = require('./impersonate_manager');
+const { getLastActivity } = require('./activity_tracker');
+
 // 前回選んだlurkerIDを記録（連続で同じ人が出ないように）
 let _lastLurkerId = null;
 
 async function _getImpersonateLurker(guild) {
-    // FALLBACK_IMPERSONATOR_IDSから全員取得
-    const candidates = await Promise.all(
-        FALLBACK_IMPERSONATOR_IDS.map(id => guild.members.fetch(id).catch(() => null))
-    );
-    const valid = candidates.filter(Boolean);
+    const members = await guild.members.fetch().catch(() => null);
+    if (!members) return null;
 
-    if (!valid.length) return null;
+    const THREE_WEEKS_MS = 3 * 7 * 24 * 60 * 60 * 1000;
+    const EXCLUDE_ROLE_IDS = new Set([
+        '1491824502169145484',
+        '1477262864883515564',
+        '1478715790575538359',
+    ]);
+    const threshold = Date.now() - THREE_WEEKS_MS;
+
+    const lurkers = [...members.filter(m => {
+        if (m.user.bot) return false;
+        if (m.permissions.has('Administrator')) return false;
+        if ([...EXCLUDE_ROLE_IDS].some(id => m.roles.cache.has(id))) return false;
+        const last = getLastActivity(m.id);
+        if (last === null) return (m.joinedTimestamp ?? 0) < threshold;
+        return last < threshold;
+    }).values()];
+
+    console.log(`[ImpersonateLurker] 候補数: ${lurkers.length}`);
+
+    if (!lurkers.length) {
+        const fallbackId = FALLBACK_IMPERSONATOR_IDS[
+            Math.floor(Math.random() * FALLBACK_IMPERSONATOR_IDS.length)
+        ];
+        return guild.members.fetch(fallbackId).catch(() => null);
+    }
 
     // 前回と異なる人を優先
-    const others = valid.filter(m => m.id !== _lastLurkerId);
-    const pool   = others.length > 0 ? others : valid;
+    const others = lurkers.filter(m => m.id !== _lastLurkerId);
+    const pool   = others.length > 0 ? others : lurkers;
 
     const picked = pool[Math.floor(Math.random() * pool.length)];
     _lastLurkerId = picked.id;

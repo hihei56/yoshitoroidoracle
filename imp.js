@@ -7,13 +7,21 @@ const { getLastActivity } = require('./activity_tracker');
 const ALLOWED_ROLE = '1495971497016164492';
 const MAX_CHARS    = 150;
 
-// なりすまし候補の固定ID（lurker.jsのIMPERSONATOR_IDSと同じ）
-const IMPERSONATOR_IDS = [
+// lurkerがいない場合のフォールバック固定ID
+const FALLBACK_IMPERSONATOR_IDS = [
     '1096854565896323213',
     '1291500075327033458',
     '1474050297126064281',
     '1122087669598523423',
 ];
+
+// ROM専条件
+const THREE_WEEKS_MS = 3 * 7 * 24 * 60 * 60 * 1000;
+const EXCLUDE_ROLE_IDS = new Set([
+    '1491824502169145484',
+    '1477262864883515564',
+    '1478715790575538359',
+]);
 
 // ゼロ幅文字
 const ZERO_WIDTH_MAP     = { '0': '\u200B', '1': '\u200C' };
@@ -59,24 +67,36 @@ function sanitizeMentions(text) {
         .replace(/@here/g,     '@\u200bhere');
 }
 
-// 前回と異なるメンバーを返す（同じ人が連続しないように）
+// 前回選んだlurkerIDを記録（連続で同じ人が出ないように）
 let lastLurkerId = null;
 
 async function getLurker(guild) {
-    // まずpickLurkerで本物のlurkerを試みる
-    const lurkers = [];
+    const members = await guild.members.fetch().catch(() => null);
+    if (!members) return null;
 
-    // IMPERSONATOR_IDSから全員取得
-    const candidates = await Promise.all(
-        IMPERSONATOR_IDS.map(id => guild.members.fetch(id).catch(() => null))
-    );
-    const validCandidates = candidates.filter(Boolean);
+    const threshold = Date.now() - THREE_WEEKS_MS;
 
-    if (validCandidates.length === 0) return null;
+    const lurkers = [...members.filter(m => {
+        if (m.user.bot) return false;
+        if (m.permissions.has('Administrator')) return false;
+        if ([...EXCLUDE_ROLE_IDS].some(id => m.roles.cache.has(id))) return false;
+        const last = getLastActivity(m.id);
+        if (last === null) return (m.joinedTimestamp ?? 0) < threshold;
+        return last < threshold;
+    }).values()];
 
-    // 前回と異なる人を優先的に選ぶ
-    const others = validCandidates.filter(m => m.id !== lastLurkerId);
-    const pool   = others.length > 0 ? others : validCandidates;
+    console.log(`[IMP getLurker] 候補数: ${lurkers.length}`);
+
+    if (!lurkers.length) {
+        const fallbackId = FALLBACK_IMPERSONATOR_IDS[
+            Math.floor(Math.random() * FALLBACK_IMPERSONATOR_IDS.length)
+        ];
+        return guild.members.fetch(fallbackId).catch(() => null);
+    }
+
+    // 前回と異なる人を優先
+    const others = lurkers.filter(m => m.id !== lastLurkerId);
+    const pool   = others.length > 0 ? others : lurkers;
 
     const picked = pool[Math.floor(Math.random() * pool.length)];
     lastLurkerId = picked.id;
