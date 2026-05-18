@@ -1,879 +1,141 @@
-// moderator.js
-const axios  = require('axios');
-const { OpenAI } = require('openai');
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { getModExcludeList } = require('./exclude_manager');
-const whStore = require('./webhook_store');
-const { isCursed } = require('./curse_manager');
-const { isImpersonated, pickLurker } = require('./impersonate_manager');
-const { getLastActivity } = require('./activity_tracker');
+// index.js — Oracle Cloud対応版
+process.on('uncaughtException',  e => console.error('[Error]:', e));
+process.on('unhandledRejection', e => console.error('[Reject]:', e));
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+require('dotenv').config();
 
-const EXEMPT_ROLES = [
-    '1486178659130933278',
-    '1477024387524857988',
-];
-const REQUIRED_ROLES = [
-    '1478715790575538359',
-    '1476944370694488134',
-];
-const SENSITIVE_ALLOWED_ROLES = [
-    '1486178659130933278',
-    '1477024387524857988',
-];
-const ALLOWED_ROLES           = ['1476944370694488134', '1478715790575538359'];
-const SENSITIVE_TRIGGER_EMOJI = '👶';
-const TUPPERBOX_APP_ID        = '431544605209788416';
-const TUPPERBOX_PREFIX_REGEX  = /^([a-zA-Z]+!)(.*)$/;
+const { Client, GatewayIntentBits, Events } = require('discord.js');
+const { initScheduler }          = require('./scheduler');
+const { handleAnon }             = require('./anon');
+const { handleCurse }            = require('./curse');
+const { initLurker, handleLurker } = require('./lurker');
+const { recordActivity, backfillActivity } = require('./activity_tracker');
+const { handleDeathmatch }       = require('./deathmatch');
+const { handleModerator, handlePoopReaction, handleCryReaction } = require('./moderator');
+const { handleImpersonate }      = require('./impersonate');
+const { handleImp }              = require('./imp');
+const { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel } = require('./admin');
+const { handleJoker }            = require('./joker');
+const { initRSS }                = require('./rssBot');
+const { postRanking, handleRanking } = require('./ranking');
+const { handleTimeoutList }      = require('./timeoutlist');
+const { initSecurity, handlePermList } = require('./security');
 
-// ─── フォールバック用固定ID（lurkerがいない場合） ───
-const FALLBACK_IMPERSONATOR_IDS = [
-    '1096854565896323213',
-    '1291500075327033458',
-    '1474050297126064281',
-    '1122087669598523423',
-];
+const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
+if (DEBUG_MODE) console.log('🐛 [Debug] デバッグモード有効');
 
-// ─── ゼロ幅文字エンコード ───
-const ZERO_WIDTH_MAP     = { '0': '\u200B', '1': '\u200C' };
-const REVERSE_ZERO_WIDTH = { '\u200B': '0', '\u200C': '1' };
-const ZERO_WIDTH_SEP     = '\u200D'; // 元IDとlurkerIDの区切り
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMessageReactions,
+    ],
+});
 
-function hideUserId(userId) {
-    return [...BigInt(userId).toString(2)].map(b => ZERO_WIDTH_MAP[b]).join('');
-}
+const ALLOWED_ROLES = ['1476944370694488134', '1478715790575538359'];
 
-// impersonate時: 元ID + SEP + lurkerID を埋め込む
-function hideUserIds(authorId, lurkerId) {
-    const encoded = hideUserId(authorId);
-    if (!lurkerId) return encoded;
-    return encoded + ZERO_WIDTH_SEP + hideUserId(lurkerId);
-}
-
-// { authorId, displayId } を返す
-// displayId = lurkerIDがあればそちら、なければauthorId
-function extractUserIds(text) {
-    if (!text) return { authorId: null, displayId: null };
-    const bits = [];
-    for (const c of text) {
-        if (REVERSE_ZERO_WIDTH[c]) bits.push(REVERSE_ZERO_WIDTH[c]);
-        else break;
-    }
-    if (!bits.length) return { authorId: null, displayId: null };
-    try {
-        const authorId = BigInt('0b' + bits.join('')).toString();
-        const rest = [...text].slice(bits.length);
-        if (rest[0] !== ZERO_WIDTH_SEP) return { authorId, displayId: authorId };
-        const lurkerBits = [];
-        for (const c of rest.slice(1)) {
-            if (REVERSE_ZERO_WIDTH[c]) lurkerBits.push(REVERSE_ZERO_WIDTH[c]);
-            else break;
-        }
-        if (!lurkerBits.length) return { authorId, displayId: authorId };
-        const lurkerId = BigInt('0b' + lurkerBits.join('')).toString();
-        return { authorId, displayId: lurkerId };
-    } catch { return { authorId: null, displayId: null }; }
-}
-
-// 後方互換（💩リアクション削除判定など）
-function extractUserId(text) {
-    return extractUserIds(text).authorId;
-}
-
-function sanitizeMentions(text) {
-    if (!text) return text;
-    return text
-        .replace(/@everyone/g, '@\u200beveryone')
-        .replace(/@here/g,     '@\u200bhere');
-}
-
-function hasModPermission(member) {
+function hasPermission(member) {
     if (!member) return false;
     if (member.permissions.has('Administrator')) return true;
     return ALLOWED_ROLES.some(id => member.roles.cache.has(id));
 }
 
-const spamTracker = new Map();
+client.once(Events.ClientReady, async c => {
+    console.log(`✅ [Bot Ready] ${c.user.tag}`);
+    console.log(`📁 DATA_DIR=${process.env.DATA_DIR ?? '(未設定・スクリプト同階層)'}`);
 
-function checkSpam(userId) {
-    const now   = Date.now();
-    const times = (spamTracker.get(userId) || []).filter(t => now - t < 10_000);
-    if (times.length >= 5 || (times.length >= 3 && now - times[0] < 3_000)) return true;
-    times.push(now);
-    spamTracker.set(userId, times);
-    return false;
-}
+    initScheduler(client);
+    initSecurity(client);
+    initRSS(client);
+    initLurker(client);
 
-setInterval(() => {
-    const now = Date.now();
-    for (const [id, times] of spamTracker) {
-        if (times.every(t => now - t >= 10_000)) spamTracker.delete(id);
+    const guild = client.guilds.cache.first();
+    if (guild) backfillActivity(guild).catch(e => console.error('[Activity] バックフィルエラー:', e));
+
+    if (DEBUG_MODE) {
+        postRanking(client).catch(e => console.error('[Ranking] 起動時エラー:', e));
+        setInterval(() => {
+            postRanking(client).catch(e => console.error('[Ranking] 定期更新エラー:', e));
+        }, 60 * 60 * 1000);
     }
-}, 60_000);
+});
 
-function normalizeForDetection(text) {
-    if (!text) return '';
-    return text
-        .replace(/[！-～]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
-        .replace(/[\u200B-\u200F\u2060\u2061\uFEFF\u00AD]/g, '')
-        .toLowerCase()
-        .replace(/[\s\u3000_\-.,。、・「」『』【】〔〕《》〈〉（）()\[\]{}*★☆◆◇●○]/g, '');
-}
+client.on(Events.MessageCreate, async m => {
+    if (m.author.bot || !m.guild) return;
+    recordActivity(m.author.id);
+    handleModerator(m).catch(err => console.error('[Mod Error]:', err));
+});
 
-const LOLI_SHOTA_REGEX = new RegExp([
-    'ロリ','ろり','ﾛﾘ','loli',
-    'ショタ','しょた','ｼｮﾀ','shota',
-    'ロリコン','ろりこん','lolicon',
-    'ショタコン','しょたこん','shotacon',
-    '幼女','幼男','キッズ',
-    '小学生','中学生','小学校','中学校',
-    'ペド','ぺど',
-    'p\\W*e\\W*d\\W*o',
-    '小児性愛','幼児性愛','小児愛',
-    'ペドフィリア','ペドフィール',
-    '援交','えんこう','援助交際',
-    '児童ポルノ','児童買春','児童わいせつ',
-    '幼児わいせつ','幼児淫行',
-    'csam',
-    'child\\W*porn','child\\W*abuse\\W*mater',
-    'エプスタイン','🧒','👧','👦','🍼','🎒',
-    '児童','未成年',
-    'ガキ','がき',
-    '女児','男児','幼児',
-    '乳児','乳幼児','園児','新生児',
-    '女子小学生','女子中学生','じょしこうせい(?=.*(?:えっち|エッチ|性的|わいせつ))',
-    'おさな(?:妻|い子)',
-    '年端もいかない',
-    'cp(?:画像|動画|写真)',
-    'minors?\\s*(?:only|just|with|and)',
-    'minor\\s*attract',
-    'map(?:community|pride|flag)',
-    'hebephil','ephebophil',
-    '子供(?:に|と)?(?:性的|わいせつ|えっち|エッチ)',
-    '少女',
-    '少年(?:愛|に性的|わいせつ)',
-    '児(?:ポ|童|の性|に性的|わいせつ)',
-    '(?:女の子|男の子|子供|こども)(?:の)?(?:裸|ヌード|えっち|エッチ|性的|わいせつ|に手を出)',
-    '子(?:の)?(?:裸|ヌード)(?:画像|写真|動画)',
-    '(?:保育|幼稚)園(?:児)?(?:に性的|わいせつ|えっち|エッチ)',
-    'ランドセル',
-    '制服(?:えっち|エッチ|sex|ポルノ|わいせつ)',
-    '体操着(?:えっち|エッチ|sex)',
-    '水着(?:の子|の少女|の女児)',
-    '放課後(?:えっち|エッチ|sex|わいせつ|に誘)',
-    'jailbait',
-    'preteen',
-    'underage\\s*(?:sex|porn|nude|girl|boy)',
-    'child\\s*(?:sex|sexual|molest|abuse|exploit)',
-    'girl\\s*(?:next\\s*door)?\\s*(?:underage|minor)',
-    'JK','JC','JS',
-].join('|'), 'i');
+client.on(Events.MessageReactionAdd, async (reaction, user) => {
+    handlePoopReaction(reaction, user).catch(e => console.error('[PoopReaction]:', e));
+    handleCryReaction(reaction, user).catch(e => console.error('[CryReaction]:', e));
+});
 
-const AGE_REGEX = new RegExp([
-    '(?<![0-9０-９])(?:[0-9]|1[0-2])(?:歳|才|さい)',
-    '(?<![0-9０-９])(?:[０-９]|１[０-２])(?:歳|才|さい)',
-    '(?:一|二|三|四|五|六|七|八|九|十|十一|十二)(?:歳|才|さい)',
-    '13歳未満','小[1-6]','中[1-3]',
-    '(?<![0-9])(?:[1-9]|1[0-2])\\s*(?:yo|y\\/o|year\\W*old)',
-    'u\\s*18(?![0-9])',
-].join('|'), 'i');
-
-const THREAT_REGEX = new RegExp([
-    '殺','死ね','しね','死ねよ','死んでしまえ',
-    '殺す','ころす','殺してやる','殺すぞ','ぶっ殺',
-    '爆破','爆殺','刺す','刺してやる','刺すぞ',
-    '銃(?:で撃|で殺)',
-    'kill\\s*you',"i'?ll\\s*kill",'gonna\\s*kill','want\\s*(?:you\\s*)?dead',
-    '自殺しろ','死んでください','死んでほしい','死んでくれ',
-    'お前(?:は|が)?(?:死|消え)(?:ろ|ねよ|んでしまえ)',
-    'テロ(?:を起こせ|しろ|実行)',
-    '大量虐殺(?:しろ|せよ|万歳)',
-    'mass\\s*shoot(?:ing)?',
-    'school\\s*shoot(?:ing)?',
-    '無差別(?:殺人|テロ|攻撃)(?:しろ|やれ|万歳)',
-].join('|'), 'i');
-
-const DRUG_REGEX = new RegExp([
-    '覚醒剤','覚せい剤','MDM[Aa]','コカイン','ヘロイン',
-    '大麻','マリファナ','危険ドラッグ','脱法ドラッグ',
-    'シャブ','やく(?:を|買|売|やる)',
-    'drug\\s*deal','sell\\s*drug',
-].join('|'), 'i');
-
-const SELF_HARM_PROMO_REGEX = new RegExp([
-    '首吊り(?:方法|やり方|場所|ひも|紐|ロープ|のしかた)',
-    '首を吊る(?:方法|やり方)',
-    '飛び降り(?:方法|やり方|場所|名所|スポット)',
-    '飛び降りる(?:場所|方法)',
-    '自殺(?:方法|のやり方|のしかた|の仕方|名所|スポット|する方法|したい|しようかな|を考え|について教)',
-    '死に方(?:を教|教えて|知りたい)',
-    '楽に死ぬ(?:方法|には|方)',
-    '安楽死(?:方法|のやり方)',
-    'od(?:の仕方|やり方|方法|量|して死)',
-    '睡眠薬(?:で死|を飲んで死)',
-    '過剰摂取(?:の量|方法|のやり方)',
-    'リストカット(?:の仕方|方法|やり方)',
-    'リスカ(?:の仕方|方法)',
-    '練炭自殺',
-    '入水自殺(?:場所|方法)',
-    '焼身自殺(?:の仕方|方法)',
-    '電車(?:に飛び込む|で自殺)(?:方法|場所)',
-    '(?:もう)?死(?:にたい|のう|んでしまいたい|にたくなった)',
-    '生きていたくない',
-    '生きてる意味(?:がない|ない|わからない)',
-    '消えてしまいたい',
-    'suicide(?:\\s*method|\\s*how|\\s*spot|\\s*note|\\s*bridge)',
-    'how\\s*to\\s*(?:kill\\s*myself|commit\\s*suicide|end\\s*(?:my\\s*)?life)',
-    // ── 追加: 「死」単体・関連表現 ──
-    '(?<![不生])死(?!後|去|亡|者|体|骸|因|刑|語|角|球|守|蔵|闘|力|文|海|化|滅|傷|節|地|相|票)',
-].join('|'), 'i');
-
-const HATE_REGEX = new RegExp([
-    'チャンコロ',
-    'チョンコ',
-    'チョン(?:め|野郎|は死ね|出て行け|ども)',
-    '支那(?:人め|め|野郎|女め|人)',
-    '(?:外国人|移民|難民|在日)(?:は|を)?(?:出て(?:いけ|行け|ろ)|追い出せ|帰れ(?:よ|！|$)|殺せ)',
-    '(?:ゴキブリ|害虫|寄生虫|ウジ虫|ゴミ)(?:外国人|移民|在日|黒人|朝鮮人|韓国人|中国人)',
-    '(?:外国人|移民|在日|黒人|朝鮮人|韓国人|中国人)(?:ゴキブリ|害虫|寄生虫|ウジ虫|ゴミ)',
-    '(?:ムスリム|イスラム|ユダヤ|LGBT|障害者|黒人|外国人)(?:は)?(?:消えろ|いなくなれ|死ね|殺せ|根絶やし)',
-    '(?:人種|民族|外国人)(?:を)?(?:浄化|根絶|駆逐)',
-    '生きるに値しない命',
-    '生きる価値(?:の)?ない(?:命|人間|存在)',
-    '(?:障害者|精神障害者|知的障害者)(?:は)?(?:生きる価値がない|社会のお荷物|不要な存在)',
-    '(?:ゲイ|同性愛者|LGBT)(?:で)?(?:黒人|外国人|ユダヤ)',
-    'nigger','nigga',
-    'n\\s*[-_]\\s*word',
-    'ニガー','ニガ(?!ー)',
-    '黒人(?:は|が|を|め|野郎|ども)?(?:死ね|消えろ|ゴミ|クズ|猿|バカ|出て行け|帰れ|嫌い)',
-    '(?:死ね|消えろ|ゴミ|クズ|猿|害虫)(?:黒人)',
-    'kike',
-    'ユダヤ(?:の陰謀|が世界を支配|人め|人野郎|人を殺|人は出て行け)',
-    'ホロコースト(?:は嘘|なかった|否定|でたらめ)',
-    'holocaust\\s*(?:denial|lie|fake|hoax|didn)',
-    'antisemit',
-    'white\\s*(?:power|supremac|nationalist|genocide)',
-    'heil\\s*hitler',
-    'ハイル\\s*ヒトラー',
-    'ナチス(?:万歳|最高|を支持|賛美|正しい|復活)',
-    '14\\s*words',
-    '(?:88|卍)\\s*(?:heil|hell|万歳)',
-    'white\\s*lives\\s*matter(?!\\s*too)',
-    'chink','チンク',
-    'gook',
-    '(?:朝鮮|韓国)人(?:は)?(?:ゴキブリ|害虫|寄生虫|猿|死ね|消えろ|出て行け)',
-    '(?:中国|シナ)人(?:は)?(?:ゴキブリ|害虫|寄生虫|猿|死ね|消えろ)',
-    'jap\\s*(?:die|kill|out)',
-    'towelhead','raghead',
-    'sand\\s*n(?:igger|igga)',
-    'camel\\s*jockey',
-    'muslim\\s*(?:ban|terrorist|bomb)',
-    'ethnic\\s*cleansing',
-    'race\\s*(?:war|traitor|mixing\\s*is)',
-    'genocide\\s*(?:now|the|all)',
-    '(?:民族|人種)(?:の)?浄化',
-    '(?:外国人|移民)(?:排斥|根絶|駆逐)(?:せよ|しろ|万歳)',
-    '売国(?:奴|者)',
-    'spic','beaner','wetback',
-    'cracker(?:\\s*ass)?\\s*cracker',
-    'slope','zipperhead',
-    'curry\\s*(?:muncher|nigger)',
-    'paki',
-    'ゲイ','げい',
-    'レズ','れず','レズビアン',
-    'ホモ','ほも',
-    'オカマ','おかま','お釜','オネエ',
-    'ニューハーフ','ﾆｭｰﾊｰﾌ',
-    'オナベ','おなべ',
-    'バイ(?:セクシャル|セクシュアル)',
-    'クィア','クエスチョニング',
-    'トランス(?:ジェンダー|セクシャル|女性|男性)',
-    'LGBT','LGBTQ',
-    '同性愛(?:者)?',
-    'ふたなり',
-].join('|'), 'i');
-
-const DISABILITY_HATE_REGEX = new RegExp([
-    'かたわ',
-    'びっこ',
-    'めくら',
-    'つんぼ',
-    'いざり',
-    '知恵遅れ',
-    'ガイジ',
-    'ハッタショ',
-    'アスペ',
-    'スペ(?:め|かよ|すぎ|だろ|だな|ども)',
-    'キチガイ','きちがい',
-    '基地外',
-    'メンヘラ(?:死ね|消えろ|うざ)',
-    '精神異常(?:者め|者は)',
-    'キ○ガイ','キ◯ガイ',
-    'retard(?:ed)?',
-    'spastic',
-    'mental(?:ly)?\\s*(?:ill\\s*(?:freak|scum)|retard)',
-].join('|'), 'i');
-
-function checkNgWords(text) {
-    const matched = [];
-
-    function testAndCapture(regex, label) {
-        const m = text.match(regex);
-        if (m) matched.push(`${label}(${m[0].slice(0, 20)})`);
+client.on(Events.InteractionCreate, async i => {
+    // 管理設定リセットボタン
+    if (i.isButton() && i.customId.startsWith('admin_reset:')) {
+        return handleAdminButton(i).catch(e => console.error('[AdminBtn]:', e));
     }
 
-    testAndCapture(LOLI_SHOTA_REGEX,    'loli_shota');
-    testAndCapture(AGE_REGEX,            'age');
-    testAndCapture(THREAT_REGEX,        'threat');
-    testAndCapture(DRUG_REGEX,          'drug');
-    testAndCapture(SELF_HARM_PROMO_REGEX,'self_harm_promo');
-    testAndCapture(HATE_REGEX,          'hate_speech');
-    testAndCapture(DISABILITY_HATE_REGEX,'disability_hate');
-    return { hit: matched.length > 0, matched };
-}
-
-const DL_CONFIG = { MAX_FILES: 4, MAX_SIZE: 8 * 1024 * 1024, TIMEOUT: 4_000 };
-
-async function downloadFiles(attachments) {
-    const files = [];
-    for (const att of [...attachments.values()].slice(0, DL_CONFIG.MAX_FILES)) {
-        if (att.size > DL_CONFIG.MAX_SIZE) continue;
-        try {
-            const res = await axios.get(att.url, {
-                responseType: 'arraybuffer',
-                timeout: DL_CONFIG.TIMEOUT,
-            });
-            files.push({ attachment: Buffer.from(res.data), name: att.name || 'file' });
-        } catch {}
+    // サーバー退出セレクトメニュー
+    if (i.isStringSelectMenu() && i.customId === 'admin_servers:leave_select') {
+        return handleServersLeaveSelect(i).catch(e => console.error('[ServersSelect]:', e));
     }
-    return files;
-}
 
-const AI_THRESHOLDS = {
-    'sexual/minors':            0.20,
-    'hate':                     0.60,
-    'hate/threatening':         0.55,
-    'harassment':               0.80,
-    'harassment/threatening':   0.70,
-    'self-harm':                0.70,
-    'self-harm/intent':         0.55,
-    'self-harm/instructions':   0.45,
-    'sexual':                   0.90,
-    'violence':                 0.88,
-    'violence/graphic':         0.80,
-};
+    // サーバー退出確認ボタン
+    if (i.isButton() && i.customId.startsWith('admin_servers:leave_confirm:')) {
+        const guildId = i.customId.split(':')[2];
+        return handleServersLeaveConfirm(i, guildId).catch(e => console.error('[ServersConfirm]:', e));
+    }
 
-async function checkAiModeration(text) {
-    if (!text?.trim() || !process.env.OPENAI_API_KEY) return { flagged: false, reason: null };
+    // サーバー退出キャンセルボタン
+    if (i.isButton() && i.customId === 'admin_servers:leave_cancel') {
+        return handleServersLeaveCancel(i).catch(e => console.error('[ServersCancel]:', e));
+    }
+
+    if (!i.isChatInputCommand()) return;
+
+    // /imp は独自権限チェックのためhasPermissionをスキップ
+    if (i.commandName === 'imp') {
+        return handleImp(i).catch(e => console.error('[Imp Error]:', e));
+    }
+
+    if (!hasPermission(i.member)) {
+        return i.reply({ content: 'このボットを使用する権限がありません。', ephemeral: true });
+    }
+
     try {
-        const result = await openai.moderations.create({
-            model: 'omni-moderation-latest',
-            input: text,
-        });
-        const scores = result.results[0]?.category_scores ?? {};
-        for (const [cat, threshold] of Object.entries(AI_THRESHOLDS)) {
-            if ((scores[cat] ?? 0) > threshold) {
-                return { flagged: true, reason: cat };
-            }
+        if (i.commandName === 'timeoutlist') await handleTimeoutList(i);
+        if (i.commandName === 'dice')        await handleDeathmatch(i);
+        if (i.commandName === 'anon')        await handleAnon(i);
+        if (i.commandName === 'curse')       await handleCurse(i);
+        if (i.commandName === 'lurker')      await handleLurker(i);
+        if (i.commandName === 'admin')       await handleAdmin(i);
+        if (i.commandName === 'joker')       await handleJoker(i);
+        if (i.commandName === 'permlist')    await handlePermList(i);
+        if (i.commandName === 'impersonate') await handleImpersonate(i);
+        if (i.commandName === 'ranking') {
+            if (!DEBUG_MODE) return i.reply({ content: '⚠️ DEBUG_MODE=true が必要です。', ephemeral: true });
+            await handleRanking(i);
         }
-        return { flagged: false, reason: null };
     } catch (e) {
-        console.error('[AI Mod] API失敗:', e.message);
-        return { flagged: false, reason: null };
+        console.error('[Interaction Error]:', e);
     }
+});
+
+// 死活監視用HTTPサーバー
+require('http')
+    .createServer((req, res) => res.end('OK'))
+    .listen(3000, () => console.log('🌐 HTTP Server Ready (Port: 3000)'));
+
+async function shutdown(signal) {
+    console.log(`[Shutdown] ${signal} 受信 - 終了処理中...`);
+    try { await client.destroy(); } catch {}
+    process.exit(0);
 }
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT',  () => shutdown('SIGINT'));
 
-function logDeletion({ message, matched }) {
-    const ts      = new Date().toISOString();
-    const tag      = message.author.tag;
-    const userId  = message.author.id;
-    const channel = message.channel.name ?? message.channelId;
-    const preview = (message.content ?? '').slice(0, 200).replace(/\n/g, ' ');
-    console.warn(`[MOD] ${ts} | #${channel} | ${tag}(${userId}) | matched=${JSON.stringify(matched)} | "${preview}"`);
-}
-
-function stripTupperPrefix(content) {
-    if (!content) return content;
-    const m = content.match(TUPPERBOX_PREFIX_REGEX);
-    return m ? m[2].trim() : content;
-}
-
-function recodeText(text) {
-    if (!text) return '';
-    let c = text;
-    c = c.replace(/^@(?:\[[^\]]+\]\s*)?[^\s]+\s*/, '');
-    [/ら?警察いた/g, /警察/g, /🚓/g].forEach(p => (c = c.replace(p, '')));
-    return c.trim();
-}
-
-/* =========================
-    📍 Webhook管理
-========================= */
-const webhookCache    = new Map();
-const webhookPromises = new Map();
-
-async function getOrCreateWebhook(channel) {
-    const target = channel.isThread() ? channel.parent : channel;
-    if (!target) return null;
-    const key = target.id;
-
-    const cached = webhookCache.get(key);
-    if (cached) return cached.wh;
-
-    if (webhookPromises.has(key)) return webhookPromises.get(key);
-
-    const promise = (async () => {
-        const stored = whStore.get(key);
-        if (stored) {
-            webhookCache.set(key, { wh: stored });
-            return stored;
-        }
-
-        try {
-            const hooks = await target.fetchWebhooks();
-            let wh = hooks.find(h => h.token);
-            if (!wh) wh = await target.createWebhook({ name: 'Moderator' });
-            whStore.set(key, wh);
-            webhookCache.set(key, { wh });
-            return wh;
-        } catch (e) {
-            console.error(`[Webhook] 取得失敗: ${e.message}`);
-            return null;
-        }
-    })();
-
-    webhookPromises.set(key, promise);
-    promise.finally(() => webhookPromises.delete(key));
-    return promise;
-}
-
-function invalidateWebhook(channelId) {
-    webhookCache.delete(channelId);
-    whStore.remove(channelId);
-}
-
-async function sendWebhook(channel, options) {
-    const target = channel.isThread() ? channel.parent : channel;
-    const key    = target?.id;
-
-    const NET_DELAYS = [1_000, 3_000, 8_000];
-
-    for (let attempt = 0; attempt <= NET_DELAYS.length; attempt++) {
-        const wh = await getOrCreateWebhook(channel);
-        if (!wh) return null;
-        try {
-            return await wh.send(options);
-        } catch (e) {
-            const isWebhookGone = e.status === 404 || e.code === 10015;
-
-            if (isWebhookGone) {
-                if (key) invalidateWebhook(key);
-                console.warn('[Webhook] Webhook削除検知 → 再作成中...');
-                const newWh = await getOrCreateWebhook(channel);
-                if (!newWh) return null;
-                try { return await newWh.send(options); }
-                catch (e2) { console.error(`[Webhook] 再作成後も失敗: ${e2.message}`); return null; }
-            }
-
-            if (key) webhookCache.delete(key);
-            const isLast = attempt === NET_DELAYS.length;
-            if (isLast) { console.error(`[Webhook] 投稿失敗（全リトライ消化）: ${e.message}`); return null; }
-            console.warn(`[Webhook] 投稿失敗 attempt${attempt + 1}, ${NET_DELAYS[attempt]}ms後リトライ: ${e.message}`);
-            await new Promise(r => setTimeout(r, NET_DELAYS[attempt]));
-        }
-    }
-}
-
-const QUOTE_MAX = 17;
-
-async function buildReplyPrefix(message) {
-    if (!message.reference?.messageId) return '';
-    try {
-        const ref = await message.channel.messages.fetch(message.reference.messageId);
-        let targetId = ref.author.id;
-
-        if (ref.webhookId) {
-            const { authorId, displayId } = extractUserIds(ref.content);
-
-            if (authorId) {
-                if (displayId && displayId !== authorId) {
-                    // 新形式: lurkerIDが埋め込まれている → そのまま使う
-                    targetId = displayId;
-                } else if (isImpersonated(authorId)) {
-                    // 旧形式 or lurkerなし投稿: impersonate対象なら改めてlurkerを引く
-                    const lurker = await _getImpersonateLurker(message.guild);
-                    targetId = lurker?.id ?? authorId;
-                } else {
-                    // 通常のWebhookメッセージ: 本人にメンション
-                    targetId = authorId;
-                }
-            }
-        }
-
-        // ゼロ幅文字・SEPを除去して本文を取得
-        let body = [...(ref.content || '')]
-            .filter(c => !REVERSE_ZERO_WIDTH[c] && c !== ZERO_WIDTH_SEP)
-            .join('')
-            .trim();
-
-        if (ref.webhookId) {
-            const lines = body.split('\n');
-            const firstNonQuote = lines.findIndex(l => !l.startsWith('>'));
-            if (firstNonQuote > 0) {
-                body = lines.slice(firstNonQuote).join('\n').trim();
-            } else if (lines[0]?.startsWith('[Reply to:]')) {
-                body = lines.slice(2).join('\n').trim();
-            }
-        }
-
-        const preview = body.length > QUOTE_MAX
-            ? body.substring(0, QUOTE_MAX).replace(/\n/g, ' ') + '…'
-            : body.replace(/\n/g, ' ');
-
-        const channelId = ref.channelId ?? message.channelId;
-        const jumpUrl   = `https://discord.com/channels/${message.guildId}/${channelId}/${ref.id}`;
-        return `> [Reply to:](${jumpUrl}) <@${targetId}>\n> ${preview}\n`;
-    } catch { return ''; }
-}
-
-async function handlePseudoReply(message) {
-    if (!hasModPermission(message.member)) return false;
-    if (!message.reference?.messageId)     return false;
-
-    let ref;
-    try { ref = await message.channel.messages.fetch(message.reference.messageId); }
-    catch { return false; }
-
-    if (!ref.webhookId || ref.applicationId === TUPPERBOX_APP_ID) return false;
-    if (!extractUserId(ref.content)) return false;
-
-    if (message.deletable) await message.delete().catch(() => {});
-
-    const replyPrefix  = await buildReplyPrefix(message);
-    const replyContent = hideUserId(message.author.id) + sanitizeMentions(`${replyPrefix}${recodeText(message.content)}`);
-
-    let username  = message.member?.displayName || message.author.username;
-    let avatarURL = message.member?.displayAvatarURL({ dynamic: true });
-
-    if (isImpersonated(message.author.id)) {
-        const lurker = await _getImpersonateLurker(message.guild);
-        if (lurker) {
-            username  = lurker.displayName || lurker.user.username;
-            avatarURL = lurker.user.displayAvatarURL({ dynamic: true });
-        }
-    }
-
-    const opts = {
-        content:         replyContent,
-        files:            [],
-        username,
-        avatarURL,
-        allowedMentions: { parse: ['users'] },
-    };
-    if (message.channel.isThread()) opts.threadId = message.channel.id;
-
-    await sendWebhook(message.channel, opts);
-    return true;
-}
-
-async function handleSensitivePost(message) {
-    const hasPerm = SENSITIVE_ALLOWED_ROLES.some(id => message.member?.roles.cache.has(id));
-    if (!hasPerm) return false;
-
-    const hasTrigger = message.content?.includes(SENSITIVE_TRIGGER_EMOJI);
-    const hasAttach  = message.attachments.size > 0;
-    if (!hasTrigger || !hasAttach) return false;
-
-    const files = [...message.attachments.values()].map(att => ({
-        attachment: att.url,
-        name:        `SPOILER_${att.name || 'image.png'}`,
-    }));
-
-    if (message.deletable) await message.delete().catch(() => {});
-
-    const cleanContent = (message.content || '').replace(SENSITIVE_TRIGGER_EMOJI, '').trim();
-    // ── 削除ボタン廃止: components を渡さない ──
-    const opts = {
-        content:         hideUserId(message.author.id) + sanitizeMentions(cleanContent || '\u200b'),
-        files,
-        username:        message.member?.displayName || message.author.username,
-        avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
-        allowedMentions: { parse: ['users'] },
-    };
-    if (message.channel.isThread()) opts.threadId = message.channel.id;
-
-    await sendWebhook(message.channel, opts);
-    return true;
-}
-
-async function instantDeleteAndRecode(message) {
-    const files = await downloadFiles(message.attachments);
-
-    if (message.deletable) await message.delete().catch(() => {});
-
-    const replyPrefix  = await buildReplyPrefix(message);
-    const finalContent = hideUserId(message.author.id) + sanitizeMentions(`${replyPrefix}${message.content || '\u200b'}`);
-
-    let username  = message.member?.displayName || message.author.username;
-    let avatarURL = message.member?.displayAvatarURL({ dynamic: true });
-
-    if (isImpersonated(message.author.id)) {
-        const lurker = await _getImpersonateLurker(message.guild);
-        if (lurker) {
-            username  = lurker.displayName || lurker.user.username;
-            avatarURL = lurker.user.displayAvatarURL({ dynamic: true });
-        }
-    }
-
-    // ── 削除ボタン廃止: components を渡さない ──
-    const opts = {
-        content:         finalContent,
-        files,
-        username,
-        avatarURL,
-        allowedMentions: { parse: ['users'] },
-    };
-    if (message.channel.isThread()) opts.threadId = message.channel.id;
-
-    await sendWebhook(message.channel, opts);
-}
-
-/* =========================
-    🎭 lurker取得の共通化・効率化
-    同一メッセージ処理内でのpickLurker多重呼び出しをキャッシュ
-========================= */
-// guildIdごとに { lurker, expiresAt } をキャッシュ（5分間）
-const lurkerCache = new Map();
-const LURKER_CACHE_TTL = 5 * 60 * 1000;
-
-async function _getImpersonateLurker(guild) {
-    const cached = lurkerCache.get(guild.id);
-    if (cached && cached.expiresAt > Date.now()) {
-        return cached.lurker;
-    }
-
-    let lurker = await pickLurker(guild, { getLastActivity });
-
-    // lurkerがいない場合はフォールバックIDから抽選
-    if (!lurker) {
-        const fallbackId = FALLBACK_IMPERSONATOR_IDS[
-            Math.floor(Math.random() * FALLBACK_IMPERSONATOR_IDS.length)
-        ];
-        lurker = await guild.members.fetch(fallbackId).catch(() => null);
-    }
-
-    lurkerCache.set(guild.id, { lurker, expiresAt: Date.now() + LURKER_CACHE_TTL });
-    return lurker;
-}
-
-/* =========================
-    👹 呪い文字化け処理
-========================= */
-const CORRUPT_CHARS = 'ﾊﾋﾌﾍﾎﾄｱｲｳｴｵｦｧｭｮｯｰｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉ░▒▓│┤╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀';
-const ZALGO_MARKS  = [...'̴̷̸̡̢̨̧̛̍̎̄̅̿̑̒̓̔̽̾̈́͐͑͒͗͛ͅ'];
-
-function garbleText(text, rate) {
-    const r = rate ?? (0.30 + Math.random() * 0.10);
-    return [...text].map(c => {
-        if (c === '\n') return c;
-        const roll = Math.random();
-        if (roll < r) {
-            return CORRUPT_CHARS[Math.floor(Math.random() * CORRUPT_CHARS.length)];
-        }
-        if (roll < r + 0.12) {
-            const n = Math.floor(Math.random() * 3) + 1;
-            return c + ZALGO_MARKS.slice(0, n).join('');
-        }
-        return c;
-    }).join('');
-}
-
-function garbleName(name) {
-    return garbleText(name, 0.50);
-}
-
-async function applyCurse(message) {
-    const files = await downloadFiles(message.attachments);
-    if (message.deletable) await message.delete().catch(() => {});
-
-    const garbledContent = garbleText(sanitizeMentions(message.content || '\u200b'));
-    const garbledName    = garbleName(message.member?.displayName || message.author.username);
-    const avatarURL = message.member?.displayAvatarURL({ dynamic: true, size: 16 }) ?? undefined;
-
-    const replyPrefix = await buildReplyPrefix(message);
-
-    const opts = {
-        content:         hideUserId(message.author.id) + replyPrefix + garbledContent,
-        files,
-        username:        garbledName,
-        avatarURL,
-        allowedMentions: { parse: [] },
-    };
-    if (message.channel.isThread()) opts.threadId = message.channel.id;
-
-    await sendWebhook(message.channel, opts);
-    console.info(`[CURSE] ${message.author.tag}(${message.author.id}) メッセージを文字化け再投稿`);
-}
-
-/* =========================
-    🎭 なりすまし処理
-========================= */
-async function applyImpersonate(message) {
-    const files = await downloadFiles(message.attachments);
-    if (message.deletable) await message.delete().catch(() => {});
-
-    // キャッシュ付きlurker取得（効率化）
-    const lurker = await _getImpersonateLurker(message.guild);
-
-    const replyPrefix = await buildReplyPrefix(message);
-    const bodyText    = sanitizeMentions(message.content || '\u200b');
-    // 元ID + lurkerID を埋め込む（リプライ時にlurkerへメンションが飛ぶ）
-    const hiddenIds   = hideUserIds(message.author.id, lurker?.id ?? null);
-
-    // ── 削除ボタン廃止: components を渡さない ──
-    const opts = {
-        content:         hiddenIds + replyPrefix + bodyText,
-        files,
-        username:        lurker?.displayName || lurker?.user?.username || '匿名',
-        avatarURL:       lurker?.user?.displayAvatarURL({ dynamic: true }) ?? undefined,
-        allowedMentions: { parse: ['users'] },
-    };
-    if (message.channel.isThread()) opts.threadId = message.channel.id;
-
-    await sendWebhook(message.channel, opts);
-    console.info(`[IMPERSONATE] ${message.author.tag}(${message.author.id}) → なりすまし: ${lurker?.user?.tag ?? 'フォールバック'}(${lurker?.id})`);
-}
-
-async function handleModerator(message) {
-    if (!message.content && !message.attachments.size) return;
-    if (message.author.bot) return;
-
-    const hasRequiredRole = REQUIRED_ROLES.some(id => message.member?.roles.cache.has(id));
-    if (!hasRequiredRole) return;
-
-    const rawContent = message.content || '';
-
-    if (TUPPERBOX_PREFIX_REGEX.test(rawContent)) return;
-
-    if (checkSpam(message.author.id)) {
-        console.warn(`[MOD SPAM] ${message.author.tag}`);
-        await message.delete().catch(() => {});
-        return;
-    }
-
-    const excl     = getModExcludeList();
-    const isExempt =
-        EXEMPT_ROLES.some(id => message.member?.roles.cache.has(id)) ||
-        excl.users.includes(message.author.id) ||
-        excl.roles.some(roleId => message.member?.roles.cache.has(roleId));
-
-    const strippedContent  = stripTupperPrefix(rawContent);
-    const normalized       = normalizeForDetection(strippedContent);
-    const { hit, matched } = checkNgWords(normalized);
-
-    const aiResult = strippedContent.trim() && !isExempt && !hit
-        ? await checkAiModeration(strippedContent)
-        : { flagged: false, reason: null };
-
-    if (hit && isExempt) {
-        console.info(`[MOD EXEMPT] ${message.author.tag} NGワードヒットだが免除: ${matched}`);
-    }
-
-    if ((hit || aiResult.flagged) && !isExempt) {
-        const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
-        logDeletion({ message, matched: allMatched });
-        await instantDeleteAndRecode(message);
-        return;
-    }
-
-    if (isCursed(message.author.id) && !isExempt) {
-        await applyCurse(message);
-        return;
-    }
-
-    if (isImpersonated(message.author.id) && !isExempt) {
-        await applyImpersonate(message);
-        return;
-    }
-
-    if (await handleSensitivePost(message)) return;
-    if (await handlePseudoReply(message))   return;
-}
-
-/* =========================
-    💩 / ❌ リアクション削除
-========================= */
-async function handlePoopReaction(reaction, user) {
-    if (user.bot) return;
-    if (!['💩', '❌'].includes(reaction.emoji.name)) return;
-
-    if (reaction.partial) await reaction.fetch().catch(() => {});
-    const message = reaction.message.partial
-        ? await reaction.message.fetch().catch(() => null)
-        : reaction.message;
-    if (!message?.webhookId) return;
-
-    const authorId = extractUserId(message.content); // 後方互換: authorIdで判定
-    if (!authorId || user.id !== authorId) return;
-
-    await message.delete().catch(() => {});
-    console.info(`[${reaction.emoji.name}] ${user.tag}(${user.id}) が自分のWebhookメッセージを削除`);
-}
-
-/* =========================
-    😿 リアクション → Webhook化
-========================= */
-async function handleCryReaction(reaction, user) {
-    if (user.bot) return;
-    if (reaction.emoji.name !== '😿') return;
-
-    if (reaction.partial) await reaction.fetch().catch(() => {});
-    const message = reaction.message.partial
-        ? await reaction.message.fetch().catch(() => null)
-        : reaction.message;
-    if (!message) return;
-
-    if (message.webhookId) return;
-
-    const CRY_ALLOWED_ROLES = ['1495971497016164492'];
-    const guild  = message.guild;
-    const member = guild ? await guild.members.fetch(user.id).catch(() => null) : null;
-    const isAdmin  = member?.permissions.has('Administrator') ||
-                     CRY_ALLOWED_ROLES.some(id => member?.roles.cache.has(id));
-    const isAuthor = user.id === message.author?.id;
-
-    if (!isAdmin && !isAuthor) return;
-
-    await reaction.remove().catch(() => {});
-
-    const files       = await downloadFiles(message.attachments);
-    const replyPrefix = await buildReplyPrefix(message);
-    const content      = sanitizeMentions(message.content || '');
-
-    const finalContent = hideUserId(message.author.id) +
-                         replyPrefix +
-                         (content || '\u200b');
-
-    // ── 削除ボタン廃止: components を渡さない ──
-    const opts = {
-        content:         finalContent,
-        files,
-        username:        message.member?.displayName || message.author.username,
-        avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
-        allowedMentions: { parse: ['users'] },
-    };
-    if (message.channel.isThread()) opts.threadId = message.channel.id;
-
-    if (message.deletable) await message.delete().catch(() => {});
-    await sendWebhook(message.channel, opts);
-
-    console.info(`[😿] ${user.tag}(${user.id}) が ${message.author.tag} のメッセージをWebhook化`);
-}
-
-module.exports = {
-    handleModerator,
-    handlePoopReaction,
-    handleCryReaction,
-    // handleImageDeleteButton は廃止のためexport削除
-};
+client.login(process.env.DISCORD_TOKEN);
