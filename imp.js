@@ -7,24 +7,47 @@ const { getLastActivity } = require('./activity_tracker');
 const ALLOWED_ROLE = '1495971497016164492';
 const MAX_CHARS    = 150;
 
-const FALLBACK_IMPERSONATOR_IDS = [
+// なりすまし候補の固定ID（lurker.jsのIMPERSONATOR_IDSと同じ）
+const IMPERSONATOR_IDS = [
     '1096854565896323213',
     '1291500075327033458',
     '1474050297126064281',
     '1122087669598523423',
 ];
 
-// ゼロ幅文字（moderator.jsと同じ定義）
-const ZERO_WIDTH_MAP = { '0': '\u200B', '1': '\u200C' };
-const ZERO_WIDTH_SEP = '\u200D';
+// ゼロ幅文字
+const ZERO_WIDTH_MAP     = { '0': '\u200B', '1': '\u200C' };
+const REVERSE_ZERO_WIDTH = { '\u200B': '0', '\u200C': '1' };
+const ZERO_WIDTH_SEP     = '\u200D';
 
 function encodeId(id) {
     return [...BigInt(id).toString(2)].map(b => ZERO_WIDTH_MAP[b]).join('');
 }
 
-// 実行者ID + lurkerID を先頭に埋め込む
-// → 💩リアクションで実行者本人が削除可能
-// → リプライ時にlurkerにメンションが飛ぶ
+// Webhookメッセージ先頭のゼロ幅文字から { authorId, displayId } を取得
+function extractUserIds(text) {
+    if (!text) return { authorId: null, displayId: null };
+    const bits = [];
+    for (const c of text) {
+        if (REVERSE_ZERO_WIDTH[c]) bits.push(REVERSE_ZERO_WIDTH[c]);
+        else break;
+    }
+    if (!bits.length) return { authorId: null, displayId: null };
+    try {
+        const authorId = BigInt('0b' + bits.join('')).toString();
+        const rest = [...text].slice(bits.length);
+        if (rest[0] !== ZERO_WIDTH_SEP) return { authorId, displayId: authorId };
+        const lurkerBits = [];
+        for (const c of rest.slice(1)) {
+            if (REVERSE_ZERO_WIDTH[c]) lurkerBits.push(REVERSE_ZERO_WIDTH[c]);
+            else break;
+        }
+        if (!lurkerBits.length) return { authorId, displayId: authorId };
+        const lurkerId = BigInt('0b' + lurkerBits.join('')).toString();
+        return { authorId, displayId: lurkerId };
+    } catch { return { authorId: null, displayId: null }; }
+}
+
 function buildHiddenPrefix(authorId, lurkerId) {
     return encodeId(authorId) + ZERO_WIDTH_SEP + encodeId(lurkerId);
 }
@@ -36,18 +59,28 @@ function sanitizeMentions(text) {
         .replace(/@here/g,     '@\u200bhere');
 }
 
-// キャッシュなし: 毎回pickLurkerを呼んでランダムに変える
+// 前回と異なるメンバーを返す（同じ人が連続しないように）
+let lastLurkerId = null;
+
 async function getLurker(guild) {
-    let lurker = await pickLurker(guild, { getLastActivity });
+    // まずpickLurkerで本物のlurkerを試みる
+    const lurkers = [];
 
-    if (!lurker) {
-        const fallbackId = FALLBACK_IMPERSONATOR_IDS[
-            Math.floor(Math.random() * FALLBACK_IMPERSONATOR_IDS.length)
-        ];
-        lurker = await guild.members.fetch(fallbackId).catch(() => null);
-    }
+    // IMPERSONATOR_IDSから全員取得
+    const candidates = await Promise.all(
+        IMPERSONATOR_IDS.map(id => guild.members.fetch(id).catch(() => null))
+    );
+    const validCandidates = candidates.filter(Boolean);
 
-    return lurker;
+    if (validCandidates.length === 0) return null;
+
+    // 前回と異なる人を優先的に選ぶ
+    const others = validCandidates.filter(m => m.id !== lastLurkerId);
+    const pool   = others.length > 0 ? others : validCandidates;
+
+    const picked = pool[Math.floor(Math.random() * pool.length)];
+    lastLurkerId = picked.id;
+    return picked;
 }
 
 const webhookCache = new Map();
@@ -80,7 +113,7 @@ async function handleImp(interaction) {
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     try {
-        // ── lurker取得（毎回ランダム） ──
+        // ── lurker取得（毎回異なる人） ──
         const lurker = await getLurker(guild);
         if (!lurker) {
             return interaction.editReply('なりすまし対象が見つかりませんでした。');
@@ -105,13 +138,24 @@ async function handleImp(interaction) {
             const messageId  = replyLink.split('/').pop();
             const repliedMsg = await channel.messages.fetch(messageId).catch(() => null);
             if (repliedMsg) {
-                const authorName = repliedMsg.webhookId
-                    ? repliedMsg.author.username
-                    : `<@${repliedMsg.author.id}>`;
-                const rawQuote  = (repliedMsg.content || '').replace(/\n/g, ' ');
-                const quoteLine = rawQuote.length > QUOTE_MAX
-                    ? rawQuote.slice(0, QUOTE_MAX) + '…'
-                    : rawQuote;
+                let authorName;
+                if (repliedMsg.webhookId) {
+                    // Webhookメッセージ: ゼロ幅文字からdisplayId（lurkerID）を取得
+                    const { displayId } = extractUserIds(repliedMsg.content);
+                    authorName = displayId ? `<@${displayId}>` : repliedMsg.author.username;
+                } else {
+                    authorName = `<@${repliedMsg.author.id}>`;
+                }
+
+                // 本文からゼロ幅文字・SEPを除去してプレビュー生成
+                const cleanBody = [...(repliedMsg.content || '')]
+                    .filter(c => !REVERSE_ZERO_WIDTH[c] && c !== ZERO_WIDTH_SEP)
+                    .join('')
+                    .replace(/\n/g, ' ')
+                    .trim();
+                const quoteLine = cleanBody.length > QUOTE_MAX
+                    ? cleanBody.slice(0, QUOTE_MAX) + '…'
+                    : cleanBody;
                 replyPrefix = `**[Reply to](${replyLink}) : ${authorName}**\n`
                     + (quoteLine ? `> ${quoteLine}\n` : '');
             }

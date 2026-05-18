@@ -5,8 +5,7 @@ const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getModExcludeList } = require('./exclude_manager');
 const whStore = require('./webhook_store');
 const { isCursed } = require('./curse_manager');
-const { isImpersonated, pickLurker } = require('./impersonate_manager');
-const { getLastActivity } = require('./activity_tracker');
+const { isImpersonated } = require('./impersonate_manager');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -640,31 +639,27 @@ async function instantDeleteAndRecode(message) {
 }
 
 /* =========================
-    🎭 lurker取得の共通化・効率化
-    同一メッセージ処理内でのpickLurker多重呼び出しをキャッシュ
+    🎭 lurker取得（メッセージごとに異なる人）
 ========================= */
-// guildIdごとに { lurker, expiresAt } をキャッシュ（5分間）
-const lurkerCache = new Map();
-const LURKER_CACHE_TTL = 5 * 60 * 1000;
+// 前回選んだlurkerIDを記録（連続で同じ人が出ないように）
+let _lastLurkerId = null;
 
 async function _getImpersonateLurker(guild) {
-    const cached = lurkerCache.get(guild.id);
-    if (cached && cached.expiresAt > Date.now()) {
-        return cached.lurker;
-    }
+    // FALLBACK_IMPERSONATOR_IDSから全員取得
+    const candidates = await Promise.all(
+        FALLBACK_IMPERSONATOR_IDS.map(id => guild.members.fetch(id).catch(() => null))
+    );
+    const valid = candidates.filter(Boolean);
 
-    let lurker = await pickLurker(guild, { getLastActivity });
+    if (!valid.length) return null;
 
-    // lurkerがいない場合はフォールバックIDから抽選
-    if (!lurker) {
-        const fallbackId = FALLBACK_IMPERSONATOR_IDS[
-            Math.floor(Math.random() * FALLBACK_IMPERSONATOR_IDS.length)
-        ];
-        lurker = await guild.members.fetch(fallbackId).catch(() => null);
-    }
+    // 前回と異なる人を優先
+    const others = valid.filter(m => m.id !== _lastLurkerId);
+    const pool   = others.length > 0 ? others : valid;
 
-    lurkerCache.set(guild.id, { lurker, expiresAt: Date.now() + LURKER_CACHE_TTL });
-    return lurker;
+    const picked = pool[Math.floor(Math.random() * pool.length)];
+    _lastLurkerId = picked.id;
+    return picked;
 }
 
 /* =========================
