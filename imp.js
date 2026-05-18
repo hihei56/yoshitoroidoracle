@@ -23,6 +23,8 @@ function encodeId(id) {
 }
 
 // 実行者ID + lurkerID を先頭に埋め込む
+// → 💩リアクションで実行者本人が削除可能
+// → リプライ時にlurkerにメンションが飛ぶ
 function buildHiddenPrefix(authorId, lurkerId) {
     return encodeId(authorId) + ZERO_WIDTH_SEP + encodeId(lurkerId);
 }
@@ -34,14 +36,8 @@ function sanitizeMentions(text) {
         .replace(/@here/g,     '@\u200bhere');
 }
 
-// lurkerキャッシュ（5分間有効）
-const lurkerCache = new Map();
-const LURKER_CACHE_TTL = 5 * 60 * 1000;
-
+// キャッシュなし: 毎回pickLurkerを呼んでランダムに変える
 async function getLurker(guild) {
-    const cached = lurkerCache.get(guild.id);
-    if (cached && cached.expiresAt > Date.now()) return cached.lurker;
-
     let lurker = await pickLurker(guild, { getLastActivity });
 
     if (!lurker) {
@@ -51,7 +47,6 @@ async function getLurker(guild) {
         lurker = await guild.members.fetch(fallbackId).catch(() => null);
     }
 
-    lurkerCache.set(guild.id, { lurker, expiresAt: Date.now() + LURKER_CACHE_TTL });
     return lurker;
 }
 
@@ -85,7 +80,7 @@ async function handleImp(interaction) {
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     try {
-        // ── lurker取得（キャッシュ付き） ──
+        // ── lurker取得（毎回ランダム） ──
         const lurker = await getLurker(guild);
         if (!lurker) {
             return interaction.editReply('なりすまし対象が見つかりませんでした。');
