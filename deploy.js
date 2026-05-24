@@ -29,25 +29,31 @@ const commands = [
             option.setName('reply_link')
                 .setDescription('返信先メッセージのリンク')
         ),
+// 4. lurkerなりすまし発言
+new SlashCommandBuilder()
+    .setName('imp')
+    .setDescription('lurkerになりすまして発言します。')
 
-    // 4. lurkerなりすまし発言
-    new SlashCommandBuilder()
-        .setName('imp')
-        .setDescription('lurkerになりすまして発言します。')
-        .addStringOption(option =>
-            option.setName('content')
-                .setDescription('メッセージ内容（必須）')
-                .setRequired(true)
-        )
-        .addAttachmentOption(option =>
-            option.setName('file')
-                .setDescription('添付画像')
-        )
-        .addStringOption(option =>
-            option.setName('reply_link')
-                .setDescription('返信先メッセージのリンク')
-        ),
+    .addStringOption(option =>
+        option.setName('content')
+            .setDescription('メッセージ内容（必須）')
+            .setRequired(true)
+    )
 
+    .addAttachmentOption(option =>
+        option.setName('file')
+            .setDescription('添付画像')
+    )
+
+    .addStringOption(option =>
+        option.setName('reply_link')
+            .setDescription('返信先メッセージのリンク')
+    )
+
+    .addBooleanOption(option =>
+        option.setName('sticky')
+            .setDescription('24時間同じlurkerに固定する')
+    ),
     // 5. 管理機能
     new SlashCommandBuilder()
         .setName('admin')
