@@ -14,6 +14,12 @@ const EXCLUDE_ROLE_IDS = new Set([
     '1478715790575538359',
 ]);
 
+// なりすまし対象から除外するユーザーID
+// (/imp・/impersonateのターゲットにしない。/lurkerのメンション対象には影響しない)
+const EXCLUDE_USER_IDS = new Set([
+    '1477111665576251547',
+]);
+
 // lurker候補がいない場合のフォールバック10名
 const FALLBACK_IDS = [
     '1081581933785534494',
@@ -26,7 +32,7 @@ const FALLBACK_IDS = [
     '1209137581384802326',
     '621907420414738463',
     '1171784417828671502',
-];
+].filter(id => !EXCLUDE_USER_IDS.has(id));
 
 // ── メンバーキャッシュ（5分） ──
 let _membersCache   = null;
@@ -48,6 +54,7 @@ function isLurker(member) {
     if (member.user.bot) return false;
     if (member.permissions.has('Administrator')) return false;
     if ([...EXCLUDE_ROLE_IDS].some(id => member.roles.cache.has(id))) return false;
+    if (EXCLUDE_USER_IDS.has(member.id)) return false; // ← なりすまし除外
     const last = getLastActivity(member.id);
     if (last === null) return false;
     return last < Date.now() - TWO_WEEKS_MS;

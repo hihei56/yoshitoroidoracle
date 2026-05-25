@@ -217,4 +217,5 @@ function initLurker(client) {
     console.log('[Lurker] ✅ 初期化 | 毎朝8時に自動投稿');
 }
 
+console.log('EXPORTING LURKER');
 module.exports = { initLurker, handleLurker };
