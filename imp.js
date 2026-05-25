@@ -73,6 +73,7 @@ async function handleImp(interaction) {
     // true=このlurkerに24時間固定, false=固定解除, null=現状維持
     const stickyOpt = options.getBoolean('sticky');
 
+    // false指定なら先にクリアして通常選出へ
     if (stickyOpt === false) {
         clearSticky(user.id);
     }
@@ -92,7 +93,7 @@ async function handleImp(interaction) {
     try {
         // ── lurker決定 ──
         let lurker = null;
-        const existingSticky = getSticky(user.id);
+        const existingSticky = getSticky(user.id); // clearSticky後なのでfalse時はnull
 
         if (existingSticky) {
             // sticky有効 → 同じlurkerを使い続ける

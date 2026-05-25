@@ -153,7 +153,12 @@ async function postWakeup(client, guild, channelId, force = false) {
     const username  = impersonator?.displayName ?? 'フレンドリーなユーザー';
     const avatarURL = impersonator?.user.displayAvatarURL({ dynamic: true }) ?? undefined;
 
-    await wh.send({ content: `${mentions}\n${message}`, username, avatarURL });
+    await wh.send({
+        content: `${mentions}\n${message}`,
+        username,
+        avatarURL,
+        allowedMentions: { parse: ['users'] },
+    });
     saveCooldown();
 
     console.log(`[Lurker] ✅ ${targets.length}名起こした: ${targets.map(m => m.user.tag).join(', ')} (成りすまし: ${username})`);
@@ -197,13 +202,13 @@ async function handleLurker(interaction) {
 
 /* ===== cron初期化 ===== */
 function initLurker(client) {
-    const settings = getSettings();
-    if (!settings.lurkerChannelId) {
-        console.log('[Lurker] チャンネル未設定。自動投稿は無効。');
-        return;
-    }
-    // 毎朝8時 JST
+    // 毎朝8時 JST — コールバック内でgetSettings()を毎回読み直す
     cron.schedule('0 8 * * *', async () => {
+        const settings = getSettings(); // ← 毎回読み直し
+        if (!settings.lurkerChannelId) {
+            console.log('[Lurker] チャンネル未設定。スキップ。');
+            return;
+        }
         const guild = client.guilds.cache.first();
         if (!guild) return;
         await postWakeup(client, guild, settings.lurkerChannelId);

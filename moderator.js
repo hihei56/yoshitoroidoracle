@@ -698,6 +698,42 @@ async function applyImpersonate(message) {
     console.info(`[IMPERSONATE] ${message.author.tag}(${message.author.id}) → ${lurker?.user?.tag ?? 'フォールバック'}(${lurker?.id})`);
 }
 
+/* =========================
+   📨 /imp メッセージへのリプライ処理
+   リプライ先が /imp Webhook（authorId != displayId）の場合、
+   返信者の名前・アイコンそのままでWebhook再送し、lurkerIDにメンションを飛ばす
+========================= */
+async function handleImpReply(message) {
+    if (!message.reference?.messageId) return false;
+
+    const ref = await message.channel.messages.fetch(message.reference.messageId).catch(() => null);
+    if (!ref?.webhookId) return false;
+
+    const { authorId, displayId } = extractUserIds(ref.content);
+    // displayId !== authorId のとき = /imp メッセージ（lurkerIDが埋め込まれている）
+    if (!authorId || !displayId || displayId === authorId) return false;
+
+    const files = await downloadFiles(message.attachments);
+    if (message.deletable) await message.delete().catch(() => {});
+
+    const replyPrefix  = await buildReplyPrefix(message);
+    const finalContent = hideUserId(message.author.id)
+        + sanitizeMentions(replyPrefix + (message.content || '\u200b'));
+
+    const opts = {
+        content:         finalContent,
+        files,
+        username:        message.member?.displayName || message.author.username,
+        avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
+        allowedMentions: { parse: ['users'] },
+    };
+    if (message.channel.isThread()) opts.threadId = message.channel.id;
+
+    await sendWebhook(message.channel, opts);
+    console.info(`[IMP_REPLY] ${message.author.tag}(${message.author.id}) → lurker<@${displayId}> にリプライ`);
+    return true;
+}
+
 async function handleModerator(message) {
     if (!message.content && !message.attachments.size) return;
     if (message.author.bot) return;
@@ -750,6 +786,7 @@ async function handleModerator(message) {
     }
 
     if (await handleSensitivePost(message)) return;
+    if (await handleImpReply(message))      return; // ← /imp メッセージへのリプライ判定
     if (await handlePseudoReply(message))   return;
 }
 
