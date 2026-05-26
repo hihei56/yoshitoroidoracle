@@ -914,27 +914,7 @@ async function handleEmbedModerator(oldMessage, newMessage) {
         `${newMessage.author.tag}(${newMessage.author.id}) | matched=${JSON.stringify(allMatched)}`
     );
 
-    // URLを除去して残りテキストがなければ削除のみ、あれば再投稿
-    const strippedUrl = (newMessage.content || '').replace(/https?:\/\/\S+/g, '').trim();
-
     if (newMessage.deletable) await newMessage.delete().catch(() => {});
-    if (!strippedUrl && !newMessage.attachments.size) return;
-
-    const files       = await downloadFiles(newMessage.attachments);
-    const replyPrefix = await buildReplyPrefix(newMessage);
-    const finalContent = hideUserId(newMessage.author.id)
-        + sanitizeMentions(`${replyPrefix}${strippedUrl || '​'}`);
-
-    const opts = {
-        content:         finalContent,
-        files,
-        username:        member.displayName || newMessage.author.username,
-        avatarURL:       member.displayAvatarURL({ dynamic: true }),
-        allowedMentions: { parse: ['users'] },
-    };
-    if (newMessage.channel.isThread()) opts.threadId = newMessage.channel.id;
-
-    await sendWebhook(newMessage.channel, opts);
 }
 
 module.exports = {
