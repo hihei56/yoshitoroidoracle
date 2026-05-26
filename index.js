@@ -5,7 +5,6 @@ process.on('unhandledRejection', e => console.error('[Reject]:', e));
 require('dotenv').config();
 
 const { Client, GatewayIntentBits, Events } = require('discord.js');
-const { initScheduler }          = require('./scheduler');
 const { handleAnon }             = require('./anon');
 const { handleCurse }            = require('./curse');
 const { initLurker, handleLurker } = require('./lurker');
@@ -46,7 +45,6 @@ client.once(Events.ClientReady, async c => {
     console.log(`✅ [Bot Ready] ${c.user.tag}`);
     console.log(`📁 DATA_DIR=${process.env.DATA_DIR ?? '(未設定・スクリプト同階層)'}`);
 
-    initScheduler(client);
     initSecurity(client);
     initRSS(client);
     initLurker(client);

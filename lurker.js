@@ -211,7 +211,7 @@ function initLurker(client) {
         }
         const guild = client.guilds.cache.first();
         if (!guild) return;
-        await postWakeup(client, guild, settings.lurkerChannelId);
+        await postWakeup(client, guild, settings.lurkerChannelId, true);
     }, { timezone: 'Asia/Tokyo' });
 
     console.log('[Lurker] ✅ 初期化 | 毎朝8時に自動投稿');
