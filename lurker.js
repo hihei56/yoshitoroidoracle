@@ -185,7 +185,13 @@ async function handleLurker(interaction) {
 
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
-    const result = await postWakeup(interaction.client, interaction.guild, channelId, force);
+    let result;
+    try {
+        result = await postWakeup(interaction.client, interaction.guild, channelId, force);
+    } catch (e) {
+        console.error('[Lurker] postWakeup error:', e);
+        return interaction.editReply(`❌ エラー: \`${e.message}\``);
+    }
 
     if (result.skipped) {
         const msg = result.reason === 'cooldown'
