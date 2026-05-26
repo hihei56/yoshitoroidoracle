@@ -914,14 +914,16 @@ async function handleEmbedModerator(oldMessage, newMessage) {
         `${newMessage.author.tag}(${newMessage.author.id}) | matched=${JSON.stringify(allMatched)}`
     );
 
-    // URLを除去して削除→再投稿
-    const files       = await downloadFiles(newMessage.attachments);
-    const replyPrefix = await buildReplyPrefix(newMessage);
+    // URLを除去して残りテキストがなければ削除のみ、あれば再投稿
     const strippedUrl = (newMessage.content || '').replace(/https?:\/\/\S+/g, '').trim();
-    const finalContent = hideUserId(newMessage.author.id)
-        + sanitizeMentions(`${replyPrefix}${strippedUrl || '​'}`);
 
     if (newMessage.deletable) await newMessage.delete().catch(() => {});
+    if (!strippedUrl && !newMessage.attachments.size) return;
+
+    const files       = await downloadFiles(newMessage.attachments);
+    const replyPrefix = await buildReplyPrefix(newMessage);
+    const finalContent = hideUserId(newMessage.author.id)
+        + sanitizeMentions(`${replyPrefix}${strippedUrl || '​'}`);
 
     const opts = {
         content:         finalContent,
