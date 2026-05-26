@@ -185,7 +185,13 @@ async function handleLurker(interaction) {
 
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
-    const result = await postWakeup(interaction.client, interaction.guild, channelId, force);
+    let result;
+    try {
+        result = await postWakeup(interaction.client, interaction.guild, channelId, force);
+    } catch (e) {
+        console.error('[Lurker] postWakeup error:', e);
+        return interaction.editReply(`❌ エラー: \`${e.message}\``);
+    }
 
     if (result.skipped) {
         const msg = result.reason === 'cooldown'
@@ -211,7 +217,7 @@ function initLurker(client) {
         }
         const guild = client.guilds.cache.first();
         if (!guild) return;
-        await postWakeup(client, guild, settings.lurkerChannelId);
+        await postWakeup(client, guild, settings.lurkerChannelId, true);
     }, { timezone: 'Asia/Tokyo' });
 
     console.log('[Lurker] ✅ 初期化 | 毎朝8時に自動投稿');

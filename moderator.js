@@ -856,8 +856,66 @@ async function handleCryReaction(reaction, user) {
     console.info(`[😿] ${user.tag}(${user.id}) が ${message.author.tag} のメッセージをWebhook化`);
 }
 
+/* =========================
+   🔗 embed検閲（MessageUpdate）
+========================= */
+async function handleEmbedModerator(oldMessage, newMessage) {
+    if (newMessage.partial) {
+        try { await newMessage.fetch(); } catch { return; }
+    }
+    if (!newMessage.guild) return;
+    if (newMessage.author?.bot) return;
+
+    const newEmbeds = newMessage.embeds ?? [];
+    if (newEmbeds.length === 0) return;
+
+    // oldが未キャッシュ(partial)なら[]扱い、増えたときだけ処理
+    const oldEmbeds = oldMessage.partial ? [] : (oldMessage.embeds ?? []);
+    if (newEmbeds.length <= oldEmbeds.length) return;
+
+    const member = newMessage.member
+        ?? await newMessage.guild.members.fetch(newMessage.author.id).catch(() => null);
+    if (!member) return;
+
+    const hasRequiredRole = REQUIRED_ROLES.some(id => member.roles.cache.has(id));
+    if (!hasRequiredRole) return;
+
+    const excl = getModExcludeList();
+    const isExempt =
+        EXEMPT_ROLES.some(id => member.roles.cache.has(id)) ||
+        excl.users.includes(newMessage.author.id) ||
+        excl.roles.some(roleId => member.roles.cache.has(roleId));
+    if (isExempt) return;
+
+    // 新たに増えたembedだけ対象
+    const addedEmbeds = newEmbeds.slice(oldEmbeds.length);
+    const embedText = addedEmbeds.flatMap(e => [
+        e.title,
+        e.description,
+        ...(e.fields ?? []).map(f => `${f.name} ${f.value}`),
+        e.author?.name,
+        e.footer?.text,
+    ]).filter(Boolean).join('\n');
+
+    if (!embedText.trim()) return;
+
+    const normalized = normalizeForDetection(embedText);
+    const { hit, matched } = checkNgWords(normalized);
+
+    const aiResult = !hit
+        ? await checkAiModeration(embedText)
+        : { flagged: false, reason: null };
+
+    if (!hit && !aiResult.flagged) return;
+
+    const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
+    logDeletion({ message: newMessage, matched: allMatched });
+    await instantDeleteAndRecode(newMessage);
+}
+
 module.exports = {
     handleModerator,
     handlePoopReaction,
     handleCryReaction,
+    handleEmbedModerator,
 };

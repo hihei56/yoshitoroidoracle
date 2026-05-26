@@ -5,13 +5,12 @@ process.on('unhandledRejection', e => console.error('[Reject]:', e));
 require('dotenv').config();
 
 const { Client, GatewayIntentBits, Events } = require('discord.js');
-const { initScheduler }          = require('./scheduler');
 const { handleAnon }             = require('./anon');
 const { handleCurse }            = require('./curse');
 const { initLurker, handleLurker } = require('./lurker');
 const { recordActivity, backfillActivity } = require('./activity_tracker');
 const { handleDeathmatch }       = require('./deathmatch');
-const { handleModerator, handlePoopReaction, handleCryReaction } = require('./moderator');
+const { handleModerator, handlePoopReaction, handleCryReaction, handleEmbedModerator } = require('./moderator');
 const { handleImpersonate }      = require('./impersonate');
 const { handleImp }              = require('./imp');
 const { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel } = require('./admin');
@@ -46,7 +45,6 @@ client.once(Events.ClientReady, async c => {
     console.log(`✅ [Bot Ready] ${c.user.tag}`);
     console.log(`📁 DATA_DIR=${process.env.DATA_DIR ?? '(未設定・スクリプト同階層)'}`);
 
-    initScheduler(client);
     initSecurity(client);
     initRSS(client);
     initLurker(client);
@@ -66,6 +64,11 @@ client.on(Events.MessageCreate, async m => {
     if (m.author.bot || !m.guild) return;
     recordActivity(m.author.id);
     handleModerator(m).catch(err => console.error('[Mod Error]:', err));
+});
+
+client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
+    if (!newMessage.guild) return;
+    handleEmbedModerator(oldMessage, newMessage).catch(e => console.error('[EmbedMod Error]:', e));
 });
 
 client.on(Events.MessageReactionAdd, async (reaction, user) => {
