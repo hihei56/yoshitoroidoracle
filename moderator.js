@@ -909,12 +909,8 @@ async function handleEmbedModerator(oldMessage, newMessage) {
     if (!hit && !aiResult.flagged) return;
 
     const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
-    console.warn(
-        `[EMBED MOD] ${new Date().toISOString()} | #${newMessage.channel.name} | ` +
-        `${newMessage.author.tag}(${newMessage.author.id}) | matched=${JSON.stringify(allMatched)}`
-    );
-
-    if (newMessage.deletable) await newMessage.delete().catch(() => {});
+    logDeletion({ message: newMessage, matched: allMatched });
+    await instantDeleteAndRecode(newMessage);
 }
 
 module.exports = {
