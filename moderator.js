@@ -1,7 +1,7 @@
 // moderator.js
 const axios  = require('axios');
 const { OpenAI } = require('openai');
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getModExcludeList } = require('./exclude_manager');
 const whStore = require('./webhook_store');
 const { isCursed } = require('./curse_manager');
@@ -914,11 +914,12 @@ async function handleEmbedModerator(oldMessage, newMessage) {
         `${newMessage.author.tag}(${newMessage.author.id}) | matched=${JSON.stringify(allMatched)}`
     );
 
-    // 削除してembed非表示で再投稿
+    // URLを除去して削除→再投稿
     const files       = await downloadFiles(newMessage.attachments);
     const replyPrefix = await buildReplyPrefix(newMessage);
+    const strippedUrl = (newMessage.content || '').replace(/https?:\/\/\S+/g, '').trim();
     const finalContent = hideUserId(newMessage.author.id)
-        + sanitizeMentions(`${replyPrefix}${newMessage.content || '​'}`);
+        + sanitizeMentions(`${replyPrefix}${strippedUrl || '​'}`);
 
     if (newMessage.deletable) await newMessage.delete().catch(() => {});
 
@@ -928,7 +929,6 @@ async function handleEmbedModerator(oldMessage, newMessage) {
         username:        member.displayName || newMessage.author.username,
         avatarURL:       member.displayAvatarURL({ dynamic: true }),
         allowedMentions: { parse: ['users'] },
-        flags:           MessageFlags.SuppressEmbeds,
     };
     if (newMessage.channel.isThread()) opts.threadId = newMessage.channel.id;
 
