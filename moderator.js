@@ -834,6 +834,13 @@ async function handleCryReaction(reaction, user) {
 
     if (!isAdmin && !isAuthor) return;
 
+    // 本人による😿は投稿後1時間以内のみ有効（管理者は無制限）
+    const CRY_AUTHOR_LIMIT_MS = 60 * 60 * 1000;
+    if (isAuthor && !isAdmin && Date.now() - message.createdTimestamp > CRY_AUTHOR_LIMIT_MS) {
+        await reaction.remove().catch(() => {});
+        return;
+    }
+
     await reaction.remove().catch(() => {});
 
     const files       = await downloadFiles(message.attachments);
