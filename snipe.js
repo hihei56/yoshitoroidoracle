@@ -271,7 +271,7 @@ function splitCsvLine(line) {
 // ─── DCE JSON パーサー ───
 
 function parseJson(text) {
-    const data = JSON.parse(text);
+    const data = JSON.parse(text.replace(/^﻿/, ''));
     const guildId   = data.guild?.id   ?? '0';
     const channelId = data.channel?.id ?? '0';
     const messages  = (data.messages ?? []).map(msg => ({
