@@ -272,12 +272,19 @@ function splitCsvLine(line) {
 
 function repairJson(text) {
     try { return JSON.parse(text); } catch {}
-    // 末尾が切れている場合、閉じ括弧を補完して再試行
-    let t = text.trimEnd();
-    const closers = ['}', ']', '}', ']', '}'];
-    for (const c of closers) {
-        t += '\n' + c;
-        try { return JSON.parse(t); } catch {}
+    // DCEのJSONが途中で切れている場合の補完パターン
+    const t = text.trimEnd();
+    const attempts = [
+        t + '\n  ]\n}',                       // 最後のメッセージが完結しているが配列・オブジェクトが未閉
+        t + '\n    }\n  ]\n}',               // メッセージオブジェクトの途中で切れた
+        t + '"\n    }\n  ]\n}',             // 文字列の途中で切れた
+        t + '"\n      ]\n    }\n  ]\n}',    // 配列内文字列の途中
+        t + '\n      ]\n    }\n  ]\n}',     // ネスト配列の途中
+        t + ']\n    }\n  ]\n}',             // 配列末尾
+        t + '}\n    ]\n    }\n  ]\n}',      // オブジェクト末尾
+    ];
+    for (const attempt of attempts) {
+        try { return JSON.parse(attempt); } catch {}
     }
     throw new SyntaxError('JSONの修復に失敗しました');
 }
