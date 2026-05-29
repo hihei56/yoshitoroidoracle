@@ -225,6 +225,16 @@ new SlashCommandBuilder()
         .setName('permlist')
         .setDescription('危険な権限を持つロール・メンバーを一覧表示します。'),
 
+    // 12. 過去ログNGスキャン（管理者限定）
+    new SlashCommandBuilder()
+        .setName('snipe')
+        .setDescription('DCEエクスポートCSV/JSONをNGワードスキャンし結果をログチャンネルに送信（管理者のみ）。')
+        .addAttachmentOption(opt =>
+            opt.setName('file')
+                .setDescription('DiscordChatExporterで出力したCSVまたはJSONファイル')
+                .setRequired(true)
+        ),
+
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
