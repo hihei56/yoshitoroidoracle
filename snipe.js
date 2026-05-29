@@ -270,8 +270,20 @@ function splitCsvLine(line) {
 
 // ─── DCE JSON パーサー ───
 
+function repairJson(text) {
+    try { return JSON.parse(text); } catch {}
+    // 末尾が切れている場合、閉じ括弧を補完して再試行
+    let t = text.trimEnd();
+    const closers = ['}', ']', '}', ']', '}'];
+    for (const c of closers) {
+        t += '\n' + c;
+        try { return JSON.parse(t); } catch {}
+    }
+    throw new SyntaxError('JSONの修復に失敗しました');
+}
+
 function parseJson(text) {
-    const data = JSON.parse(text.replace(/^﻿/, ''));
+    const data = repairJson(text.replace(/^﻿/, ''));
     const guildId   = data.guild?.id   ?? '0';
     const channelId = data.channel?.id ?? '0';
     const messages  = (data.messages ?? []).map(msg => ({
