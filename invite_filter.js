@@ -13,7 +13,7 @@ const EXEMPT_ROLES = [
     '1477024387524857988',
 ];
 
-const INVITE_REGEX = /discord(?:\.gg|(?:app)?\.com\/invite)\/([A-Za-z0-9-]+)/g;
+const INVITE_REGEX = /discord(?:app)?\.(?:gg|com)(?:\/invite)?\/([A-Za-z0-9-]{2,32})/g;
 
 // 解決済みinviteのキャッシュ（再fetch削減）
 const resolvedCache = new Map(); // inviteCode → guildId | 'INVALID'
