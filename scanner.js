@@ -210,7 +210,7 @@ function parseFile(filePath) {
         const data = repairJson(raw);
         const guildId   = data.guild?.id   ?? '0';
         const channelId = data.channel?.id ?? '0';
-        const messages  = (data.messages ?? []).map(msg => ({
+        const messages  = (data.messages ?? []).filter(msg => !msg.author?.isBot).map(msg => ({
             authorName: msg.author?.nickname || msg.author?.name || '不明',
             date:       msg.timestamp ?? '',
             content:    msg.content   ?? '',

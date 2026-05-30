@@ -293,7 +293,9 @@ function parseJson(text) {
     const data = repairJson(text.replace(/^﻿/, ''));
     const guildId   = data.guild?.id   ?? '0';
     const channelId = data.channel?.id ?? '0';
-    const messages  = (data.messages ?? []).map(msg => ({
+    const messages  = (data.messages ?? [])
+        .filter(msg => !msg.author?.isBot)
+        .map(msg => ({
         authorId:   msg.author?.id   ?? '',
         authorName: msg.author?.name ?? '',
         date:       msg.timestamp    ?? '',
