@@ -157,6 +157,25 @@ new SlashCommandBuilder()
                     opt.setName('dry_run')
                         .setDescription('true=対象確認のみ（デフォルト）/ false=実際にキック')
                 )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('ngserver')
+                .setDescription('招待リンクを自動削除するNGサーバーを管理します。')
+                .addStringOption(opt =>
+                    opt.setName('action')
+                        .setDescription('操作を選択')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: '追加', value: 'add'    },
+                            { name: '削除', value: 'remove' },
+                            { name: '一覧', value: 'list'   },
+                        )
+                )
+                .addStringOption(opt =>
+                    opt.setName('server_id')
+                        .setDescription('NGにするサーバーID（追加・削除時は必須）')
+                )
         ),
 
     // 6. ROM専目覚まし（管理者のみ）
