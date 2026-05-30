@@ -101,7 +101,7 @@ async function resolveInvite(client, code) {
    /admin ngserver コマンド
 ========================= */
 async function handleNGServer(interaction) {
-    const sub = interaction.options.getSubcommand();
+    const sub = interaction.options.getString('action');
 
     if (sub === 'list') {
         const list = getNGList();
