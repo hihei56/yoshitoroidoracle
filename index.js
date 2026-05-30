@@ -19,6 +19,7 @@ const { initRSS }                = require('./rssBot');
 const { postRanking, handleRanking } = require('./ranking');
 const { handleTimeoutList }      = require('./timeoutlist');
 const { initSecurity, handlePermList } = require('./security');
+const { handleInviteFilter, handleNGServer } = require('./invite_filter');
 
 const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
 if (DEBUG_MODE) console.log('🐛 [Debug] デバッグモード有効');
@@ -63,6 +64,7 @@ client.once(Events.ClientReady, async c => {
 client.on(Events.MessageCreate, async m => {
     if (m.author.bot || !m.guild) return;
     recordActivity(m.author.id);
+    handleInviteFilter(m, client).catch(err => console.error('[InviteFilter Error]:', err));
     handleModerator(m).catch(err => console.error('[Mod Error]:', err));
 });
 
@@ -115,7 +117,10 @@ client.on(Events.InteractionCreate, async i => {
         if (i.commandName === 'anon')        await handleAnon(i);
         if (i.commandName === 'curse')       await handleCurse(i);
         if (i.commandName === 'lurker')      await handleLurker(i);
-        if (i.commandName === 'admin')       await handleAdmin(i);
+        if (i.commandName === 'admin') {
+            if (i.options.getSubcommand() === 'ngserver') await handleNGServer(i);
+            else                                           await handleAdmin(i);
+        }
         if (i.commandName === 'joker')       await handleJoker(i);
         if (i.commandName === 'permlist')    await handlePermList(i);
         if (i.commandName === 'impersonate') await handleImpersonate(i);
