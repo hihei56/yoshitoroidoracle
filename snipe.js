@@ -309,12 +309,87 @@ function parseJson(text) {
 
 // ─── Webhook送信 ───
 
-async function sendWebhookReport(embed) {
+async function discordRequest(method, path, body, token) {
+    return new Promise((resolve, reject) => {
+        const data = body ? JSON.stringify(body) : null;
+        const req = https.request({
+            hostname: 'discord.com',
+            path:     `/api/v10${path}`,
+            method,
+            headers: {
+                'Content-Type':  'application/json',
+                'Authorization': `Bot ${token}`,
+                ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}),
+            },
+        }, res => {
+            let raw = '';
+            res.on('data', d => raw += d);
+            res.on('end', () => {
+                try { resolve(JSON.parse(raw)); } catch { resolve({}); }
+            });
+        });
+        req.on('error', reject);
+        if (data) req.write(data);
+        req.end();
+    });
+}
+
+// webhookチャンネルIDのキャッシュ
+let _webhookChannelId = null;
+async function getWebhookChannelId(webhookUrl) {
+    if (_webhookChannelId) return _webhookChannelId;
+    const m = webhookUrl.match(/\/webhooks\/(\d+)\/([^/?]+)/);
+    if (!m) return null;
+    const res = await new Promise((resolve, reject) => {
+        const req = https.request({
+            hostname: 'discord.com',
+            path:     `/api/v10/webhooks/${m[1]}/${m[2]}`,
+            method:   'GET',
+            headers:  { 'Content-Type': 'application/json' },
+        }, res => {
+            let raw = '';
+            res.on('data', d => raw += d);
+            res.on('end', () => { try { resolve(JSON.parse(raw)); } catch { resolve({}); } });
+        });
+        req.on('error', reject);
+        req.end();
+    });
+    _webhookChannelId = res.channel_id ?? null;
+    return _webhookChannelId;
+}
+
+// スレッドIDキャッシュ: threadName -> threadId
+const _threadCache = {};
+
+async function findOrCreateThread(channelId, threadName, token) {
+    if (_threadCache[threadName]) return _threadCache[threadName];
+
+    // アクティブスレッドを検索
+    const active = await discordRequest('GET', `/channels/${channelId}/threads/active`, null, token);
+    const found = (active.threads ?? []).find(t => t.name === threadName);
+    if (found) {
+        _threadCache[threadName] = found.id;
+        return found.id;
+    }
+
+    // 新規作成
+    const created = await discordRequest('POST', `/channels/${channelId}/threads`, {
+        name: threadName,
+        type: 11, // PUBLIC_THREAD
+        auto_archive_duration: 1440,
+    }, token);
+    _threadCache[threadName] = created.id;
+    return created.id;
+}
+
+async function sendWebhookReport(embed, threadId) {
     const url = process.env.SCAN_REPORT_WEBHOOK_URL;
     if (!url) return;
 
-    const body = JSON.stringify({ embeds: [embed] });
     const urlObj = new URL(url);
+    if (threadId) urlObj.searchParams.set('thread_id', threadId);
+
+    const body = JSON.stringify({ embeds: [embed] });
     const mod = urlObj.protocol === 'https:' ? https : http;
 
     await new Promise((resolve, reject) => {
@@ -399,32 +474,56 @@ async function handleSnipe(interaction) {
     }
 
     if (reportUrl) {
-        let sent = 0;
+        // guildName取得（JSONの場合ファイル名から推定）
+        const guildName = file.name.replace(/\s*\[.*?\].*$/, '').trim() || 'Unknown';
+
+        // サーバー×カテゴリでグループ化
+        const groups = {};
         for (const hit of hits) {
-            const msgLink = hit.messageId
-                ? `https://discord.com/channels/${hit.guildId}/${hit.channelId}/${hit.messageId}`
-                : `https://discord.com/channels/0/${channelId}/0`;
+            for (const cat of hit.matched) {
+                const key = `${guildName} / ${cat}`;
+                if (!groups[key]) groups[key] = { threadName: key, hits: [] };
+                groups[key].hits.push({ ...hit, _cat: cat });
+            }
+        }
 
-            const embed = {
-                color:       0xff4040,
-                title:       `🚨 NGワード検出`,
-                description: `**カテゴリ:** ${hit.matched.join(', ')}\n**リンク:** ${msgLink}`,
-                fields: [
-                    { name: '発言者', value: hit.authorName || hit.authorId || '不明', inline: true },
-                    { name: '日時',   value: hit.date || '不明', inline: true },
-                    { name: '内容',   value: (hit.content || '').slice(0, 300) || '(空)', inline: false },
-                ],
-                footer: { text: `ファイル: ${file.name}` },
-            };
+        // webhookチャンネルIDとボットトークン取得
+        const token = process.env.DISCORD_TOKEN;
+        const webhookChannelId = token ? await getWebhookChannelId(reportUrl).catch(() => null) : null;
 
-            try {
-                await sendWebhookReport(embed);
-                sent++;
-            } catch (e) {
-                console.error('[Snipe] Webhook送信失敗:', e.message);
+        let sent = 0;
+        for (const { threadName, hits: groupHits } of Object.values(groups)) {
+            let threadId = null;
+            if (webhookChannelId && token) {
+                threadId = await findOrCreateThread(webhookChannelId, threadName, token).catch(() => null);
             }
 
-            await new Promise(r => setTimeout(r, 500));
+            for (const hit of groupHits) {
+                const msgLink = hit.messageId
+                    ? `https://discord.com/channels/${hit.guildId}/${hit.channelId}/${hit.messageId}`
+                    : `https://discord.com/channels/0/${channelId}/0`;
+
+                const embed = {
+                    color:       0xff4040,
+                    title:       `🚨 NGワード検出`,
+                    description: `**カテゴリ:** ${hit._cat}\n**リンク:** ${msgLink}`,
+                    fields: [
+                        { name: '発言者', value: hit.authorName || hit.authorId || '不明', inline: true },
+                        { name: '日時',   value: hit.date || '不明', inline: true },
+                        { name: '内容',   value: (hit.content || '').slice(0, 300) || '(空)', inline: false },
+                    ],
+                    footer: { text: `ファイル: ${file.name}` },
+                };
+
+                try {
+                    await sendWebhookReport(embed, threadId);
+                    sent++;
+                } catch (e) {
+                    console.error('[Snipe] Webhook送信失敗:', e.message);
+                }
+
+                await new Promise(r => setTimeout(r, 500));
+            }
         }
 
         await interaction.editReply(
