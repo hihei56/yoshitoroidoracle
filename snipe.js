@@ -408,7 +408,58 @@ async function sendWebhookReport(embed, threadId) {
     });
 }
 
-// ─── /snipe コマンドハンドラ ───
+// ─── OpenAI Moderation ───
+
+const MODERATION_THRESHOLDS = {
+    'sexual/minors':          0.1,
+    'sexual':                 0.5,
+    'violence':               0.6,
+    'harassment':             0.7,
+    'hate':                   0.7,
+    'harassment/threatening': 0.7,
+    'hate/threatening':       0.7,
+    'self-harm':              0.8,
+    'self-harm/intent':       0.8,
+    'self-harm/instructions': 0.8,
+    'violence/graphic':       0.85,
+};
+
+async function moderateText(text) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey || !text) return null;
+
+    const body = JSON.stringify({ input: text });
+    return new Promise((resolve) => {
+        const req = https.request({
+            hostname: 'api.openai.com',
+            path:     '/v1/moderations',
+            method:   'POST',
+            headers: {
+                'Content-Type':  'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Length': Buffer.byteLength(body),
+            },
+        }, res => {
+            let raw = '';
+            res.on('data', d => raw += d);
+            res.on('end', () => {
+                try {
+                    const data = JSON.parse(raw);
+                    const scores = data.results?.[0]?.category_scores ?? {};
+                    const matched = Object.entries(MODERATION_THRESHOLDS)
+                        .filter(([cat, threshold]) => (scores[cat] ?? 0) >= threshold)
+                        .map(([cat]) => `ai:${cat}`);
+                    resolve(matched.length > 0 ? matched : null);
+                } catch { resolve(null); }
+            });
+        });
+        req.on('error', () => resolve(null));
+        req.write(body);
+        req.end();
+    });
+}
+
+
 
 async function handleSnipe(interaction) {
     if (!interaction.member?.permissions.has('Administrator')) {
@@ -457,6 +508,8 @@ async function handleSnipe(interaction) {
         return interaction.editReply('メッセージが見つかりませんでした。');
     }
 
+    // 正規表現チェック
+    const regexHitIds = new Set();
     const hits = [];
     for (const msg of messages) {
         if (!msg.content) continue;
@@ -464,6 +517,21 @@ async function handleSnipe(interaction) {
         const { hit, matched } = checkNgWords(normalized);
         if (hit) {
             hits.push({ ...msg, matched });
+            regexHitIds.add(msg.messageId + msg.date);
+        }
+    }
+
+    // OpenAI Moderationチェック（正規表現でヒットしなかったもののみ）
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (openaiKey) {
+        const nonHits = messages.filter(m => m.content && !regexHitIds.has(m.messageId + m.date));
+        // 並列8件ずつ処理
+        for (let i = 0; i < nonHits.length; i += 8) {
+            const batch = nonHits.slice(i, i + 8);
+            const results = await Promise.all(batch.map(msg => moderateText(msg.content)));
+            for (let j = 0; j < batch.length; j++) {
+                if (results[j]) hits.push({ ...batch[j], matched: results[j] });
+            }
         }
     }
 
