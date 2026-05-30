@@ -477,14 +477,13 @@ async function handleSnipe(interaction) {
         // guildName取得（JSONの場合ファイル名から推定）
         const guildName = file.name.replace(/\s*\[.*?\].*$/, '').trim() || 'Unknown';
 
-        // サーバー×カテゴリでグループ化
+        // サーバー×ユーザーでグループ化
         const groups = {};
         for (const hit of hits) {
-            for (const cat of hit.matched) {
-                const key = `${guildName} / ${cat}`;
-                if (!groups[key]) groups[key] = { threadName: key, hits: [] };
-                groups[key].hits.push({ ...hit, _cat: cat });
-            }
+            const author = hit.authorName || hit.authorId || '不明';
+            const key = `${guildName} / ${author}`;
+            if (!groups[key]) groups[key] = { threadName: key, hits: [] };
+            groups[key].hits.push(hit);
         }
 
         // webhookチャンネルIDとボットトークン取得
@@ -506,7 +505,7 @@ async function handleSnipe(interaction) {
                 const embed = {
                     color:       0xff4040,
                     title:       `🚨 NGワード検出`,
-                    description: `**カテゴリ:** ${hit._cat}\n**リンク:** ${msgLink}`,
+                    description: `**カテゴリ:** ${hit.matched.join(', ')}\n**リンク:** ${msgLink}`,
                     fields: [
                         { name: '発言者', value: hit.authorName || hit.authorId || '不明', inline: true },
                         { name: '日時',   value: hit.date || '不明', inline: true },
