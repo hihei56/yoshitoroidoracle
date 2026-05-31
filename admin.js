@@ -3,7 +3,14 @@ const {
     StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
 } = require('discord.js');
 
-const HOME_GUILD_ID = '1476939502319698054';
+const HOME_GUILD_ID  = '1476939502319698054';
+const ADMIN_ROLE_ID  = '1495971497016164492';
+
+function hasAdminPermission(member) {
+    if (!member) return false;
+    if (member.permissions.has('Administrator')) return true;
+    return member.roles.cache.has(ADMIN_ROLE_ID);
+}
 const { getModExcludeList, updateModExcludeList, resetModExcludeList } = require('./exclude_manager');
 const { getSettings, saveSettings, resetSayDeny, resetSayChannels } = require('./config');
 const { handleKickInactive } = require('./kick_inactive');
@@ -68,7 +75,7 @@ function buildStatusComponents() {
    🔥 コマンドハンドラ
 ========================= */
 async function handleAdmin(interaction) {
-    if (!interaction.member?.permissions.has('Administrator')) {
+    if (!hasAdminPermission(interaction.member)) {
         return interaction.reply({ content: '管理者のみ実行できます。', ephemeral: true });
     }
 
@@ -285,7 +292,7 @@ async function handleServers(interaction) {
 }
 
 async function handleServersLeaveSelect(interaction) {
-    if (!interaction.member?.permissions.has('Administrator')) {
+    if (!hasAdminPermission(interaction.member)) {
         return interaction.reply({ content: '管理者のみ実行できます。', ephemeral: true });
     }
 
@@ -321,7 +328,7 @@ async function handleServersLeaveSelect(interaction) {
 }
 
 async function handleServersLeaveConfirm(interaction, guildId) {
-    if (!interaction.member?.permissions.has('Administrator')) {
+    if (!hasAdminPermission(interaction.member)) {
         return interaction.reply({ content: '管理者のみ実行できます。', ephemeral: true });
     }
 
@@ -354,7 +361,7 @@ async function handleServersLeaveCancel(interaction) {
    index.js の InteractionCreate から呼ばれる
 ========================= */
 async function handleAdminButton(interaction) {
-    if (!interaction.member?.permissions.has('Administrator')) {
+    if (!hasAdminPermission(interaction.member)) {
         return interaction.reply({ content: '管理者のみ実行できます。', ephemeral: true });
     }
 
