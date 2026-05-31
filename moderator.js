@@ -321,10 +321,36 @@ function checkNgWords(text) {
 
 const DL_CONFIG = { MAX_FILES: 4, MAX_SIZE: 8 * 1024 * 1024, TIMEOUT: 4_000 };
 
+const IMAGE_NSFW_CATEGORIES = new Set(['sexual', 'sexual/minors']);
+const IMAGE_NSFW_THRESHOLDS = { 'sexual': 0.70, 'sexual/minors': 0.10 };
+
+async function isImageNsfw(url) {
+    if (!process.env.OPENAI_API_KEY) return false;
+    try {
+        const result = await openai.moderations.create({
+            model: 'omni-moderation-latest',
+            input: [{ type: 'image_url', image_url: { url } }],
+        });
+        const scores = result.results[0]?.category_scores ?? {};
+        for (const [cat, threshold] of Object.entries(IMAGE_NSFW_THRESHOLDS)) {
+            if ((scores[cat] ?? 0) > threshold) {
+                console.warn(`[IMG MOD] NSFW検知 cat=${cat} score=${scores[cat]?.toFixed(3)} url=${url}`);
+                return true;
+            }
+        }
+        return false;
+    } catch (e) {
+        console.error('[IMG MOD] API失敗:', e.message);
+        return false;
+    }
+}
+
 async function downloadFiles(attachments) {
     const files = [];
     for (const att of [...attachments.values()].slice(0, DL_CONFIG.MAX_FILES)) {
         if (att.size > DL_CONFIG.MAX_SIZE) continue;
+        const isImage = att.contentType?.startsWith('image/') ?? /\.(png|jpe?g|gif|webp)$/i.test(att.name ?? '');
+        if (isImage && await isImageNsfw(att.url)) continue;
         try {
             const res = await axios.get(att.url, {
                 responseType: 'arraybuffer',
@@ -584,10 +610,8 @@ async function handleSensitivePost(message) {
     return true;
 }
 
-const NSFW_REASONS = new Set(['sexual', 'sexual/minors']);
-
-async function instantDeleteAndRecode(message, { skipFiles = false } = {}) {
-    const files = skipFiles ? [] : await downloadFiles(message.attachments);
+async function instantDeleteAndRecode(message) {
+    const files = await downloadFiles(message.attachments);
     if (message.deletable) await message.delete().catch(() => {});
 
     const replyPrefix  = await buildReplyPrefix(message);
@@ -773,8 +797,7 @@ async function handleModerator(message) {
     if ((hit || aiResult.flagged) && !isExempt) {
         const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
         logDeletion({ message, matched: allMatched });
-        const isNsfw = allMatched.some(r => NSFW_REASONS.has(r));
-        await instantDeleteAndRecode(message, { skipFiles: isNsfw });
+        await instantDeleteAndRecode(message);
         return;
     }
 
@@ -913,8 +936,7 @@ async function handleEmbedModerator(oldMessage, newMessage) {
 
     const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
     logDeletion({ message: newMessage, matched: allMatched });
-    const isNsfw = allMatched.some(r => NSFW_REASONS.has(r));
-    await instantDeleteAndRecode(newMessage, { skipFiles: isNsfw });
+    await instantDeleteAndRecode(newMessage);
 }
 
 module.exports = {
