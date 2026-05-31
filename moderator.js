@@ -370,6 +370,77 @@ async function checkAiModeration(text) {
     }
 }
 
+const NSFW_IMAGE_THRESHOLDS = {
+    'sexual':         0.70,
+    'sexual/minors':  0.10,
+};
+// NSFW判定された画像を再投稿後に削除するまでの時間（ミリ秒）
+const NSFW_DELETE_DELAY = parseInt(process.env.NSFW_DELETE_DELAY_MS ?? '30000', 10);
+
+async function checkNsfwImages(attachments) {
+    if (!process.env.OPENAI_API_KEY) return { nsfw: false, reason: null };
+    const imageAtts = [...attachments.values()].filter(a =>
+        a.contentType?.startsWith('image/') && a.size <= DL_CONFIG.MAX_SIZE
+    );
+    if (imageAtts.length === 0) return { nsfw: false, reason: null };
+
+    const inputItems = imageAtts.map(att => ({
+        type: 'image_url',
+        image_url: { url: att.url },
+    }));
+
+    try {
+        const result = await openai.moderations.create({
+            model: 'omni-moderation-latest',
+            input: inputItems,
+        });
+        const scores = result.results[0]?.category_scores ?? {};
+        for (const [cat, threshold] of Object.entries(NSFW_IMAGE_THRESHOLDS)) {
+            if ((scores[cat] ?? 0) > threshold) {
+                return { nsfw: true, reason: cat };
+            }
+        }
+        return { nsfw: false, reason: null };
+    } catch (e) {
+        console.error('[NSFW Img] API失敗:', e.message);
+        return { nsfw: false, reason: null };
+    }
+}
+
+async function repostNsfwAsSpoilerAndScheduleDelete(message) {
+    const files = [...message.attachments.values()]
+        .filter(a => a.contentType?.startsWith('image/') && a.size <= DL_CONFIG.MAX_SIZE)
+        .map(att => ({ attachment: att.url, name: `SPOILER_${att.name || 'image.png'}` }));
+
+    if (message.deletable) await message.delete().catch(() => {});
+
+    const replyPrefix  = await buildReplyPrefix(message);
+    const bodyText     = sanitizeMentions(message.content || '');
+    const finalContent = hideUserId(message.author.id)
+        + replyPrefix
+        + (bodyText || '​');
+
+    const opts = {
+        content:         finalContent,
+        files,
+        username:        message.member?.displayName || message.author.username,
+        avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
+        allowedMentions: { parse: ['users'] },
+    };
+    if (message.channel.isThread()) opts.threadId = message.channel.id;
+
+    const sent = await sendWebhook(message.channel, opts);
+
+    // sendWebhookの戻り値がメッセージオブジェクトであれば削除スケジュール
+    if (sent?.id) {
+        setTimeout(async () => {
+            await sent.delete().catch(() => {});
+            console.info(`[NSFW IMG] SPOILER投稿を${NSFW_DELETE_DELAY / 1000}秒後削除: ${sent.id}`);
+        }, NSFW_DELETE_DELAY);
+    }
+}
+
+
 function logDeletion({ message, matched }) {
     const ts      = new Date().toISOString();
     const tag     = message.author.tag;
@@ -773,6 +844,17 @@ async function handleModerator(message) {
         logDeletion({ message, matched: allMatched });
         await instantDeleteAndRecode(message);
         return;
+    }
+
+    // NSFW画像チェック：免除ユーザー以外かつ画像添付がある場合
+    if (!isExempt && message.attachments.size > 0) {
+        const nsfwResult = await checkNsfwImages(message.attachments);
+        if (nsfwResult.nsfw) {
+            console.warn(`[NSFW IMG] ${message.author.tag}(${message.author.id}) NSFW画像検出: ${nsfwResult.reason}`);
+            logDeletion({ message, matched: [`nsfw_image(${nsfwResult.reason})`] });
+            await repostNsfwAsSpoilerAndScheduleDelete(message);
+            return;
+        }
     }
 
     if (isCursed(message.author.id) && !isExempt) {
