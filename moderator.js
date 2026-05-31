@@ -584,8 +584,10 @@ async function handleSensitivePost(message) {
     return true;
 }
 
-async function instantDeleteAndRecode(message) {
-    const files = await downloadFiles(message.attachments);
+const NSFW_REASONS = new Set(['sexual', 'sexual/minors']);
+
+async function instantDeleteAndRecode(message, { skipFiles = false } = {}) {
+    const files = skipFiles ? [] : await downloadFiles(message.attachments);
     if (message.deletable) await message.delete().catch(() => {});
 
     const replyPrefix  = await buildReplyPrefix(message);
@@ -771,7 +773,8 @@ async function handleModerator(message) {
     if ((hit || aiResult.flagged) && !isExempt) {
         const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
         logDeletion({ message, matched: allMatched });
-        await instantDeleteAndRecode(message);
+        const isNsfw = allMatched.some(r => NSFW_REASONS.has(r));
+        await instantDeleteAndRecode(message, { skipFiles: isNsfw });
         return;
     }
 
@@ -910,7 +913,8 @@ async function handleEmbedModerator(oldMessage, newMessage) {
 
     const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
     logDeletion({ message: newMessage, matched: allMatched });
-    await instantDeleteAndRecode(newMessage);
+    const isNsfw = allMatched.some(r => NSFW_REASONS.has(r));
+    await instantDeleteAndRecode(newMessage, { skipFiles: isNsfw });
 }
 
 module.exports = {
