@@ -2,8 +2,16 @@
 const { EmbedBuilder, MessageFlags } = require('discord.js');
 const { addImpersonate, removeImpersonate, getImpersonateList, isImpersonated } = require('./impersonate_manager');
 
+const ADMIN_ROLE_ID = '1495971497016164492';
+
+function hasAdminPermission(member) {
+    if (!member) return false;
+    if (member.permissions.has('Administrator')) return true;
+    return member.roles.cache.has(ADMIN_ROLE_ID);
+}
+
 async function handleImpersonate(interaction) {
-    if (!interaction.member?.permissions.has('Administrator')) {
+    if (!hasAdminPermission(interaction.member)) {
         return interaction.reply({ content: '管理者のみ実行できます。', flags: [MessageFlags.Ephemeral] });
     }
 
