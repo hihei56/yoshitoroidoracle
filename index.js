@@ -20,6 +20,7 @@ const { postRanking, handleRanking } = require('./ranking');
 const { handleTimeoutList }      = require('./timeoutlist');
 const { initSecurity, handlePermList } = require('./security');
 const { handleInviteFilter, handleNGServer } = require('./invite_filter');
+const { storeDeletedMessage, handleSnipe }  = require('./snipe');
 
 const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
 if (DEBUG_MODE) console.log('🐛 [Debug] デバッグモード有効');
@@ -59,6 +60,10 @@ client.once(Events.ClientReady, async c => {
             postRanking(client).catch(e => console.error('[Ranking] 定期更新エラー:', e));
         }, 60 * 60 * 1000);
     }
+});
+
+client.on(Events.MessageDelete, async m => {
+    storeDeletedMessage(m);
 });
 
 client.on(Events.MessageCreate, async m => {
@@ -124,6 +129,7 @@ client.on(Events.InteractionCreate, async i => {
         if (i.commandName === 'joker')       await handleJoker(i);
         if (i.commandName === 'permlist')    await handlePermList(i);
         if (i.commandName === 'impersonate') await handleImpersonate(i);
+        if (i.commandName === 'snipe')    await handleSnipe(i);
         if (i.commandName === 'ranking') {
             if (!DEBUG_MODE) return i.reply({ content: '⚠️ DEBUG_MODE=true が必要です。', ephemeral: true });
             await handleRanking(i);

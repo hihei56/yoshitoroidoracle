@@ -244,6 +244,11 @@ new SlashCommandBuilder()
         .setName('permlist')
         .setDescription('危険な権限を持つロール・メンバーを一覧表示します。'),
 
+    // 12. スナイプ（直近の削除メッセージ確認）
+    new SlashCommandBuilder()
+        .setName('snipe')
+        .setDescription('このチャンネルで最後に削除されたメッセージをAIモデレーション付きで表示します（権限者のみ）。'),
+
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
