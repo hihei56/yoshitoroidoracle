@@ -244,6 +244,30 @@ new SlashCommandBuilder()
         .setName('permlist')
         .setDescription('危険な権限を持つロール・メンバーを一覧表示します。'),
 
+    // 12. スナイプ（削除メッセージ表示 / NGジャンル一括取得）
+    new SlashCommandBuilder()
+        .setName('snipe')
+        .setDescription('削除メッセージ表示 / NGジャンルのメッセージリンク一括取得（権限者のみ）。')
+        .addStringOption(opt =>
+            opt.setName('user_id')
+                .setDescription('取得対象のユーザーID（省略時は全員）')
+        )
+        .addBooleanOption(opt =>
+            opt.setName('include_webhook')
+                .setDescription('Webhookメッセージも対象にする（デフォルト: true）')
+        )
+        .addStringOption(opt =>
+            opt.setName('ng_genre')
+                .setDescription('NGジャンルを指定すると該当メッセージリンクを一括取得（スレッドに投稿）')
+                .addChoices(
+                    { name: '🚨 loli / shota', value: 'loli'      },
+                    { name: '☠️ 脅迫・殺害',   value: 'threat'    },
+                    { name: '💊 薬物',          value: 'drug'      },
+                    { name: '😔 自傷・自殺',    value: 'self_harm' },
+                    { name: '🤬 ヘイトスピーチ', value: 'hate'     },
+                )
+        ),
+
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
