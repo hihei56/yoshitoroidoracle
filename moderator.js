@@ -374,8 +374,6 @@ const NSFW_IMAGE_THRESHOLDS = {
     'sexual':         0.70,
     'sexual/minors':  0.10,
 };
-// NSFW判定された画像を再投稿後に削除するまでの時間（ミリ秒）
-const NSFW_DELETE_DELAY = parseInt(process.env.NSFW_DELETE_DELAY_MS ?? '30000', 10);
 
 async function checkNsfwImages(attachments) {
     if (!process.env.OPENAI_API_KEY) return { nsfw: false, reason: null };
@@ -407,7 +405,7 @@ async function checkNsfwImages(attachments) {
     }
 }
 
-async function repostNsfwAsSpoilerAndScheduleDelete(message) {
+async function repostNsfwAsSpoiler(message, reason) {
     const files = [...message.attachments.values()]
         .filter(a => a.contentType?.startsWith('image/') && a.size <= DL_CONFIG.MAX_SIZE)
         .map(att => ({ attachment: att.url, name: `SPOILER_${att.name || 'image.png'}` }));
@@ -429,15 +427,14 @@ async function repostNsfwAsSpoilerAndScheduleDelete(message) {
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 
-    const sent = await sendWebhook(message.channel, opts);
+    await sendWebhook(message.channel, opts);
 
-    // sendWebhookの戻り値がメッセージオブジェクトであれば削除スケジュール
-    if (sent?.id) {
-        setTimeout(async () => {
-            await sent.delete().catch(() => {});
-            console.info(`[NSFW IMG] SPOILER投稿を${NSFW_DELETE_DELAY / 1000}秒後削除: ${sent.id}`);
-        }, NSFW_DELETE_DELAY);
-    }
+    const ts      = new Date().toISOString();
+    const tag     = message.author.tag;
+    const userId  = message.author.id;
+    const channel = message.channel.name ?? message.channelId;
+    const urls    = [...message.attachments.values()].map(a => a.url).join(' ');
+    console.warn(`[NSFW IMG] ${ts} | #${channel} | ${tag}(${userId}) | reason=${reason} | ${urls}`);
 }
 
 
@@ -850,9 +847,7 @@ async function handleModerator(message) {
     if (!isExempt && message.attachments.size > 0) {
         const nsfwResult = await checkNsfwImages(message.attachments);
         if (nsfwResult.nsfw) {
-            console.warn(`[NSFW IMG] ${message.author.tag}(${message.author.id}) NSFW画像検出: ${nsfwResult.reason}`);
-            logDeletion({ message, matched: [`nsfw_image(${nsfwResult.reason})`] });
-            await repostNsfwAsSpoilerAndScheduleDelete(message);
+            await repostNsfwAsSpoiler(message, nsfwResult.reason);
             return;
         }
     }
