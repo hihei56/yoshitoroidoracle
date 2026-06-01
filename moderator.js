@@ -836,6 +836,13 @@ async function handleModerator(message) {
         console.info(`[MOD EXEMPT] ${message.author.tag} NGワードヒットだが免除: ${matched}`);
     }
 
+    // 0〜13の数字単発投稿を規制（添付なし・免除なし）
+    if (!isExempt && !message.attachments.size && /^(?:1[0-3]|[0-9])$/.test(strippedContent.trim())) {
+        logDeletion({ message, matched: ['single_number(0-13)'] });
+        await instantDeleteAndRecode(message);
+        return;
+    }
+
     if ((hit || aiResult.flagged) && !isExempt) {
         const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
         logDeletion({ message, matched: allMatched });
