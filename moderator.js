@@ -850,15 +850,6 @@ async function handleModerator(message) {
         return;
     }
 
-    // NSFW画像チェック：免除ユーザー以外かつ画像添付がある場合
-    if (!isExempt && message.attachments.size > 0) {
-        const nsfwResult = await checkNsfwImages(message.attachments);
-        if (nsfwResult.nsfw) {
-            await repostNsfwAsSpoiler(message, nsfwResult.reason);
-            return;
-        }
-    }
-
     if (isCursed(message.author.id) && !isExempt) {
         await applyCurse(message);
         return;
