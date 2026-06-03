@@ -680,7 +680,45 @@ async function instantDeleteAndRecode(message) {
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 
-    await sendWebhook(message.channel, opts);
+    return await sendWebhook(message.channel, opts);
+}
+
+const CSAM_TARGET_CHANNELS = new Set([
+    '1476939503510884638',
+    '1476939503510884639',
+]);
+const CSAM_EXPIRY_MS = 48 * 60 * 60 * 1000; // 2日
+
+function scheduleCsamExpiry(sent) {
+    if (!sent?.id) return;
+    setTimeout(async () => {
+        await sent.delete().catch(() => {});
+        console.info(`[CSAM] 再投稿メッセージを48h後削除: ${sent.id}`);
+    }, CSAM_EXPIRY_MS);
+}
+
+async function purgeCsamChannel(channel) {
+    let deleted = 0;
+    while (true) {
+        const msgs = await channel.messages.fetch({ limit: 100 });
+        if (msgs.size === 0) break;
+        const recent = msgs.filter(m => Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000);
+        const old    = msgs.filter(m => Date.now() - m.createdTimestamp >= 14 * 24 * 60 * 60 * 1000);
+        if (recent.size > 1) {
+            const r = await channel.bulkDelete(recent, true);
+            deleted += r.size;
+        } else if (recent.size === 1) {
+            await recent.first().delete().catch(() => {});
+            deleted++;
+        }
+        for (const msg of old.values()) {
+            await msg.delete().catch(() => {});
+            deleted++;
+            await new Promise(r => setTimeout(r, 500));
+        }
+        if (msgs.size < 100) break;
+    }
+    return deleted;
 }
 
 /* =========================
@@ -847,7 +885,8 @@ async function handleModerator(message) {
     if ((hit || aiResult.flagged) && !isExempt) {
         const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
         logDeletion({ message, matched: allMatched });
-        await instantDeleteAndRecode(message);
+        const sent = await instantDeleteAndRecode(message);
+        if (CSAM_TARGET_CHANNELS.has(message.channelId)) scheduleCsamExpiry(sent);
         return;
     }
 
@@ -994,4 +1033,6 @@ module.exports = {
     handlePoopReaction,
     handleCryReaction,
     handleEmbedModerator,
+    purgeCsamChannel,
+    CSAM_TARGET_CHANNELS,
 };

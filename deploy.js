@@ -176,6 +176,11 @@ new SlashCommandBuilder()
                     opt.setName('server_id')
                         .setDescription('NGにするサーバーID（追加・削除時は必須）')
                 )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('purge_csam')
+                .setDescription('CSAMチャンネルに蓄積した再投稿webhookを今すぐ一括削除します（管理者のみ）。')
         ),
 
     // 6. ROM専目覚まし（管理者のみ）

@@ -2,6 +2,7 @@ const {
     EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
     StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
 } = require('discord.js');
+const { purgeCsamChannel, CSAM_TARGET_CHANNELS } = require('./moderator');
 
 const HOME_GUILD_ID  = '1476939502319698054';
 const ADMIN_ROLE_ID  = '1495971497016164492';
@@ -242,6 +243,25 @@ async function handleAdmin(interaction) {
     // ── 加入サーバー一覧 ──
     if (sub === 'servers') {
         return handleServers(interaction);
+    }
+
+    // ── CSAMチャンネル一括削除 ──
+    if (sub === 'purge_csam') {
+        await interaction.deferReply({ ephemeral: true });
+        let total = 0;
+        for (const id of CSAM_TARGET_CHANNELS) {
+            try {
+                const ch = await interaction.client.channels.fetch(id);
+                if (ch?.isTextBased()) {
+                    const n = await purgeCsamChannel(ch);
+                    total += n;
+                    console.log(`[PURGE CSAM] <#${id}> ${n}件削除 by ${interaction.user.tag}`);
+                }
+            } catch (e) {
+                console.error(`[PURGE CSAM] ${id} 失敗:`, e.message);
+            }
+        }
+        return interaction.editReply({ content: `✅ CSAMチャンネルを掃除しました（計 ${total} 件削除）` });
     }
 
     // ── 無活動キック ──

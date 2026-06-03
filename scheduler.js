@@ -165,49 +165,6 @@ async function sendTomoNews(client) {
 /* =========================
    ⏰ スケジューラ初期化
 ========================= */
-// 2日ごとに再投稿webhookを削除するチャンネル
-const CSAM_PURGE_CHANNELS = [
-    '1476939503510884638',
-    '1476939503510884639',
-];
-
-async function purgeChannel(client, channelId) {
-    try {
-        const ch = await client.channels.fetch(channelId);
-        if (!ch?.isTextBased()) return 0;
-        let deleted = 0;
-        while (true) {
-            const msgs = await ch.messages.fetch({ limit: 100 });
-            if (msgs.size === 0) break;
-            const recent = msgs.filter(m => Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000);
-            const old    = msgs.filter(m => Date.now() - m.createdTimestamp >= 14 * 24 * 60 * 60 * 1000);
-            if (recent.size > 1) {
-                const result = await ch.bulkDelete(recent, true);
-                deleted += result.size;
-            } else if (recent.size === 1) {
-                await recent.first().delete().catch(() => {});
-                deleted++;
-            }
-            for (const msg of old.values()) {
-                await msg.delete().catch(() => {});
-                deleted++;
-                await new Promise(r => setTimeout(r, 500));
-            }
-            if (msgs.size < 100) break;
-        }
-        return deleted;
-    } catch (e) {
-        console.error(`[PURGE] ${channelId} 削除失敗:`, e.message);
-        return 0;
-    }
-}
-
-async function purgeCsamChannels(client) {
-    for (const id of CSAM_PURGE_CHANNELS) {
-        const n = await purgeChannel(client, id);
-        console.log(`[PURGE] <#${id}> ${n}件削除`);
-    }
-}
 
 function initScheduler(client) {
     console.log(`[Scheduler] ✅ 初期化完了 | データ: ${POSTED_LOG_PATH}`);
@@ -216,9 +173,6 @@ function initScheduler(client) {
     ['0 9 * * *', '0 15 * * *', '0 21 * * *'].forEach(expr => {
         cron.schedule(expr, () => sendTomoNews(client), { timezone: 'Asia/Tokyo' });
     });
-
-    // 2日に1回（偶数日の午前4時 JST）再投稿チャンネルを全削除
-    cron.schedule('0 4 */2 * *', () => purgeCsamChannels(client), { timezone: 'Asia/Tokyo' });
 
     if (process.env.DEBUG_MODE === 'true') {
         setTimeout(() => sendTomoNews(client), 3_000);
