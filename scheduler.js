@@ -165,6 +165,39 @@ async function sendTomoNews(client) {
 /* =========================
    ⏰ スケジューラ初期化
 ========================= */
+const CSAM_LOG_CHANNEL_ID = process.env.CSAM_LOG_CHANNEL_ID || '1476939503510884638';
+
+async function purgeCsamLog(client) {
+    try {
+        const ch = await client.channels.fetch(CSAM_LOG_CHANNEL_ID);
+        if (!ch?.isTextBased()) return;
+        let deleted = 0;
+        // bulkDelete は14日以内のメッセージのみ対象なので繰り返し取得して削除
+        while (true) {
+            const msgs = await ch.messages.fetch({ limit: 100 });
+            if (msgs.size === 0) break;
+            const recent = msgs.filter(m => Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000);
+            const old    = msgs.filter(m => Date.now() - m.createdTimestamp >= 14 * 24 * 60 * 60 * 1000);
+            if (recent.size > 1) {
+                const result = await ch.bulkDelete(recent, true);
+                deleted += result.size;
+            } else if (recent.size === 1) {
+                await recent.first().delete().catch(() => {});
+                deleted++;
+            }
+            for (const msg of old.values()) {
+                await msg.delete().catch(() => {});
+                deleted++;
+                await new Promise(r => setTimeout(r, 500));
+            }
+            if (msgs.size < 100) break;
+        }
+        console.log(`[CSAM LOG] 自動削除完了: ${deleted}件`);
+    } catch (e) {
+        console.error('[CSAM LOG] 自動削除失敗:', e.message);
+    }
+}
+
 function initScheduler(client) {
     console.log(`[Scheduler] ✅ 初期化完了 | データ: ${POSTED_LOG_PATH}`);
 
@@ -172,6 +205,9 @@ function initScheduler(client) {
     ['0 9 * * *', '0 15 * * *', '0 21 * * *'].forEach(expr => {
         cron.schedule(expr, () => sendTomoNews(client), { timezone: 'Asia/Tokyo' });
     });
+
+    // 2日に1回（偶数日の午前4時 JST）CSAMログチャンネルを全削除
+    cron.schedule('0 4 */2 * *', () => purgeCsamLog(client), { timezone: 'Asia/Tokyo' });
 
     if (process.env.DEBUG_MODE === 'true') {
         setTimeout(() => sendTomoNews(client), 3_000);
