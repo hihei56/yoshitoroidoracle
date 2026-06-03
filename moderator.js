@@ -611,9 +611,10 @@ async function handlePseudoReply(message) {
         }
     }
 
+    const files        = await downloadFiles(message.attachments);
     const opts = {
         content:         replyContent,
-        files:           [],
+        files,
         username,
         avatarURL,
         allowedMentions: { parse: ['users'] },
@@ -967,18 +968,16 @@ async function handleModerator(message) {
         return;
     }
 
-    // 画像スキャン（免除なし・テキストNG未ヒット時）
-    const imgResult = !isExempt && !hit && !aiResult.flagged && message.attachments.size > 0
-        ? await checkNsfwImages(message.attachments)
-        : { nsfw: false, reason: null };
+    // 画像スキャン（免除なし・テキストNG未ヒット時）ログのみ
+    if (!isExempt && !hit && !aiResult.flagged && message.attachments.size > 0) {
+        const imgResult = await checkNsfwImages(message.attachments);
+        if (imgResult.nsfw) await postCsamLog(message, [`nsfw_image(${imgResult.reason})`]);
+    }
 
-    if ((hit || aiResult.flagged || imgResult.nsfw) && !isExempt) {
-        const allMatched = [
-            ...(aiResult.reason ? [...matched, aiResult.reason] : matched),
-            ...(imgResult.nsfw  ? [`nsfw_image(${imgResult.reason})`] : []),
-        ];
+    if ((hit || aiResult.flagged) && !isExempt) {
+        const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
         logDeletion({ message, matched: allMatched });
-        if (isCsamMatch(allMatched) || imgResult.nsfw) await postCsamLog(message, allMatched);
+        if (isCsamMatch(allMatched)) await postCsamLog(message, allMatched);
         await instantDeleteAndRecode(message);
         return;
     }
