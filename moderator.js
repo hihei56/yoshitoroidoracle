@@ -370,6 +370,74 @@ async function checkAiModeration(text) {
     }
 }
 
+const NSFW_IMAGE_THRESHOLDS = {
+    'sexual':         0.70,
+    'sexual/minors':  0.10,
+};
+
+async function checkNsfwImages(attachments) {
+    if (!process.env.OPENAI_API_KEY) return { nsfw: false, reason: null };
+    const imageAtts = [...attachments.values()].filter(a =>
+        a.contentType?.startsWith('image/') && a.size <= DL_CONFIG.MAX_SIZE
+    );
+    if (imageAtts.length === 0) return { nsfw: false, reason: null };
+
+    const inputItems = imageAtts.map(att => ({
+        type: 'image_url',
+        image_url: { url: att.url },
+    }));
+
+    try {
+        const result = await openai.moderations.create({
+            model: 'omni-moderation-latest',
+            input: inputItems,
+        });
+        const scores = result.results[0]?.category_scores ?? {};
+        for (const [cat, threshold] of Object.entries(NSFW_IMAGE_THRESHOLDS)) {
+            if ((scores[cat] ?? 0) > threshold) {
+                return { nsfw: true, reason: cat };
+            }
+        }
+        return { nsfw: false, reason: null };
+    } catch (e) {
+        console.error('[NSFW Img] API失敗:', e.message);
+        return { nsfw: false, reason: null };
+    }
+}
+
+async function repostNsfwAsSpoiler(message, reason) {
+    const files = [...message.attachments.values()]
+        .filter(a => a.contentType?.startsWith('image/') && a.size <= DL_CONFIG.MAX_SIZE)
+        .map(att => ({ attachment: att.url, name: `SPOILER_${att.name || 'image.png'}` }));
+
+    if (message.deletable) await message.delete().catch(() => {});
+
+    const replyPrefix  = await buildReplyPrefix(message);
+    const bodyText     = sanitizeMentions(message.content || '');
+    const finalContent = hideUserId(message.author.id)
+        + replyPrefix
+        + (bodyText || '​');
+
+    const opts = {
+        content:         finalContent,
+        files,
+        username:        message.member?.displayName || message.author.username,
+        avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
+        allowedMentions: { parse: ['users'] },
+    };
+    if (message.channel.isThread()) opts.threadId = message.channel.id;
+
+    await sendWebhook(message.channel, opts);
+
+    const ts      = new Date().toISOString();
+    const tag     = message.author.tag;
+    const userId  = message.author.id;
+    const channel = message.channel.name ?? message.channelId;
+    const urls    = [...message.attachments.values()].map(a => a.url).join(' ');
+    console.warn(`[NSFW IMG] ${ts} | #${channel} | ${tag}(${userId}) | reason=${reason} | ${urls}`);
+}
+
+
 function logDeletion({ message, matched }) {
     const ts      = new Date().toISOString();
     const tag     = message.author.tag;
@@ -378,6 +446,7 @@ function logDeletion({ message, matched }) {
     const preview = (message.content ?? '').slice(0, 200).replace(/\n/g, ' ');
     console.warn(`[MOD] ${ts} | #${channel} | ${tag}(${userId}) | matched=${JSON.stringify(matched)} | "${preview}"`);
 }
+
 
 function stripTupperPrefix(content) {
     if (!content) return content;
@@ -611,7 +680,73 @@ async function instantDeleteAndRecode(message) {
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
 
-    await sendWebhook(message.channel, opts);
+    return await sendWebhook(message.channel, opts);
+}
+
+const CSAM_LOG_CHANNEL_ID = process.env.CSAM_LOG_CHANNEL_ID || '1511683026948587620';
+const CSAM_CATEGORIES     = new Set(['loli_shota', 'age', 'sexual/minors']);
+
+function isCsamMatch(matched) {
+    return matched.some(m => CSAM_CATEGORIES.has(m.split('(')[0]));
+}
+
+async function postCsamLog(message, matched) {
+    if (!CSAM_LOG_CHANNEL_ID || !message.client) return;
+    try {
+        const ch = await message.client.channels.fetch(CSAM_LOG_CHANNEL_ID);
+        if (!ch) return;
+        const ts      = new Date().toISOString();
+        const userId  = message.author?.id ?? '不明';
+        const tag     = message.author?.tag ?? 'unknown';
+        const chName  = message.channel?.name ?? message.channelId;
+        const preview = (message.content ?? '').slice(0, 300).replace(/\n/g, ' ');
+        const attachUrls = [...(message.attachments?.values() ?? [])].map(a => a.url).join(' ');
+        const lines = [
+            `🚨 **CSAM** \`${ts}\``,
+            `👤 <@${userId}> (${tag})`,
+            `📢 #${chName}  🔗 ${message.url}`,
+            `🏷️ \`${matched.join(', ')}\``,
+            preview     ? `💬 ${preview}`     : '',
+            attachUrls  ? `🖼️ ${attachUrls}`  : '',
+        ].filter(Boolean).join('\n');
+        await ch.send({ content: lines, allowedMentions: { parse: [] } });
+    } catch (e) {
+        console.error('[CSAM LOG] 送信失敗:', e.message);
+    }
+}
+
+const FOREIGN_LANG_LOG_CHANNEL_ID = process.env.FOREIGN_LANG_LOG_CHANNEL_ID || '1492754541957873734';
+
+function detectForeignLanguage(text) {
+    if (!text?.trim()) return false;
+    const stripped = text
+        .replace(/[぀-ゟ゠-ヿ一-鿿㐀-䶿]/g, '')   // 日本語
+        .replace(/[A-Za-z0-9\s\x20-\x7E]/g, '')       // ASCII英数字・記号
+        .replace(/[！-｠]/g, '')                        // 全角英数記号
+        .replace(/\p{Emoji}/gu, '');                   // 絵文字
+    return stripped.length >= 3;
+}
+
+async function postForeignLangLog(message) {
+    if (!FOREIGN_LANG_LOG_CHANNEL_ID || !message.client) return;
+    try {
+        const ch = await message.client.channels.fetch(FOREIGN_LANG_LOG_CHANNEL_ID);
+        if (!ch) return;
+        const tag     = message.author?.tag ?? 'unknown';
+        const userId  = message.author?.id ?? '不明';
+        const chName  = message.channel?.name ?? message.channelId;
+        const preview = (message.content ?? '').slice(0, 300);
+        await ch.send({
+            content: [
+                `🌐 **外国語検知** <@${userId}> (${tag})`,
+                `📢 #${chName}  🔗 ${message.url}`,
+                `💬 ${preview}`,
+            ].join('\n'),
+            allowedMentions: { parse: [] },
+        });
+    } catch (e) {
+        console.error('[FOREIGN LOG] 送信失敗:', e.message);
+    }
 }
 
 /* =========================
@@ -768,11 +903,32 @@ async function handleModerator(message) {
         console.info(`[MOD EXEMPT] ${message.author.tag} NGワードヒットだが免除: ${matched}`);
     }
 
-    if ((hit || aiResult.flagged) && !isExempt) {
-        const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
-        logDeletion({ message, matched: allMatched });
+    // 0〜13の数字単発投稿を規制（添付なし・免除なし）
+    if (!isExempt && !message.attachments.size && /^(?:1[0-3]|[0-9])$/.test(strippedContent.trim())) {
+        logDeletion({ message, matched: ['single_number(0-13)'] });
         await instantDeleteAndRecode(message);
         return;
+    }
+
+    // 画像スキャン（免除なし・テキストNG未ヒット時）
+    const imgResult = !isExempt && !hit && !aiResult.flagged && message.attachments.size > 0
+        ? await checkNsfwImages(message.attachments)
+        : { nsfw: false, reason: null };
+
+    if ((hit || aiResult.flagged || imgResult.nsfw) && !isExempt) {
+        const allMatched = [
+            ...(aiResult.reason ? [...matched, aiResult.reason] : matched),
+            ...(imgResult.nsfw  ? [`nsfw_image(${imgResult.reason})`] : []),
+        ];
+        logDeletion({ message, matched: allMatched });
+        if (isCsamMatch(allMatched) || imgResult.nsfw) await postCsamLog(message, allMatched);
+        await instantDeleteAndRecode(message);
+        return;
+    }
+
+    // 外国語検知（免除なし・通過したメッセージのみ）
+    if (!isExempt && strippedContent && detectForeignLanguage(strippedContent)) {
+        await postForeignLangLog(message);
     }
 
     if (isCursed(message.author.id) && !isExempt) {

@@ -165,6 +165,7 @@ async function sendTomoNews(client) {
 /* =========================
    ⏰ スケジューラ初期化
 ========================= */
+
 function initScheduler(client) {
     console.log(`[Scheduler] ✅ 初期化完了 | データ: ${POSTED_LOG_PATH}`);
 
