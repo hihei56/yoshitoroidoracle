@@ -447,7 +447,13 @@ function logDeletion({ message, matched }) {
     console.warn(`[MOD] ${ts} | #${channel} | ${tag}(${userId}) | matched=${JSON.stringify(matched)} | "${preview}"`);
 }
 
-const CSAM_LOG_CHANNEL_ID = process.env.CSAM_LOG_CHANNEL_ID || '1476939503510884638';
+const CSAM_LOG_CHANNEL_ID = process.env.CSAM_LOG_CHANNEL_ID || null;
+
+// CSAM特別ロジックを適用するチャンネル
+const CSAM_TARGET_CHANNELS = new Set([
+    '1476939503510884638',
+    '1476939503510884639',
+]);
 
 // CSAM関連キーワード・AIスコアのカテゴリ
 const CSAM_CATEGORIES = new Set(['loli_shota', 'age', 'sexual/minors']);
@@ -883,7 +889,7 @@ async function handleModerator(message) {
     if ((hit || aiResult.flagged) && !isExempt) {
         const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
         logDeletion({ message, matched: allMatched });
-        if (isCsamMatch(allMatched)) {
+        if (isCsamMatch(allMatched) && CSAM_TARGET_CHANNELS.has(message.channelId)) {
             await postCsamFlag(message, allMatched);
         }
         await instantDeleteAndRecode(message);
