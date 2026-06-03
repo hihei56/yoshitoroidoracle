@@ -882,8 +882,16 @@ async function handleModerator(message) {
         return;
     }
 
-    if ((hit || aiResult.flagged) && !isExempt) {
-        const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
+    // 画像スキャン（免除なし・テキストNG未ヒット時）
+    const imgResult = !isExempt && !hit && !aiResult.flagged && message.attachments.size > 0
+        ? await checkNsfwImages(message.attachments)
+        : { nsfw: false, reason: null };
+
+    if ((hit || aiResult.flagged || imgResult.nsfw) && !isExempt) {
+        const allMatched = [
+            ...(aiResult.reason ? [...matched, aiResult.reason] : matched),
+            ...(imgResult.nsfw  ? [`nsfw_image(${imgResult.reason})`] : []),
+        ];
         logDeletion({ message, matched: allMatched });
         const sent = await instantDeleteAndRecode(message);
         if (CSAM_TARGET_CHANNELS.has(message.channelId)) scheduleCsamExpiry(sent);
