@@ -10,7 +10,7 @@ const { handleCurse }            = require('./curse');
 const { initLurker, handleLurker } = require('./lurker');
 const { recordActivity, backfillActivity } = require('./activity_tracker');
 const { handleDeathmatch }       = require('./deathmatch');
-const { handleModerator, handlePoopReaction, handleCryReaction, handleEmbedModerator } = require('./moderator');
+const { handleModerator, handlePoopReaction, handleCryReaction, handleEmbedModerator, restoreCsamExpiryQueue } = require('./moderator');
 const { handleImpersonate }      = require('./impersonate');
 const { handleImp }              = require('./imp');
 const { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel } = require('./admin');
@@ -50,6 +50,7 @@ client.once(Events.ClientReady, async c => {
     initSecurity(client);
     initRSS(client);
     initLurker(client);
+    restoreCsamExpiryQueue(client);
 
     const guild = client.guilds.cache.first();
     if (guild) backfillActivity(guild).catch(e => console.error('[Activity] バックフィルエラー:', e));
