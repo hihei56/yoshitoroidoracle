@@ -719,12 +719,21 @@ const FOREIGN_LANG_LOG_CHANNEL_ID = process.env.FOREIGN_LANG_LOG_CHANNEL_ID || '
 
 function detectForeignLanguage(text) {
     if (!text?.trim()) return false;
+
+    // 日本語文字数をカウント
+    const jpCount = (text.match(/[぀-ゟ゠-ヿ一-鿿㐀-䶿]/g) ?? []).length;
+    // 日本語が5文字以上あればスキップ
+    if (jpCount >= 5) return false;
+
+    // 日本語・英語・数字・記号・絵文字を除去して残りをカウント
     const stripped = text
         .replace(/[぀-ゟ゠-ヿ一-鿿㐀-䶿]/g, '')   // 日本語
         .replace(/[A-Za-z0-9\s\x20-\x7E]/g, '')       // ASCII英数字・記号
         .replace(/[！-｠]/g, '')                        // 全角英数記号
         .replace(/\p{Emoji}/gu, '');                   // 絵文字
-    return stripped.length >= 3;
+
+    // 残った文字（他言語）が5文字以上あれば検知
+    return stripped.length >= 5;
 }
 
 async function postForeignLangLog(message) {
