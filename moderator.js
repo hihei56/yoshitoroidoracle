@@ -1,7 +1,7 @@
 // moderator.js
 const axios  = require('axios');
 const { OpenAI } = require('openai');
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const { getModExcludeList } = require('./exclude_manager');
 const whStore = require('./webhook_store');
 const { isCursed } = require('./curse_manager');
@@ -716,6 +716,54 @@ async function postCsamLog(message, matched) {
 }
 
 const FOREIGN_LANG_LOG_CHANNEL_ID = process.env.FOREIGN_LANG_LOG_CHANNEL_ID || '1492754541957873734';
+const FOREIGNER_ROLE_ID           = process.env.FOREIGNER_ROLE_ID || '1483829668271620146';
+const LINGVA_BASE                 = process.env.LINGVA_BASE || 'https://lingva.ml';
+
+async function translateToJa(text) {
+    const encoded = encodeURIComponent(text.slice(0, 1000));
+    try {
+        const res = await axios.get(`${LINGVA_BASE}/api/v1/auto/ja/${encoded}`, { timeout: 6_000 });
+        return res.data?.translation ?? null;
+    } catch (e) {
+        console.error('[TRANSLATE] Lingva失敗:', e.message);
+        return null;
+    }
+}
+
+async function handleForeignerMessage(message) {
+    if (!message.member?.roles.cache.has(FOREIGNER_ROLE_ID)) return false;
+    if (!message.content?.trim()) return false;
+    if (!detectForeignLanguage(message.content)) return false;
+
+    const translated = await translateToJa(message.content);
+    if (!translated) return false;
+
+    const files      = await downloadFiles(message.attachments);
+    if (message.deletable) await message.delete().catch(() => {});
+
+    const embed = new EmbedBuilder()
+        .setDescription(`📝 原文:\n${message.content.slice(0, 1000)}`)
+        .setColor(0x5865F2)
+        .setFooter({ text: '翻訳: Lingva Translate' });
+
+    const replyPrefix  = await buildReplyPrefix(message);
+    const finalContent = hideUserId(message.author.id)
+        + sanitizeMentions(replyPrefix + translated);
+
+    const opts = {
+        content:         finalContent,
+        embeds:          [embed],
+        files,
+        username:        message.member?.displayName || message.author.username,
+        avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
+        allowedMentions: { parse: ['users'] },
+    };
+    if (message.channel.isThread()) opts.threadId = message.channel.id;
+
+    await sendWebhook(message.channel, opts);
+    console.info(`[TRANSLATE] ${message.author.tag} → 日本語に自動翻訳`);
+    return true;
+}
 
 function detectForeignLanguage(text) {
     if (!text?.trim()) return false;
@@ -950,6 +998,7 @@ async function handleModerator(message) {
         return;
     }
 
+    if (await handleForeignerMessage(message)) return;
     if (await handleSensitivePost(message)) return;
     if (await handleImpReply(message))      return; // ← /imp メッセージへのリプライ判定
     if (await handlePseudoReply(message))   return;
