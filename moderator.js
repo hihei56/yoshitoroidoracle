@@ -447,48 +447,6 @@ function logDeletion({ message, matched }) {
     console.warn(`[MOD] ${ts} | #${channel} | ${tag}(${userId}) | matched=${JSON.stringify(matched)} | "${preview}"`);
 }
 
-const CSAM_LOG_CHANNEL_ID = process.env.CSAM_LOG_CHANNEL_ID || null;
-
-// CSAM特別ロジックを適用するチャンネル
-const CSAM_TARGET_CHANNELS = new Set([
-    '1476939503510884638',
-    '1476939503510884639',
-]);
-
-// CSAM関連キーワード・AIスコアのカテゴリ
-const CSAM_CATEGORIES = new Set(['loli_shota', 'age', 'sexual/minors']);
-
-function isCsamMatch(matched) {
-    return matched.some(m => {
-        const key = m.split('(')[0];
-        return CSAM_CATEGORIES.has(key);
-    });
-}
-
-async function postCsamFlag(message, matched) {
-    if (!message.client) return;
-    try {
-        const ch = await message.client.channels.fetch(CSAM_LOG_CHANNEL_ID);
-        if (!ch) return;
-        const ts      = new Date().toISOString();
-        const userId  = message.author?.id ?? '不明';
-        const tag     = message.author?.tag ?? 'unknown';
-        const chName  = message.channel?.name ?? message.channelId;
-        const preview = (message.content ?? '').slice(0, 300).replace(/\n/g, ' ');
-        const attachUrls = [...(message.attachments?.values() ?? [])].map(a => a.url).join(' ');
-        const lines = [
-            `🚨 **CSAM FLAG** \`${ts}\``,
-            `👤 <@${userId}> (${tag})`,
-            `📢 #${chName}`,
-            `🏷️ \`${matched.join(', ')}\``,
-            preview ? `💬 ${preview}` : '',
-            attachUrls ? `🖼️ ${attachUrls}` : '',
-        ].filter(Boolean).join('\n');
-        await ch.send({ content: lines, allowedMentions: { parse: [] } });
-    } catch (e) {
-        console.error('[CSAM LOG] 送信失敗:', e.message);
-    }
-}
 
 function stripTupperPrefix(content) {
     if (!content) return content;
@@ -889,9 +847,6 @@ async function handleModerator(message) {
     if ((hit || aiResult.flagged) && !isExempt) {
         const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
         logDeletion({ message, matched: allMatched });
-        if (isCsamMatch(allMatched) && CSAM_TARGET_CHANNELS.has(message.channelId)) {
-            await postCsamFlag(message, allMatched);
-        }
         await instantDeleteAndRecode(message);
         return;
     }

@@ -165,14 +165,17 @@ async function sendTomoNews(client) {
 /* =========================
    ⏰ スケジューラ初期化
 ========================= */
-const CSAM_LOG_CHANNEL_ID = process.env.CSAM_LOG_CHANNEL_ID || '1476939503510884638';
+// 2日ごとに再投稿webhookを削除するチャンネル
+const CSAM_PURGE_CHANNELS = [
+    '1476939503510884638',
+    '1476939503510884639',
+];
 
-async function purgeCsamLog(client) {
+async function purgeChannel(client, channelId) {
     try {
-        const ch = await client.channels.fetch(CSAM_LOG_CHANNEL_ID);
-        if (!ch?.isTextBased()) return;
+        const ch = await client.channels.fetch(channelId);
+        if (!ch?.isTextBased()) return 0;
         let deleted = 0;
-        // bulkDelete は14日以内のメッセージのみ対象なので繰り返し取得して削除
         while (true) {
             const msgs = await ch.messages.fetch({ limit: 100 });
             if (msgs.size === 0) break;
@@ -192,9 +195,17 @@ async function purgeCsamLog(client) {
             }
             if (msgs.size < 100) break;
         }
-        console.log(`[CSAM LOG] 自動削除完了: ${deleted}件`);
+        return deleted;
     } catch (e) {
-        console.error('[CSAM LOG] 自動削除失敗:', e.message);
+        console.error(`[PURGE] ${channelId} 削除失敗:`, e.message);
+        return 0;
+    }
+}
+
+async function purgeCsamChannels(client) {
+    for (const id of CSAM_PURGE_CHANNELS) {
+        const n = await purgeChannel(client, id);
+        console.log(`[PURGE] <#${id}> ${n}件削除`);
     }
 }
 
@@ -206,8 +217,8 @@ function initScheduler(client) {
         cron.schedule(expr, () => sendTomoNews(client), { timezone: 'Asia/Tokyo' });
     });
 
-    // 2日に1回（偶数日の午前4時 JST）CSAMログチャンネルを全削除
-    cron.schedule('0 4 */2 * *', () => purgeCsamLog(client), { timezone: 'Asia/Tokyo' });
+    // 2日に1回（偶数日の午前4時 JST）再投稿チャンネルを全削除
+    cron.schedule('0 4 */2 * *', () => purgeCsamChannels(client), { timezone: 'Asia/Tokyo' });
 
     if (process.env.DEBUG_MODE === 'true') {
         setTimeout(() => sendTomoNews(client), 3_000);
