@@ -20,6 +20,7 @@ const { postRanking, handleRanking } = require('./ranking');
 const { handleTimeoutList }      = require('./timeoutlist');
 const { initSecurity, handlePermList } = require('./security');
 const { handleInviteFilter, handleNGServer } = require('./invite_filter');
+const { handleEditMonitor } = require('./edit_monitor');
 
 const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
 if (DEBUG_MODE) console.log('🐛 [Debug] デバッグモード有効');
@@ -71,6 +72,7 @@ client.on(Events.MessageCreate, async m => {
 client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
     if (!newMessage.guild) return;
     handleEmbedModerator(oldMessage, newMessage).catch(e => console.error('[EmbedMod Error]:', e));
+    handleEditMonitor(oldMessage, newMessage).catch(e => console.error('[EditMon Error]:', e));
 });
 
 client.on(Events.MessageReactionAdd, async (reaction, user) => {
