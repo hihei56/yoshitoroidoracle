@@ -715,6 +715,40 @@ async function postCsamLog(message, matched) {
     }
 }
 
+const FOREIGN_LANG_LOG_CHANNEL_ID = process.env.FOREIGN_LANG_LOG_CHANNEL_ID || '1492754541957873734';
+
+function detectForeignLanguage(text) {
+    if (!text?.trim()) return false;
+    const stripped = text
+        .replace(/[぀-ゟ゠-ヿ一-鿿㐀-䶿]/g, '')   // 日本語
+        .replace(/[A-Za-z0-9\s\x20-\x7E]/g, '')       // ASCII英数字・記号
+        .replace(/[！-｠]/g, '')                        // 全角英数記号
+        .replace(/\p{Emoji}/gu, '');                   // 絵文字
+    return stripped.length >= 3;
+}
+
+async function postForeignLangLog(message) {
+    if (!FOREIGN_LANG_LOG_CHANNEL_ID || !message.client) return;
+    try {
+        const ch = await message.client.channels.fetch(FOREIGN_LANG_LOG_CHANNEL_ID);
+        if (!ch) return;
+        const tag     = message.author?.tag ?? 'unknown';
+        const userId  = message.author?.id ?? '不明';
+        const chName  = message.channel?.name ?? message.channelId;
+        const preview = (message.content ?? '').slice(0, 300);
+        await ch.send({
+            content: [
+                `🌐 **外国語検知** <@${userId}> (${tag})`,
+                `📢 #${chName}  🔗 ${message.url}`,
+                `💬 ${preview}`,
+            ].join('\n'),
+            allowedMentions: { parse: [] },
+        });
+    } catch (e) {
+        console.error('[FOREIGN LOG] 送信失敗:', e.message);
+    }
+}
+
 /* =========================
    🎭 lurker取得（lurker_picker.js に統一）
 ========================= */
@@ -890,6 +924,11 @@ async function handleModerator(message) {
         if (isCsamMatch(allMatched) || imgResult.nsfw) await postCsamLog(message, allMatched);
         await instantDeleteAndRecode(message);
         return;
+    }
+
+    // 外国語検知（免除なし・通過したメッセージのみ）
+    if (!isExempt && strippedContent && detectForeignLanguage(strippedContent)) {
+        await postForeignLangLog(message);
     }
 
     if (isCursed(message.author.id) && !isExempt) {
