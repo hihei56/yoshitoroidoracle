@@ -3,7 +3,6 @@ const axios  = require('axios');
 const { OpenAI } = require('openai');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getModExcludeList } = require('./exclude_manager');
-const { resolveDataPath, ensureDir, readJson, writeJson } = require('./dataPath');
 const whStore = require('./webhook_store');
 const { isCursed } = require('./curse_manager');
 const { isImpersonated } = require('./impersonate_manager');
@@ -684,85 +683,36 @@ async function instantDeleteAndRecode(message) {
     return await sendWebhook(message.channel, opts);
 }
 
-const CSAM_TARGET_CHANNELS = new Set([
-    '1476939503510884638',
-    '1476939503510884639',
-]);
-const CSAM_EXPIRY_MS   = 48 * 60 * 60 * 1000; // 2日
-const CSAM_QUEUE_PATH  = resolveDataPath('csam_expiry_queue.json');
-ensureDir(CSAM_QUEUE_PATH);
+const CSAM_LOG_CHANNEL_ID = process.env.CSAM_LOG_CHANNEL_ID || '1511683026948587620';
+const CSAM_CATEGORIES     = new Set(['loli_shota', 'age', 'sexual/minors']);
 
-function _loadQueue() {
-    return readJson(CSAM_QUEUE_PATH, []);
+function isCsamMatch(matched) {
+    return matched.some(m => CSAM_CATEGORIES.has(m.split('(')[0]));
 }
 
-function _saveQueue(queue) {
-    writeJson(CSAM_QUEUE_PATH, queue);
-}
-
-function _removeFromQueue(messageId) {
-    const queue = _loadQueue().filter(e => e.messageId !== messageId);
-    _saveQueue(queue);
-}
-
-function _scheduleOne(client, entry) {
-    const delay = Math.max(0, entry.deleteAt - Date.now());
-    setTimeout(async () => {
-        try {
-            const ch  = await client.channels.fetch(entry.channelId);
-            const msg = await ch.messages.fetch(entry.messageId);
-            await msg.delete();
-            console.info(`[CSAM] 再投稿メッセージ削除: ${entry.messageId}`);
-        } catch {
-            // 既に削除済みなどは無視
-        }
-        _removeFromQueue(entry.messageId);
-    }, delay);
-}
-
-function scheduleCsamExpiry(sent) {
-    if (!sent?.id) return;
-    const entry = {
-        messageId: sent.id,
-        channelId: sent.channelId,
-        deleteAt:  Date.now() + CSAM_EXPIRY_MS,
-    };
-    const queue = _loadQueue();
-    queue.push(entry);
-    _saveQueue(queue);
-    _scheduleOne(sent.client, entry);
-}
-
-// 起動時に未処理のキューを復元する
-function restoreCsamExpiryQueue(client) {
-    const queue = _loadQueue();
-    if (queue.length === 0) return;
-    console.info(`[CSAM] 再起動復元: ${queue.length}件のタイマーを再スケジュール`);
-    for (const entry of queue) _scheduleOne(client, entry);
-}
-
-async function purgeCsamChannel(channel) {
-    let deleted = 0;
-    while (true) {
-        const msgs = await channel.messages.fetch({ limit: 100 });
-        if (msgs.size === 0) break;
-        const recent = msgs.filter(m => Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000);
-        const old    = msgs.filter(m => Date.now() - m.createdTimestamp >= 14 * 24 * 60 * 60 * 1000);
-        if (recent.size > 1) {
-            const r = await channel.bulkDelete(recent, true);
-            deleted += r.size;
-        } else if (recent.size === 1) {
-            await recent.first().delete().catch(() => {});
-            deleted++;
-        }
-        for (const msg of old.values()) {
-            await msg.delete().catch(() => {});
-            deleted++;
-            await new Promise(r => setTimeout(r, 500));
-        }
-        if (msgs.size < 100) break;
+async function postCsamLog(message, matched) {
+    if (!CSAM_LOG_CHANNEL_ID || !message.client) return;
+    try {
+        const ch = await message.client.channels.fetch(CSAM_LOG_CHANNEL_ID);
+        if (!ch) return;
+        const ts      = new Date().toISOString();
+        const userId  = message.author?.id ?? '不明';
+        const tag     = message.author?.tag ?? 'unknown';
+        const chName  = message.channel?.name ?? message.channelId;
+        const preview = (message.content ?? '').slice(0, 300).replace(/\n/g, ' ');
+        const attachUrls = [...(message.attachments?.values() ?? [])].map(a => a.url).join(' ');
+        const lines = [
+            `🚨 **CSAM** \`${ts}\``,
+            `👤 <@${userId}> (${tag})`,
+            `📢 #${chName}  🔗 ${message.url}`,
+            `🏷️ \`${matched.join(', ')}\``,
+            preview     ? `💬 ${preview}`     : '',
+            attachUrls  ? `🖼️ ${attachUrls}`  : '',
+        ].filter(Boolean).join('\n');
+        await ch.send({ content: lines, allowedMentions: { parse: [] } });
+    } catch (e) {
+        console.error('[CSAM LOG] 送信失敗:', e.message);
     }
-    return deleted;
 }
 
 /* =========================
@@ -937,8 +887,8 @@ async function handleModerator(message) {
             ...(imgResult.nsfw  ? [`nsfw_image(${imgResult.reason})`] : []),
         ];
         logDeletion({ message, matched: allMatched });
-        const sent = await instantDeleteAndRecode(message);
-        if (CSAM_TARGET_CHANNELS.has(message.channelId)) scheduleCsamExpiry(sent);
+        if (isCsamMatch(allMatched) || imgResult.nsfw) await postCsamLog(message, allMatched);
+        await instantDeleteAndRecode(message);
         return;
     }
 
@@ -1085,7 +1035,4 @@ module.exports = {
     handlePoopReaction,
     handleCryReaction,
     handleEmbedModerator,
-    purgeCsamChannel,
-    CSAM_TARGET_CHANNELS,
-    restoreCsamExpiryQueue,
 };
