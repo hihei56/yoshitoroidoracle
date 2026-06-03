@@ -7,6 +7,9 @@ const EDIT_LOG_CHANNEL_ID = process.env.EDIT_LOG_CHANNEL_ID || null;
 // 投稿後この時間以上経過した編集を「古い編集」と判定（ミリ秒）
 const OLD_MSG_THRESHOLD = 60 * 60 * 1000; // 1時間
 
+// 投稿からこの時間未満の編集は記録しない（ミリ秒）
+const MIN_AGE_TO_LOG = 10 * 60 * 1000; // 10分
+
 // メディアリンクとみなす正規表現
 const MEDIA_LINK_REGEX = /https?:\/\/\S+\.(?:mp4|mov|avi|webm|mkv|gif|gifv|png|jpe?g|webp|m3u8|mp3|ogg|wav)(\?[^\s]*)?/i;
 
@@ -67,12 +70,13 @@ async function handleEditMonitor(oldMessage, newMessage) {
     // 内容変化なし（embed展開など）はスキップ
     if (oldContent !== null && oldContent === newContent) return;
 
+    // 投稿から10分未満の編集は記録しない
+    const age = Date.now() - newMessage.createdTimestamp;
+    if (age < MIN_AGE_TO_LOG) return;
+
     const author     = newMessage.author;
     const isWebhook  = !!newMessage.webhookId;
     const channel    = newMessage.channel;
-    const createdAt  = newMessage.createdTimestamp;
-    const now        = Date.now();
-    const age        = now - createdAt;
     const isOld      = age >= OLD_MSG_THRESHOLD;
 
     const { before, after } = buildDiff(oldContent, newContent);
