@@ -377,4 +377,43 @@ async function handleAdminButton(interaction) {
     });
 }
 
-module.exports = { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel };
+/* =========================
+   📡 プレゼンス変更
+========================= */
+const PRESENCE_LABELS = {
+    online:    '🟢 オンライン',
+    idle:      '🌙 退席中',
+    dnd:       '⛔ 取り込み中',
+    invisible: '⚫ オフライン',
+    mobile:    '📱 モバイル',
+};
+
+async function handlePresence(interaction) {
+    if (!hasAdminPermission(interaction.member)) {
+        return interaction.reply({ content: '管理者のみ実行できます。', ephemeral: true });
+    }
+
+    const status = interaction.options.getString('status');
+
+    if (status === 'mobile') {
+        await interaction.deferReply({ ephemeral: true });
+        // browser を Discord Android に書き換えて再接続するとモバイル表示になる
+        interaction.client.options.ws = {
+            ...(interaction.client.options.ws ?? {}),
+            properties: { browser: 'Discord Android' },
+        };
+        await interaction.client.destroy();
+        await interaction.client.login(process.env.DISCORD_TOKEN);
+        await interaction.followUp({ content: `✅ ステータスを **${PRESENCE_LABELS.mobile}** に変更しました。`, ephemeral: true });
+        return;
+    }
+
+    interaction.client.user.setPresence({ status });
+    console.info(`[PRESENCE] ステータス変更: ${status} by ${interaction.user.tag}`);
+    return interaction.reply({
+        content: `✅ ステータスを **${PRESENCE_LABELS[status] ?? status}** に変更しました。`,
+        ephemeral: true,
+    });
+}
+
+module.exports = { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel, handlePresence };
