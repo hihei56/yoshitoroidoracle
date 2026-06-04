@@ -160,6 +160,23 @@ new SlashCommandBuilder()
         )
         .addSubcommand(subcommand =>
             subcommand
+                .setName('presence')
+                .setDescription('ボットのオンライン状態を変更します。')
+                .addStringOption(opt =>
+                    opt.setName('status')
+                        .setDescription('設定するステータス')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: '🟢 オンライン',   value: 'online'    },
+                            { name: '🌙 退席中',       value: 'idle'      },
+                            { name: '⛔ 取り込み中',   value: 'dnd'       },
+                            { name: '⚫ オフライン',   value: 'invisible' },
+                            { name: '📱 モバイル',     value: 'mobile'    },
+                        )
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('ngserver')
                 .setDescription('招待リンクを自動削除するNGサーバーを管理します。')
                 .addStringOption(opt =>

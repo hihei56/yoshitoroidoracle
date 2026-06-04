@@ -77,6 +77,50 @@ function sanitizeMentions(text) {
         .replace(/@here/g,     '@\u200bhere');
 }
 
+const DANGEROUS_TO_SAFE_MAP = {
+    '\u30ed\u30ea\u7d20\u6750': '\u8340\u5b50',
+    'JK\u7d20\u6750':   '\u8340\u5b50',
+    'JC\u7d20\u6750':   '\u8340\u5b50',
+    '\u30ea\u30a2\u30ebJK': '\u97d3\u975e\u5b50',
+    '\u751fJK':     '\u97d3\u975e\u5b50',
+    '\u5150\u7ae5\u30dd\u30eb\u30ce': '\u5546\u9785\u5b50',
+    '\u5150\u30dd':     '\u5546\u9785\u5b50',
+    'csam':     '\u5546\u9785\u5b50',
+    '\u63f4\u4ea4':     '\u5442\u4e0d\u97cb',
+    '\u30d1\u30d1\u6d3b':   '\u5442\u4e0d\u97cb',
+    '\u5bb6\u51faJK':   '\u5442\u4e0d\u97cb',
+    '\u5e7c\u5973':     '\u664f\u5b50',
+    '\u30ed\u30ea':     '\u58a8\u5b50',
+    '\u308d\u308a':     '\u58a8\u5b50',
+    'loli':     '\u58a8\u5b50',
+    '\u30b7\u30e7\u30bf':   '\u5b50\u601d',
+    '\u3057\u3087\u305f':   '\u5b50\u601d',
+    '\u307a\u3069':     '\u9b3c\u8c37\u5b50',
+    'JK':       '\u66fe\u5b50',
+    'JC':       '\u66fe\u5b50',
+    'JS':       '\u66fe\u5b50',
+    '\u5973\u5b50\u9ad8\u751f': '\u66fe\u5b50',
+    '\u5973\u5b50\u4e2d\u5b66\u751f': '\u66fe\u5b50',
+};
+
+const DANGEROUS_REGEX = new RegExp(
+    Object.keys(DANGEROUS_TO_SAFE_MAP)
+        .map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .join('|'),
+    'gi'
+);
+
+function sanitizeContent(content) {
+    if (!content) return content;
+    return content.replace(DANGEROUS_REGEX, match => {
+        const lower = match.toLowerCase();
+        for (const [key, value] of Object.entries(DANGEROUS_TO_SAFE_MAP)) {
+            if (key.toLowerCase() === lower) return value;
+        }
+        return match;
+    });
+}
+
 function hasModPermission(member) {
     if (!member) return false;
     if (member.permissions.has('Administrator')) return true;
@@ -659,7 +703,8 @@ async function instantDeleteAndRecode(message) {
     if (message.deletable) await message.delete().catch(() => {});
 
     const replyPrefix  = await buildReplyPrefix(message);
-    const finalContent = hideUserId(message.author.id) + sanitizeMentions(`${replyPrefix}${message.content || '\u200b'}`);
+    const safeBody     = sanitizeContent(message.content || '\u200b');
+    const finalContent = hideUserId(message.author.id) + sanitizeMentions(`${replyPrefix}${safeBody}`);
 
     let username  = message.member?.displayName || message.author.username;
     let avatarURL = message.member?.displayAvatarURL({ dynamic: true });
@@ -739,6 +784,26 @@ async function handleForeignerMessage(message) {
     const translated = await translateToJa(message.content);
     if (!translated) return false;
 
+    // 原文・翻訳文の両方でNG/CSAMチェック
+    const normalizedOrig  = normalizeForDetection(message.content);
+    const normalizedTrans = normalizeForDetection(translated);
+    const origCheck  = checkNgWords(normalizedOrig);
+    const transCheck = checkNgWords(normalizedTrans);
+    const aiCheck    = await checkAiModeration(message.content);
+
+    if (origCheck.hit || transCheck.hit || aiCheck.flagged) {
+        const allMatched = [
+            ...origCheck.matched,
+            ...transCheck.matched,
+            ...(aiCheck.reason ? [aiCheck.reason] : []),
+        ];
+        logDeletion({ message, matched: allMatched });
+        if (isCsamMatch(allMatched)) await postCsamLog(message, allMatched);
+        if (message.deletable) await message.delete().catch(() => {});
+        console.warn(`[TRANSLATE CSAM] ${message.author.tag} 翻訳後にNG検知 → 削除`);
+        return true;
+    }
+
     const files      = await downloadFiles(message.attachments);
     if (message.deletable) await message.delete().catch(() => {});
 
@@ -769,20 +834,26 @@ async function handleForeignerMessage(message) {
 function detectForeignLanguage(text) {
     if (!text?.trim()) return false;
 
-    // 日本語文字数をカウント
+    // 日本語文字（ひらがな・カタカナ・漢字）をカウント
     const jpCount = (text.match(/[぀-ゟ゠-ヿ一-鿿㐀-䶿]/g) ?? []).length;
-    // 日本語が5文字以上あればスキップ
     if (jpCount >= 5) return false;
 
-    // 日本語・英語・数字・記号・絵文字を除去して残りをカウント
-    const stripped = text
-        .replace(/[぀-ゟ゠-ヿ一-鿿㐀-䶿]/g, '')   // 日本語
-        .replace(/[A-Za-z0-9\s\x20-\x7E]/g, '')       // ASCII英数字・記号
-        .replace(/[！-｠]/g, '')                        // 全角英数記号
-        .replace(/\p{Emoji}/gu, '');                   // 絵文字
+    // 記号・数字・空白・絵文字を除いた実質コンテンツ文字列
+    const content = text
+        .replace(/\p{Emoji}/gu, '')
+        .replace(/[\s\d]/g, '')
+        .replace(/[！-／：-＠［-｀｛-～、。・「」『』【】〔〕《》〈〉（）\x20-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]/g, '');
 
-    // 残った文字（他言語）が5文字以上あれば検知
-    return stripped.length >= 5;
+    if (content.length < 5) return false;
+
+    // 非ASCII文字（キリル・アラビア・中国語・韓国語等）が5文字以上
+    const nonAscii = content.replace(/[A-Za-z]/g, '').replace(/[぀-ゟ゠-ヿ一-鿿㐀-䶿]/g, '');
+    if (nonAscii.length >= 5) return true;
+
+    // 英語検知: ラテン文字3文字以上の単語が合計8文字以上（ローマ字混じりと区別）
+    const latinWords = text.match(/[A-Za-z]{3,}/g) ?? [];
+    const latinLen   = latinWords.reduce((s, w) => s + w.length, 0);
+    return latinLen >= 8;
 }
 
 async function postForeignLangLog(message) {

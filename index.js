@@ -13,7 +13,7 @@ const { handleDeathmatch }       = require('./deathmatch');
 const { handleModerator, handlePoopReaction, handleCryReaction, handleEmbedModerator } = require('./moderator');
 const { handleImpersonate }      = require('./impersonate');
 const { handleImp }              = require('./imp');
-const { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel } = require('./admin');
+const { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel, handlePresence } = require('./admin');
 const { handleJoker }            = require('./joker');
 const { initRSS }                = require('./rssBot');
 const { postRanking, handleRanking } = require('./ranking');
@@ -120,8 +120,10 @@ client.on(Events.InteractionCreate, async i => {
         if (i.commandName === 'curse')       await handleCurse(i);
         if (i.commandName === 'lurker')      await handleLurker(i);
         if (i.commandName === 'admin') {
-            if (i.options.getSubcommand() === 'ngserver') await handleNGServer(i);
-            else                                           await handleAdmin(i);
+            const sub = i.options.getSubcommand();
+            if (sub === 'ngserver')  await handleNGServer(i);
+            else if (sub === 'presence') await handlePresence(i);
+            else                         await handleAdmin(i);
         }
         if (i.commandName === 'joker')       await handleJoker(i);
         if (i.commandName === 'permlist')    await handlePermList(i);
