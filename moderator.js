@@ -106,7 +106,6 @@ const DANGEROUS_TO_SAFE_MAP = {
     'JS':           '\u66fe\u5b50',
     '\u5973\u5b50\u9ad8\u751f':     '\u66fe\u5b50',
     '\u5973\u5b50\u4e2d\u5b66\u751f':   '\u66fe\u5b50',
-    '\u5929\u624d':         '\u7ba1\u5b50',
 };
 
 const DANGEROUS_REGEX = new RegExp(
