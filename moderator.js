@@ -784,6 +784,26 @@ async function handleForeignerMessage(message) {
     const translated = await translateToJa(message.content);
     if (!translated) return false;
 
+    // 原文・翻訳文の両方でNG/CSAMチェック
+    const normalizedOrig  = normalizeForDetection(message.content);
+    const normalizedTrans = normalizeForDetection(translated);
+    const origCheck  = checkNgWords(normalizedOrig);
+    const transCheck = checkNgWords(normalizedTrans);
+    const aiCheck    = await checkAiModeration(message.content);
+
+    if (origCheck.hit || transCheck.hit || aiCheck.flagged) {
+        const allMatched = [
+            ...origCheck.matched,
+            ...transCheck.matched,
+            ...(aiCheck.reason ? [aiCheck.reason] : []),
+        ];
+        logDeletion({ message, matched: allMatched });
+        if (isCsamMatch(allMatched)) await postCsamLog(message, allMatched);
+        if (message.deletable) await message.delete().catch(() => {});
+        console.warn(`[TRANSLATE CSAM] ${message.author.tag} 翻訳後にNG検知 → 削除`);
+        return true;
+    }
+
     const files      = await downloadFiles(message.attachments);
     if (message.deletable) await message.delete().catch(() => {});
 
