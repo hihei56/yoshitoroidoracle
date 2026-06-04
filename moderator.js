@@ -814,20 +814,26 @@ async function handleForeignerMessage(message) {
 function detectForeignLanguage(text) {
     if (!text?.trim()) return false;
 
-    // 日本語文字数をカウント
+    // 日本語文字（ひらがな・カタカナ・漢字）をカウント
     const jpCount = (text.match(/[぀-ゟ゠-ヿ一-鿿㐀-䶿]/g) ?? []).length;
-    // 日本語が5文字以上あればスキップ
     if (jpCount >= 5) return false;
 
-    // 日本語・英語・数字・記号・絵文字を除去して残りをカウント
-    const stripped = text
-        .replace(/[぀-ゟ゠-ヿ一-鿿㐀-䶿]/g, '')   // 日本語
-        .replace(/[A-Za-z0-9\s\x20-\x7E]/g, '')       // ASCII英数字・記号
-        .replace(/[！-｠]/g, '')                        // 全角英数記号
-        .replace(/\p{Emoji}/gu, '');                   // 絵文字
+    // 記号・数字・空白・絵文字を除いた実質コンテンツ文字列
+    const content = text
+        .replace(/\p{Emoji}/gu, '')
+        .replace(/[\s\d]/g, '')
+        .replace(/[！-／：-＠［-｀｛-～、。・「」『』【】〔〕《》〈〉（）\x20-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]/g, '');
 
-    // 残った文字（他言語）が5文字以上あれば検知
-    return stripped.length >= 5;
+    if (content.length < 5) return false;
+
+    // 非ASCII文字（キリル・アラビア・中国語・韓国語等）が5文字以上
+    const nonAscii = content.replace(/[A-Za-z]/g, '').replace(/[぀-ゟ゠-ヿ一-鿿㐀-䶿]/g, '');
+    if (nonAscii.length >= 5) return true;
+
+    // 英語検知: ラテン文字3文字以上の単語が合計8文字以上（ローマ字混じりと区別）
+    const latinWords = text.match(/[A-Za-z]{3,}/g) ?? [];
+    const latinLen   = latinWords.reduce((s, w) => s + w.length, 0);
+    return latinLen >= 8;
 }
 
 async function postForeignLangLog(message) {
