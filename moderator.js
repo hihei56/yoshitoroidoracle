@@ -77,34 +77,26 @@ function sanitizeMentions(text) {
         .replace(/@here/g,     '@\u200bhere');
 }
 
-const DANGEROUS_TO_SAFE_MAP = {
-    '\u30ed\u30ea\u7d20\u6750': '\u8340\u5b50',
-    'JK\u7d20\u6750':   '\u8340\u5b50',
-    'JC\u7d20\u6750':   '\u8340\u5b50',
-    '\u30ea\u30a2\u30ebJK': '\u97d3\u975e\u5b50',
-    '\u751fJK':     '\u97d3\u975e\u5b50',
-    '\u5150\u7ae5\u30dd\u30eb\u30ce': '\u5546\u9785\u5b50',
-    '\u5150\u30dd':     '\u5546\u9785\u5b50',
-    'csam':     '\u5546\u9785\u5b50',
-    '\u63f4\u4ea4':     '\u5442\u4e0d\u97cb',
-    '\u30d1\u30d1\u6d3b':   '\u5442\u4e0d\u97cb',
-    '\u5bb6\u51faJK':   '\u5442\u4e0d\u97cb',
-    '\u5e7c\u5973':     '\u664f\u5b50',
-    '\u30ed\u30ea':     '\u58a8\u5b50',
-    '\u308d\u308a':     '\u58a8\u5b50',
-    'loli':     '\u58a8\u5b50',
-    '\u30b7\u30e7\u30bf':   '\u5b50\u601d',
-    '\u3057\u3087\u305f':   '\u5b50\u601d',
-    '\u307a\u3069':     '\u9b3c\u8c37\u5b50',
-    'JK':       '\u66fe\u5b50',
-    'JC':       '\u66fe\u5b50',
-    'JS':       '\u66fe\u5b50',
-    '\u5973\u5b50\u9ad8\u751f': '\u66fe\u5b50',
-    '\u5973\u5b50\u4e2d\u5b66\u751f': '\u66fe\u5b50',
-};
+const DANGEROUS_WORDS = [
+    '\u30ed\u30ea\u7d20\u6750', 'JK\u7d20\u6750', 'JC\u7d20\u6750', '\u30ea\u30a2\u30ebJK', '\u751fJK',
+    '\u5150\u7ae5\u30dd\u30eb\u30ce', '\u5150\u30dd', 'csam',
+    '\u63f4\u4ea4', '\u30d1\u30d1\u6d3b', '\u5bb6\u51faJK',
+    '\u5e7c\u5973', '\u5973\u5150', '\u7537\u5150', '\u5e7c\u5150', '\u5c11\u5973', '\u30e9\u30f3\u30c9\u30bb\u30eb',
+    '\u30ed\u30ea', '\u308d\u308a', 'loli',
+    '\u30b7\u30e7\u30bf', '\u3057\u3087\u305f', '\u307a\u3069',
+    'JK', 'JC', 'JS', '\u5973\u5b50\u9ad8\u751f', '\u5973\u5b50\u4e2d\u5b66\u751f',
+];
+
+const SAFE_NAMES = [
+    '\u58a8\u5b50', '\u664f\u5b50', '\u5b5f\u5b50', '\u5b54\u5b50', '\u8001\u5b50', '\u8358\u5b50',
+    '\u8340\u5b50', '\u97d3\u975e\u5b50', '\u5546\u9785\u5b50', '\u9b3c\u8c37\u5b50', '\u66fe\u5b50',
+    '\u7ba1\u5b50', '\u5217\u5b50', '\u5b6b\u5b50', '\u5449\u5b50', '\u5c39\u6587\u5b50',
+    '\u544a\u5b50', '\u6587\u5b50', '\u9127\u6790\u5b50', '\u6dee\u5357\u5b50', '\u9da1\u51a0\u5b50',
+    '\u5c09\u7e5a\u5b50', '\u62b1\u6734\u5b50', '\u63da\u5b50',
+];
 
 const DANGEROUS_REGEX = new RegExp(
-    Object.keys(DANGEROUS_TO_SAFE_MAP)
+    DANGEROUS_WORDS
         .map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
         .join('|'),
     'gi'
@@ -112,13 +104,9 @@ const DANGEROUS_REGEX = new RegExp(
 
 function sanitizeContent(content) {
     if (!content) return content;
-    return content.replace(DANGEROUS_REGEX, match => {
-        const lower = match.toLowerCase();
-        for (const [key, value] of Object.entries(DANGEROUS_TO_SAFE_MAP)) {
-            if (key.toLowerCase() === lower) return value;
-        }
-        return match;
-    });
+    return content.replace(DANGEROUS_REGEX, () =>
+        SAFE_NAMES[Math.floor(Math.random() * SAFE_NAMES.length)]
+    );
 }
 
 function hasModPermission(member) {
@@ -155,7 +143,10 @@ function normalizeForDetection(text) {
 }
 
 const LOLI_SHOTA_REGEX = new RegExp([
-    'ロリ','ろり','ﾛﾘ','loli',
+    '(?<![カセテフクグ])ロリ(?!ー)',
+    '(?<![かせてふくぐ])ろり',
+    '(?<![ｶｾﾃﾌｸｸﾞ])ﾛﾘ',
+    'loli',
     'ショタ','しょた','ｼｮﾀ','shota',
     'ロリコン','ろりこん','lolicon',
     'ショタコン','しょたこん','shotacon',
