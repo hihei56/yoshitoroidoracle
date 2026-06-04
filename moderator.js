@@ -77,6 +77,50 @@ function sanitizeMentions(text) {
         .replace(/@here/g,     '@\u200bhere');
 }
 
+const DANGEROUS_TO_SAFE_MAP = {
+    '\u30ed\u30ea\u7d20\u6750': '\u8340\u5b50',
+    'JK\u7d20\u6750':   '\u8340\u5b50',
+    'JC\u7d20\u6750':   '\u8340\u5b50',
+    '\u30ea\u30a2\u30ebJK': '\u97d3\u975e\u5b50',
+    '\u751fJK':     '\u97d3\u975e\u5b50',
+    '\u5150\u7ae5\u30dd\u30eb\u30ce': '\u5546\u9785\u5b50',
+    '\u5150\u30dd':     '\u5546\u9785\u5b50',
+    'csam':     '\u5546\u9785\u5b50',
+    '\u63f4\u4ea4':     '\u5442\u4e0d\u97cb',
+    '\u30d1\u30d1\u6d3b':   '\u5442\u4e0d\u97cb',
+    '\u5bb6\u51faJK':   '\u5442\u4e0d\u97cb',
+    '\u5e7c\u5973':     '\u664f\u5b50',
+    '\u30ed\u30ea':     '\u58a8\u5b50',
+    '\u308d\u308a':     '\u58a8\u5b50',
+    'loli':     '\u58a8\u5b50',
+    '\u30b7\u30e7\u30bf':   '\u5b50\u601d',
+    '\u3057\u3087\u305f':   '\u5b50\u601d',
+    '\u307a\u3069':     '\u9b3c\u8c37\u5b50',
+    'JK':       '\u66fe\u5b50',
+    'JC':       '\u66fe\u5b50',
+    'JS':       '\u66fe\u5b50',
+    '\u5973\u5b50\u9ad8\u751f': '\u66fe\u5b50',
+    '\u5973\u5b50\u4e2d\u5b66\u751f': '\u66fe\u5b50',
+};
+
+const DANGEROUS_REGEX = new RegExp(
+    Object.keys(DANGEROUS_TO_SAFE_MAP)
+        .map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .join('|'),
+    'gi'
+);
+
+function sanitizeContent(content) {
+    if (!content) return content;
+    return content.replace(DANGEROUS_REGEX, match => {
+        const lower = match.toLowerCase();
+        for (const [key, value] of Object.entries(DANGEROUS_TO_SAFE_MAP)) {
+            if (key.toLowerCase() === lower) return value;
+        }
+        return match;
+    });
+}
+
 function hasModPermission(member) {
     if (!member) return false;
     if (member.permissions.has('Administrator')) return true;
@@ -659,7 +703,8 @@ async function instantDeleteAndRecode(message) {
     if (message.deletable) await message.delete().catch(() => {});
 
     const replyPrefix  = await buildReplyPrefix(message);
-    const finalContent = hideUserId(message.author.id) + sanitizeMentions(`${replyPrefix}${message.content || '\u200b'}`);
+    const safeBody     = sanitizeContent(message.content || '\u200b');
+    const finalContent = hideUserId(message.author.id) + sanitizeMentions(`${replyPrefix}${safeBody}`);
 
     let username  = message.member?.displayName || message.author.username;
     let avatarURL = message.member?.displayAvatarURL({ dynamic: true });
