@@ -1118,14 +1118,17 @@ async function handleCryReaction(reaction, user) {
         : reaction.message;
     if (!message) return;
 
-    if (message.webhookId) return;
-
     const CRY_ALLOWED_ROLES = ['1495971497016164492'];
     const guild  = message.guild;
     const member = guild ? await guild.members.fetch(user.id).catch(() => null) : null;
     const isAdmin  = member?.permissions.has('Administrator') ||
                      CRY_ALLOWED_ROLES.some(id => member?.roles.cache.has(id));
-    const isAuthor = user.id === message.author?.id;
+
+    // Webhookメッセージはzero-width文字から本来の著者IDを取得
+    const realAuthorId = message.webhookId
+        ? extractUserId(message.content)
+        : message.author?.id;
+    const isAuthor = !!realAuthorId && user.id === realAuthorId;
 
     if (!isAdmin && !isAuthor) return;
 
@@ -1135,16 +1138,27 @@ async function handleCryReaction(reaction, user) {
 
     await reaction.remove().catch(() => {});
 
-    const files       = await downloadFiles(message.attachments);
-    const replyPrefix = await buildReplyPrefix(message);
-    const content     = sanitizeMentions(message.content || '');
-    const finalContent = hideUserId(message.author.id) + replyPrefix + (content || '\u200b');
+    const files = await downloadFiles(message.attachments);
+
+    let finalContent, username, avatarURL;
+    if (message.webhookId) {
+        // すでにWebhookメッセージ: コンテンツ・名前・アイコンをそのまま引き継ぐ
+        finalContent = message.content || '\u200b';
+        username     = message.author.username;
+        avatarURL    = message.author.displayAvatarURL({ dynamic: true });
+    } else {
+        const replyPrefix = await buildReplyPrefix(message);
+        const content     = sanitizeMentions(message.content || '');
+        finalContent = hideUserId(message.author.id) + replyPrefix + (content || '\u200b');
+        username     = message.member?.displayName || message.author.username;
+        avatarURL    = message.member?.displayAvatarURL({ dynamic: true });
+    }
 
     const opts = {
         content:         finalContent,
         files,
-        username:        message.member?.displayName || message.author.username,
-        avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
+        username,
+        avatarURL,
         allowedMentions: { parse: ['users'] },
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;
