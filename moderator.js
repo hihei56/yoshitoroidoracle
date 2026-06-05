@@ -1124,6 +1124,10 @@ async function handleCryReaction(reaction, user) {
 
     if (!isAdmin && !isAuthor) return;
 
+    // 管理者以外は投稿から30分以内のみ許可
+    const CRY_TIME_LIMIT_MS = 30 * 60 * 1000;
+    if (!isAdmin && Date.now() - message.createdTimestamp > CRY_TIME_LIMIT_MS) return;
+
     await reaction.remove().catch(() => {});
 
     const files       = await downloadFiles(message.attachments);
