@@ -1,7 +1,7 @@
 // anon.js — /anon コマンド
 const { MessageFlags } = require('discord.js');
 const { getSettings }  = require('./config');
-const { getSession, createSession } = require('./say_sessions');
+const { getSession, createSession, createPermanentSession } = require('./say_sessions');
 const axios = require('axios');
 
 const TOKUMEI_USER_ID = '1419689848968581272';
@@ -72,11 +72,12 @@ async function handleAnon(interaction) {
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     try {
-        // ── 24時間セッションで「匿名の〇〇」を固定 ──
+        // ── セッションで「匿名の〇〇」を固定（管理者は無期限） ──
+        const isAdmin = member.permissions.has('Administrator');
         let session = getSession(user.id);
         if (!session) {
             const name = await generateAnonSuffix(); // ユーザー名に依存しないランダム生成
-            session = createSession(user.id, name);
+            session = isAdmin ? createPermanentSession(user.id, name) : createSession(user.id, name);
         }
         const finalName = session.name;
 

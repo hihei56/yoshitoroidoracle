@@ -21,7 +21,9 @@ function persist() {
 /** 有効なセッションを返す。期限切れ/未存在なら null */
 function getSession(userId) {
     const s = sessions[userId];
-    return (s && s.expiresAt > Date.now()) ? s : null;
+    if (!s) return null;
+    if (s.permanent) return s;
+    return s.expiresAt > Date.now() ? s : null;
 }
 
 /** 新セッションを生成・保存して返す */
@@ -36,4 +38,12 @@ function createSession(userId, name) {
     return sessions[userId];
 }
 
-module.exports = { getSession, createSession };
+/** 無期限セッションを生成・保存して返す（管理者用） */
+function createPermanentSession(userId, name) {
+    const sessionId = String(Math.floor(Math.random() * 9000) + 1000);
+    sessions[userId] = { name, sessionId, permanent: true };
+    persist();
+    return sessions[userId];
+}
+
+module.exports = { getSession, createSession, createPermanentSession };
