@@ -569,6 +569,11 @@ async function sendWebhook(channel, options) {
         try {
             return await wh.send(options);
         } catch (e) {
+            // スレッド削除・アーカイブ済みの場合はリトライ不要
+            if (e.code === 10003) {
+                console.warn(`[Webhook] Unknown Channel（スレッド消滅？）: ${e.url ?? ''}`);
+                return null;
+            }
             const isWebhookGone = e.status === 404 || e.code === 10015;
             if (isWebhookGone) {
                 if (key) invalidateWebhook(key);
