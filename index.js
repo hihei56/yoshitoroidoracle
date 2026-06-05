@@ -13,7 +13,7 @@ const { handleDeathmatch }       = require('./deathmatch');
 const { handleModerator, handlePoopReaction, handleCryReaction, handleEmbedModerator } = require('./moderator');
 const { handleImpersonate }      = require('./impersonate');
 const { handleImp }              = require('./imp');
-const { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel, handlePresence } = require('./admin');
+const { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel, handlePresence, restorePresence } = require('./admin');
 const { handleJoker }            = require('./joker');
 const { initRSS }                = require('./rssBot');
 const { postRanking, handleRanking } = require('./ranking');
@@ -50,6 +50,7 @@ client.once(Events.ClientReady, async c => {
     initSecurity(client);
     initRSS(client);
     initLurker(client);
+    restorePresence(client).catch(e => console.error('[PRESENCE] 復元エラー:', e));
 
     const guild = client.guilds.cache.first();
     if (guild) backfillActivity(guild).catch(e => console.error('[Activity] バックフィルエラー:', e));

@@ -13,6 +13,33 @@ function hasAdminPermission(member) {
 }
 const { getModExcludeList, updateModExcludeList, resetModExcludeList } = require('./exclude_manager');
 const { getSettings, saveSettings, resetSayDeny, resetSayChannels } = require('./config');
+const { resolveDataPath, readJson, writeJson } = require('./dataPath');
+
+const PRESENCE_FILE = resolveDataPath('presence.json');
+
+function loadSavedPresence() {
+    return readJson(PRESENCE_FILE, null);
+}
+
+function savePresence(data) {
+    writeJson(PRESENCE_FILE, data);
+}
+
+async function restorePresence(client) {
+    const saved = loadSavedPresence();
+    if (!saved) return;
+    if (saved.status === 'mobile') {
+        client.options.ws = {
+            ...(client.options.ws ?? {}),
+            properties: { browser: 'Discord Android' },
+        };
+        await client.destroy();
+        await client.login(process.env.DISCORD_TOKEN);
+    } else {
+        client.user.setPresence({ status: saved.status });
+    }
+    console.info(`[PRESENCE] 保存済みステータスを復元: ${saved.status}`);
+}
 const { handleKickInactive } = require('./kick_inactive');
 
 const COLOR = {
@@ -397,6 +424,7 @@ async function handlePresence(interaction) {
 
     if (status === 'mobile') {
         await interaction.deferReply({ ephemeral: true });
+        savePresence({ status: 'mobile' });
         // browser を Discord Android に書き換えて再接続するとモバイル表示になる
         interaction.client.options.ws = {
             ...(interaction.client.options.ws ?? {}),
@@ -408,6 +436,7 @@ async function handlePresence(interaction) {
         return;
     }
 
+    savePresence({ status });
     interaction.client.user.setPresence({ status });
     console.info(`[PRESENCE] ステータス変更: ${status} by ${interaction.user.tag}`);
     return interaction.reply({
@@ -416,4 +445,4 @@ async function handlePresence(interaction) {
     });
 }
 
-module.exports = { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel, handlePresence };
+module.exports = { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel, handlePresence, restorePresence };
