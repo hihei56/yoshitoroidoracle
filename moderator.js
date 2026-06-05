@@ -369,7 +369,7 @@ function checkNgWords(text) {
     return { hit: matched.length > 0, matched };
 }
 
-const DL_CONFIG = { MAX_FILES: 4, MAX_SIZE: 8 * 1024 * 1024, TIMEOUT: 4_000 };
+const DL_CONFIG = { MAX_FILES: 7, MAX_SIZE: 8 * 1024 * 1024, TIMEOUT: 4_000 };
 
 async function downloadFiles(attachments) {
     const files = [];
