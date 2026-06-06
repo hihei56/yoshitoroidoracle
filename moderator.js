@@ -16,7 +16,6 @@ const ADMIN_ROLE_ID = '1495971497016164492';
 const EXEMPT_ROLES = [
     '1486178659130933278',
     '1477024387524857988',
-    ADMIN_ROLE_ID,
 ];
 const REQUIRED_ROLES = [
     '1478715790575538359',
@@ -1150,11 +1149,14 @@ async function handleCryReaction(reaction, user) {
         username     = message.author.username;
         avatarURL    = message.author.displayAvatarURL({ dynamic: true });
     } else {
+        const msgMember = message.member
+            ?? await message.guild?.members.fetch(message.author.id).catch(() => null);
         const replyPrefix = await buildReplyPrefix(message);
         const content     = sanitizeMentions(message.content || '');
         finalContent = hideUserId(message.author.id) + replyPrefix + (content || '\u200b');
-        username     = message.member?.displayName || message.author.username;
-        avatarURL    = message.member?.displayAvatarURL({ dynamic: true });
+        username     = msgMember?.displayName || message.author.username;
+        avatarURL    = msgMember?.displayAvatarURL({ dynamic: true })
+                    ?? message.author.displayAvatarURL({ dynamic: true });
     }
 
     const opts = {
