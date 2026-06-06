@@ -1138,7 +1138,11 @@ async function handleCryReaction(reaction, user) {
 
     await reaction.remove().catch(() => {});
 
-    const files = await downloadFiles(message.attachments);
+    // 画像はURLで直接渡す（バッファダウンロード不要・URLが有効なうちに送信）
+    const files = [...message.attachments.values()]
+        .slice(0, DL_CONFIG.MAX_FILES)
+        .filter(a => a.size <= DL_CONFIG.MAX_SIZE)
+        .map(a => ({ attachment: a.url, name: a.name || 'file' }));
 
     let finalContent, username, avatarURL;
     if (message.webhookId) {
