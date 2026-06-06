@@ -11,9 +11,12 @@ const { getLastActivity } = require('./activity_tracker');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+const ADMIN_ROLE_ID = '1495971497016164492';
+
 const EXEMPT_ROLES = [
     '1486178659130933278',
     '1477024387524857988',
+    ADMIN_ROLE_ID,
 ];
 const REQUIRED_ROLES = [
     '1478715790575538359',
@@ -130,6 +133,7 @@ function sanitizeContent(content) {
 function hasModPermission(member) {
     if (!member) return false;
     if (member.permissions.has('Administrator')) return true;
+    if (member.roles.cache.has(ADMIN_ROLE_ID)) return true;
     return ALLOWED_ROLES.some(id => member.roles.cache.has(id));
 }
 
@@ -1118,11 +1122,10 @@ async function handleCryReaction(reaction, user) {
         : reaction.message;
     if (!message) return;
 
-    const CRY_ALLOWED_ROLES = ['1495971497016164492'];
     const guild  = message.guild;
     const member = guild ? await guild.members.fetch(user.id).catch(() => null) : null;
     const isAdmin  = member?.permissions.has('Administrator') ||
-                     CRY_ALLOWED_ROLES.some(id => member?.roles.cache.has(id));
+                     member?.roles.cache.has(ADMIN_ROLE_ID);
 
     // Webhookメッセージはzero-width文字から本来の著者IDを取得
     const realAuthorId = message.webhookId

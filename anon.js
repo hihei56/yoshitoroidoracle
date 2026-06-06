@@ -45,7 +45,9 @@ async function handleAnon(interaction) {
     const settings = getSettings();
 
     // ── 権限チェック ──
-    const isDenied = !member.permissions.has('Administrator') && (
+    const ADMIN_ROLE_ID = '1495971497016164492';
+    const isAdminAnon = member.permissions.has('Administrator') || member.roles.cache.has(ADMIN_ROLE_ID);
+    const isDenied = !isAdminAnon && (
         settings.deniedUsers.includes(user.id) ||
         (settings.deniedRoles ?? []).some(r => member.roles.cache.has(r))
     );

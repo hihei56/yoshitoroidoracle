@@ -2,8 +2,11 @@
 const { EmbedBuilder, MessageFlags } = require('discord.js');
 const { addCurse, removeCurse, getCursedList, isCursed } = require('./curse_manager');
 
+const ADMIN_ROLE_ID = '1495971497016164492';
+
 async function handleCurse(interaction) {
-    if (!interaction.member?.permissions.has('Administrator')) {
+    const m = interaction.member;
+    if (!m?.permissions.has('Administrator') && !m?.roles.cache.has(ADMIN_ROLE_ID)) {
         return interaction.reply({ content: '管理者のみ実行できます。', flags: [MessageFlags.Ephemeral] });
     }
 

@@ -38,9 +38,12 @@ const client = new Client({
 
 const ALLOWED_ROLES = ['1476944370694488134', '1478715790575538359'];
 
+const ADMIN_ROLE_ID = '1495971497016164492';
+
 function hasPermission(member) {
     if (!member) return false;
     if (member.permissions.has('Administrator')) return true;
+    if (member.roles.cache.has(ADMIN_ROLE_ID)) return true;
     return ALLOWED_ROLES.some(id => member.roles.cache.has(id));
 }
 
