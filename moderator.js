@@ -103,14 +103,20 @@ const DANGEROUS_TO_SAFE_MAP = {
     '\u30b7\u30e7\u30bf':       '\u5b50\u601d',
     '\u3057\u3087\u305f':       '\u5b50\u601d',
     '\u307a\u3069':         '\u9b3c\u8c37\u5b50',
+    'JK':           '\u66fe\u5b50',
+    'JC':           '\u66fe\u5b50',
+    'JS':           '\u66fe\u5b50',
     '\u5973\u5b50\u9ad8\u751f':     '\u66fe\u5b50',
     '\u5973\u5b50\u4e2d\u5b66\u751f':   '\u66fe\u5b50',
     '\u5150\u7ae5':         '\u8cc8\u4f3c\u9053',
 };
 
+// JK/JC/JSは単語境界つきで別扱い（URL誤置換防止）
 const DANGEROUS_REGEX = new RegExp(
     Object.keys(DANGEROUS_TO_SAFE_MAP)
-        .map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .map(k => /^J[KCS]$/i.test(k)
+            ? `\\b${k}\\b`
+            : k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
         .join('|'),
     'gi'
 );
@@ -206,8 +212,8 @@ const LOLI_SHOTA_REGEX = new RegExp([
     'underage\\s*(?:sex|porn|nude|girl|boy)',
     'child\\s*(?:sex|sexual|molest|abuse|exploit)',
     'girl\\s*(?:next\\s*door)?\\s*(?:underage|minor)',
-    'J[KCS]\\s*(?:えっち|エッチ|sex|ポルノ|わいせつ|裸|ヌード|援交|売春|買春)',
-    '(?:えっち|エッチ|sex|ポルノ|わいせつ|裸|ヌード|援交)\\s*J[KCS]',
+    // 前後5文字が英数字でない（URL等でない）JK/JC/JS
+    '(?<![a-z0-9])j[kcs](?![a-z0-9])',
 ].join('|'), 'i');
 
 const AGE_REGEX = new RegExp([
