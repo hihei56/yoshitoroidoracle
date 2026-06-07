@@ -167,7 +167,9 @@ async function postWakeup(client, guild, channelId, force = false) {
 
 /* ===== コマンドハンドラ ===== */
 async function handleLurker(interaction) {
-    if (!interaction.member?.permissions.has('Administrator')) {
+    const ADMIN_ROLE_ID = '1495971497016164492';
+    const lm = interaction.member;
+    if (!lm?.permissions.has('Administrator') && !lm?.roles.cache.has(ADMIN_ROLE_ID)) {
         return interaction.reply({ content: '管理者のみ実行できます。', flags: [MessageFlags.Ephemeral] });
     }
 

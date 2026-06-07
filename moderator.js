@@ -11,6 +11,8 @@ const { getLastActivity } = require('./activity_tracker');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+const ADMIN_ROLE_ID = '1495971497016164492';
+
 const EXEMPT_ROLES = [
     '1486178659130933278',
     '1477024387524857988',
@@ -109,9 +111,12 @@ const DANGEROUS_TO_SAFE_MAP = {
     '\u5150\u7ae5':         '\u8cc8\u4f3c\u9053',
 };
 
+// JK/JC/JSは単語境界つきで別扱い（URL誤置換防止）
 const DANGEROUS_REGEX = new RegExp(
     Object.keys(DANGEROUS_TO_SAFE_MAP)
-        .map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .map(k => /^J[KCS]$/i.test(k)
+            ? `\\b${k}\\b`
+            : k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
         .join('|'),
     'gi'
 );
@@ -130,6 +135,7 @@ function sanitizeContent(content) {
 function hasModPermission(member) {
     if (!member) return false;
     if (member.permissions.has('Administrator')) return true;
+    if (member.roles.cache.has(ADMIN_ROLE_ID)) return true;
     return ALLOWED_ROLES.some(id => member.roles.cache.has(id));
 }
 
@@ -206,7 +212,8 @@ const LOLI_SHOTA_REGEX = new RegExp([
     'underage\\s*(?:sex|porn|nude|girl|boy)',
     'child\\s*(?:sex|sexual|molest|abuse|exploit)',
     'girl\\s*(?:next\\s*door)?\\s*(?:underage|minor)',
-    'JK','JC','JS',
+    // 前後5文字が英数字でない（URL等でない）JK/JC/JS
+    '(?<![a-z0-9])j[kcs](?![a-z0-9])',
 ].join('|'), 'i');
 
 const AGE_REGEX = new RegExp([
@@ -569,6 +576,11 @@ async function sendWebhook(channel, options) {
         try {
             return await wh.send(options);
         } catch (e) {
+            // スレッド削除・アーカイブ済みの場合はリトライ不要
+            if (e.code === 10003) {
+                console.warn(`[Webhook] Unknown Channel（スレッド消滅？）: ${e.url ?? ''}`);
+                return null;
+            }
             const isWebhookGone = e.status === 404 || e.code === 10015;
             if (isWebhookGone) {
                 if (key) invalidateWebhook(key);
@@ -1113,14 +1125,16 @@ async function handleCryReaction(reaction, user) {
         : reaction.message;
     if (!message) return;
 
-    if (message.webhookId) return;
-
-    const CRY_ALLOWED_ROLES = ['1495971497016164492'];
     const guild  = message.guild;
     const member = guild ? await guild.members.fetch(user.id).catch(() => null) : null;
     const isAdmin  = member?.permissions.has('Administrator') ||
-                     CRY_ALLOWED_ROLES.some(id => member?.roles.cache.has(id));
-    const isAuthor = user.id === message.author?.id;
+                     member?.roles.cache.has(ADMIN_ROLE_ID);
+
+    // Webhookメッセージはzero-width文字から本来の著者IDを取得
+    const realAuthorId = message.webhookId
+        ? extractUserId(message.content)
+        : message.author?.id;
+    const isAuthor = !!realAuthorId && user.id === realAuthorId;
 
     if (!isAdmin && !isAuthor) return;
 
@@ -1130,16 +1144,30 @@ async function handleCryReaction(reaction, user) {
 
     await reaction.remove().catch(() => {});
 
-    const files       = await downloadFiles(message.attachments);
-    const replyPrefix = await buildReplyPrefix(message);
-    const content     = sanitizeMentions(message.content || '');
-    const finalContent = hideUserId(message.author.id) + replyPrefix + (content || '\u200b');
+    const files = await downloadFiles(message.attachments);
+
+    let finalContent, username, avatarURL;
+    if (message.webhookId) {
+        // すでにWebhookメッセージ: コンテンツ・名前・アイコンをそのまま引き継ぐ
+        finalContent = message.content || '\u200b';
+        username     = message.author.username;
+        avatarURL    = message.author.displayAvatarURL({ dynamic: true });
+    } else {
+        const msgMember = message.member
+            ?? await message.guild?.members.fetch(message.author.id).catch(() => null);
+        const replyPrefix = await buildReplyPrefix(message);
+        const content     = sanitizeMentions(message.content || '');
+        finalContent = hideUserId(message.author.id) + replyPrefix + (content || '\u200b');
+        username     = msgMember?.displayName || message.author.username;
+        avatarURL    = msgMember?.displayAvatarURL({ dynamic: true })
+                    ?? message.author.displayAvatarURL({ dynamic: true });
+    }
 
     const opts = {
         content:         finalContent,
         files,
-        username:        message.member?.displayName || message.author.username,
-        avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
+        username,
+        avatarURL,
         allowedMentions: { parse: ['users'] },
     };
     if (message.channel.isThread()) opts.threadId = message.channel.id;

@@ -4,7 +4,7 @@ process.on('unhandledRejection', e => console.error('[Reject]:', e));
 
 require('dotenv').config();
 
-const { Client, GatewayIntentBits, Events } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, Events } = require('discord.js');
 const { handleAnon }             = require('./anon');
 const { handleCurse }            = require('./curse');
 const { initLurker, handleLurker } = require('./lurker');
@@ -33,13 +33,17 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessageReactions,
     ],
+    partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
 
 const ALLOWED_ROLES = ['1476944370694488134', '1478715790575538359'];
 
+const ADMIN_ROLE_ID = '1495971497016164492';
+
 function hasPermission(member) {
     if (!member) return false;
     if (member.permissions.has('Administrator')) return true;
+    if (member.roles.cache.has(ADMIN_ROLE_ID)) return true;
     return ALLOWED_ROLES.some(id => member.roles.cache.has(id));
 }
 

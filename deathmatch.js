@@ -29,7 +29,8 @@ async function handleDeathmatch(interaction) {
 
         const challenger = interaction.member;
         const today      = getToday();
-        const isAdmin    = challenger.permissions.has('Administrator');
+        const ADMIN_ROLE_ID = '1495971497016164492';
+        const isAdmin    = challenger.permissions.has('Administrator') || challenger.roles.cache.has(ADMIN_ROLE_ID);
 
         const logs = loadLogs();
 

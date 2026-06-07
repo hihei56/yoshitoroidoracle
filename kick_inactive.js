@@ -37,7 +37,9 @@ function makeLine(m, now) {
 }
 
 async function handleKickInactive(interaction) {
-    if (!interaction.member?.permissions.has('Administrator')) {
+    const ADMIN_ROLE_ID = '1495971497016164492';
+    const m = interaction.member;
+    if (!m?.permissions.has('Administrator') && !m?.roles.cache.has(ADMIN_ROLE_ID)) {
         return interaction.reply({ content: '管理者のみ実行できます。', flags: [MessageFlags.Ephemeral] });
     }
 
