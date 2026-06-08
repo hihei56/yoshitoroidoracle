@@ -80,8 +80,8 @@ async function handleEditMonitor(oldMessage, newMessage) {
     if (!newMessage.guild) return;
     if (!EDIT_LOG_CHANNEL_ID) return;
 
-    // botは除外
-    if (newMessage.author?.bot) return;
+    // 通常botは除外。ただしwebhook（Tupperboxなど）は監視対象のため通す
+    if (newMessage.author?.bot && !newMessage.webhookId) return;
 
     // partial解決
     if (newMessage.partial) {
@@ -94,9 +94,9 @@ async function handleEditMonitor(oldMessage, newMessage) {
     // 内容変化なし（embed展開など）はスキップ
     if (oldContent !== null && oldContent === newContent) return;
 
-    // 投稿から10分未満の編集は記録しない
+    // 投稿から10分未満の編集は記録しない（webhookは即時差し替えも監視するため除外）
     const age = Date.now() - newMessage.createdTimestamp;
-    if (age < MIN_AGE_TO_LOG) return;
+    if (age < MIN_AGE_TO_LOG && !newMessage.webhookId) return;
 
     const author     = newMessage.author;
     const isWebhook  = !!newMessage.webhookId;
