@@ -94,9 +94,9 @@ async function handleEditMonitor(oldMessage, newMessage) {
     // 内容変化なし（embed展開など）はスキップ
     if (oldContent !== null && oldContent === newContent) return;
 
-    // 投稿から10分未満の編集は記録しない（webhookは即時差し替えも監視するため除外）
+    // 投稿から10分未満の編集は記録しない
     const age = Date.now() - newMessage.createdTimestamp;
-    if (age < MIN_AGE_TO_LOG && !newMessage.webhookId) return;
+    if (age < MIN_AGE_TO_LOG) return;
 
     const author     = newMessage.author;
     const isWebhook  = !!newMessage.webhookId;
