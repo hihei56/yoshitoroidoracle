@@ -59,6 +59,9 @@ async function handleEditMonitor(oldMessage, newMessage) {
     if (!newMessage.guild) return;
     if (!EDIT_LOG_CHANNEL_ID) return;
 
+    // botは除外
+    if (newMessage.author?.bot) return;
+
     // partial解決
     if (newMessage.partial) {
         try { await newMessage.fetch(); } catch { return; }
