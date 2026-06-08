@@ -147,11 +147,23 @@ new SlashCommandBuilder()
         .addSubcommand(subcommand =>
             subcommand
                 .setName('chinese_thinker')
-                .setDescription('NGワード検知時の中国思想家への置き換えをON/OFFします。')
+                .setDescription('NGワード検知時の中国思想家への置き換えをON/OFF・例外ユーザー管理します。')
                 .addBooleanOption(opt =>
                     opt.setName('enable')
-                        .setDescription('true=有効（デフォルト）/ false=無効')
-                        .setRequired(true)
+                        .setDescription('true=有効 / false=無効（action未指定時に使用）')
+                )
+                .addStringOption(opt =>
+                    opt.setName('action')
+                        .setDescription('例外ユーザー操作')
+                        .addChoices(
+                            { name: '例外に追加', value: 'add'    },
+                            { name: '例外から解除', value: 'remove' },
+                            { name: '例外一覧',   value: 'list'   },
+                        )
+                )
+                .addUserOption(opt =>
+                    opt.setName('user')
+                        .setDescription('対象ユーザー（add/remove時に必須）')
                 )
         )
         .addSubcommand(subcommand =>

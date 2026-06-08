@@ -63,7 +63,11 @@ function buildStatusEmbed() {
 
     const logCh    = settings.anonLogChannelId ? `<#${settings.anonLogChannelId}>` : '未設定';
     const lurkerCh = settings.lurkerChannelId  ? `<#${settings.lurkerChannelId}>`  : '未設定';
-    const thinker  = settings.chineseThinkerReplace !== false ? '✅ 有効' : '🚫 無効';
+    const thinkerEnabled = settings.chineseThinkerReplace !== false;
+    const thinkerExcl    = (settings.chineseThinkerExcludeUsers ?? []);
+    const thinker        = thinkerEnabled
+        ? `✅ 有効${thinkerExcl.length ? `（例外: ${thinkerExcl.map(id => `<@${id}>`).join(' ')}）` : ''}`
+        : '🚫 無効';
 
     return new EmbedBuilder()
         .setTitle('🛡️ 管理設定')
@@ -259,22 +263,70 @@ async function handleAdmin(interaction) {
         }
     }
 
-    // ── 中国思想家置き換えON/OFF ──
+    // ── 中国思想家置き換えON/OFF・例外ユーザー管理 ──
     if (sub === 'chinese_thinker') {
-        const enable   = interaction.options.getBoolean('enable');
         const settings = getSettings();
-        settings.chineseThinkerReplace = enable;
-        saveSettings(settings);
-        return interaction.reply({
-            embeds: [
-                new EmbedBuilder()
-                    .setTitle('🀄 中国思想家置き換え')
-                    .setColor(enable ? COLOR.add : COLOR.remove)
-                    .setDescription(enable ? '✅ 有効にしました' : '🚫 無効にしました')
-                    .setTimestamp()
-            ],
-            ephemeral: true,
-        });
+        if (!settings.chineseThinkerExcludeUsers) settings.chineseThinkerExcludeUsers = [];
+
+        const enable     = interaction.options.getBoolean('enable');
+        const action     = interaction.options.getString('action');
+        const targetUser = interaction.options.getUser('user');
+
+        // 例外ユーザー操作
+        if (action && targetUser) {
+            if (action === 'add') {
+                if (!settings.chineseThinkerExcludeUsers.includes(targetUser.id))
+                    settings.chineseThinkerExcludeUsers.push(targetUser.id);
+            } else {
+                settings.chineseThinkerExcludeUsers =
+                    settings.chineseThinkerExcludeUsers.filter(id => id !== targetUser.id);
+            }
+            saveSettings(settings);
+            const verb = action === 'add' ? '例外に追加' : '例外から解除';
+            return interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle(`🀄 中国思想家置き換え — ${verb}`)
+                        .setColor(action === 'add' ? COLOR.add : COLOR.remove)
+                        .setDescription(`<@${targetUser.id}>`)
+                        .setTimestamp()
+                ],
+                ephemeral: true,
+            });
+        }
+
+        // 例外ユーザー一覧
+        if (action === 'list') {
+            const list = settings.chineseThinkerExcludeUsers;
+            return interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('🀄 中国思想家置き換え — 例外ユーザー一覧')
+                        .setColor(COLOR.info)
+                        .setDescription(list.length ? list.map(id => `<@${id}>`).join('\n') : 'なし')
+                        .setTimestamp()
+                ],
+                ephemeral: true,
+            });
+        }
+
+        // ON/OFF
+        if (enable !== null) {
+            settings.chineseThinkerReplace = enable;
+            saveSettings(settings);
+            return interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('🀄 中国思想家置き換え')
+                        .setColor(enable ? COLOR.add : COLOR.remove)
+                        .setDescription(enable ? '✅ 有効にしました' : '🚫 無効にしました')
+                        .setTimestamp()
+                ],
+                ephemeral: true,
+            });
+        }
+
+        return interaction.reply({ content: 'enable または action を指定してください。', ephemeral: true });
     }
 
     // ── 現在の設定を表示 ──

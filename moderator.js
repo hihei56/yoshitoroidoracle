@@ -121,10 +121,12 @@ const DANGEROUS_REGEX = new RegExp(
     'gi'
 );
 
-function sanitizeContent(content) {
+function sanitizeContent(content, authorId = null) {
     if (!content) return content;
     const { getSettings } = require('./config');
-    if (!getSettings().chineseThinkerReplace) return content;
+    const settings = getSettings();
+    if (!settings.chineseThinkerReplace) return content;
+    if (authorId && (settings.chineseThinkerExcludeUsers ?? []).includes(authorId)) return content;
     return content.replace(DANGEROUS_REGEX, match => {
         const lower = match.toLowerCase();
         for (const [key, value] of Object.entries(DANGEROUS_TO_SAFE_MAP)) {
@@ -724,7 +726,7 @@ async function instantDeleteAndRecode(message) {
     if (message.deletable) await message.delete().catch(() => {});
 
     const replyPrefix  = await buildReplyPrefix(message);
-    const safeBody     = sanitizeContent(message.content || '\u200b');
+    const safeBody     = sanitizeContent(message.content || '\u200b', message.author?.id);
     const finalContent = hideUserId(message.author.id) + sanitizeMentions(`${replyPrefix}${safeBody}`);
 
     let username  = message.member?.displayName || message.author.username;
