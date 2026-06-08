@@ -146,6 +146,16 @@ new SlashCommandBuilder()
         )
         .addSubcommand(subcommand =>
             subcommand
+                .setName('chinese_thinker')
+                .setDescription('NGワード検知時の中国思想家への置き換えをON/OFFします。')
+                .addBooleanOption(opt =>
+                    opt.setName('enable')
+                        .setDescription('true=有効（デフォルト）/ false=無効')
+                        .setRequired(true)
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('servers')
                 .setDescription('ボットが加入しているサーバー一覧を表示し、退出操作ができます。')
         )

@@ -63,6 +63,7 @@ function buildStatusEmbed() {
 
     const logCh    = settings.anonLogChannelId ? `<#${settings.anonLogChannelId}>` : '未設定';
     const lurkerCh = settings.lurkerChannelId  ? `<#${settings.lurkerChannelId}>`  : '未設定';
+    const thinker  = settings.chineseThinkerReplace !== false ? '✅ 有効' : '🚫 無効';
 
     return new EmbedBuilder()
         .setTitle('🛡️ 管理設定')
@@ -76,7 +77,8 @@ function buildStatusEmbed() {
             { name: '\u200b',                  value: '\u200b',                                        inline: false },
             { name: '📢 Anon許可チャンネル',  value: fmtChannels(settings.allowedSayChannels ?? []), inline: false },
             { name: '📋 Anonログチャンネル',  value: logCh,                                           inline: false },
-            { name: '😴 目覚ましチャンネル',  value: lurkerCh,                                        inline: false },
+            { name: '😴 目覚ましチャンネル',  value: lurkerCh,  inline: false },
+            { name: '🀄 中国思想家置き換え',  value: thinker,   inline: false },
         )
         .setTimestamp();
 }
@@ -255,6 +257,24 @@ async function handleAdmin(interaction) {
                 ephemeral: true,
             });
         }
+    }
+
+    // ── 中国思想家置き換えON/OFF ──
+    if (sub === 'chinese_thinker') {
+        const enable   = interaction.options.getBoolean('enable');
+        const settings = getSettings();
+        settings.chineseThinkerReplace = enable;
+        saveSettings(settings);
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle('🀄 中国思想家置き換え')
+                    .setColor(enable ? COLOR.add : COLOR.remove)
+                    .setDescription(enable ? '✅ 有効にしました' : '🚫 無効にしました')
+                    .setTimestamp()
+            ],
+            ephemeral: true,
+        });
     }
 
     // ── 現在の設定を表示 ──

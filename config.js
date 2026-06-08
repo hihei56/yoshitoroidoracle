@@ -14,8 +14,9 @@ function getSettings() {
     // 旧形式からの移行
     if (!data.deniedRoles)        data.deniedRoles        = [];
     if (!data.allowedSayChannels) data.allowedSayChannels = [];
-    if (!data.anonLogChannelId)   data.anonLogChannelId   = null;
-    if (!data.lurkerChannelId)    data.lurkerChannelId    = null;
+    if (!data.anonLogChannelId)       data.anonLogChannelId       = null;
+    if (!data.lurkerChannelId)        data.lurkerChannelId        = null;
+    if (data.chineseThinkerReplace === undefined) data.chineseThinkerReplace = true;
     return data;
 }
 

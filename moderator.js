@@ -123,6 +123,8 @@ const DANGEROUS_REGEX = new RegExp(
 
 function sanitizeContent(content) {
     if (!content) return content;
+    const { getSettings } = require('./config');
+    if (!getSettings().chineseThinkerReplace) return content;
     return content.replace(DANGEROUS_REGEX, match => {
         const lower = match.toLowerCase();
         for (const [key, value] of Object.entries(DANGEROUS_TO_SAFE_MAP)) {
