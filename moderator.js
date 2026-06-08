@@ -212,8 +212,9 @@ const LOLI_SHOTA_REGEX = new RegExp([
     'underage\\s*(?:sex|porn|nude|girl|boy)',
     'child\\s*(?:sex|sexual|molest|abuse|exploit)',
     'girl\\s*(?:next\\s*door)?\\s*(?:underage|minor)',
-    // 前後5文字が英数字でない（URL等でない）JK/JC/JS
-    '(?<![a-z0-9])j[kcs](?![a-z0-9])',
+    // JK/JC/JSは性的文脈と一緒の場合のみ検知
+    'j[kcs]\\s*(?:えっち|エッチ|sex|ポルノ|わいせつ|裸|ヌード|援交|売春|買春)',
+    '(?:えっち|エッチ|sex|ポルノ|わいせつ|裸|ヌード|援交)\\s*j[kcs]',
 ].join('|'), 'i');
 
 const AGE_REGEX = new RegExp([
@@ -1021,7 +1022,19 @@ async function handleModerator(message) {
     if (message.author.bot) return;
 
     const hasRequiredRole = REQUIRED_ROLES.some(id => message.member?.roles.cache.has(id));
-    if (!hasRequiredRole) return;
+    if (!hasRequiredRole) {
+        if (!message.content?.trim()) return;
+        const normalized = normalizeForDetection(message.content);
+        const { hit, matched } = checkNgWords(normalized);
+        const aiResult = !hit ? await checkAiModeration(message.content) : { flagged: false, reason: null };
+        if (hit || aiResult.flagged) {
+            const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
+            logDeletion({ message, matched: allMatched });
+            if (isCsamMatch(allMatched)) await postCsamLog(message, allMatched);
+            await message.delete().catch(() => {});
+        }
+        return;
+    }
 
     const rawContent = message.content || '';
     if (TUPPERBOX_PREFIX_REGEX.test(rawContent)) return;
