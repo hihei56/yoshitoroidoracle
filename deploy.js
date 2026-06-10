@@ -283,6 +283,25 @@ new SlashCommandBuilder()
         .setName('permlist')
         .setDescription('危険な権限を持つロール・メンバーを一覧表示します。'),
 
+    // 12. メディアリンクBANコマンド（管理者のみ）
+    new SlashCommandBuilder()
+        .setName('medialink')
+        .setDescription('ユーザーのメディアリンク投稿を禁止します。リンク部分は自動でストリップされます（管理者のみ）。')
+        .addStringOption(opt =>
+            opt.setName('action')
+                .setDescription('操作を選択')
+                .setRequired(true)
+                .addChoices(
+                    { name: '🔗 BANする',   value: 'add'    },
+                    { name: '✅ BAN解除',   value: 'remove' },
+                    { name: '📋 一覧を見る', value: 'list'   },
+                )
+        )
+        .addUserOption(opt =>
+            opt.setName('user')
+                .setDescription('対象ユーザー（list以外は必須）')
+        ),
+
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);

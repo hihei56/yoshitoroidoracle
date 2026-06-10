@@ -6,6 +6,7 @@ const { getModExcludeList } = require('./exclude_manager');
 const whStore = require('./webhook_store');
 const { isCursed } = require('./curse_manager');
 const { isImpersonated } = require('./impersonate_manager');
+const { isMediaLinkBanned } = require('./medialink_manager');
 const { pickOneLurker } = require('./lurker_picker');
 const { getLastActivity } = require('./activity_tracker');
 
@@ -913,6 +914,37 @@ async function _getImpersonateLurker(guild) {
 }
 
 /* =========================
+   🔗 メディアリンクストリップ
+========================= */
+const MEDIA_URL_REGEX = /https?:\/\/[^\s<>"]+/gi;
+
+function stripMediaLinks(text) {
+    if (!text) return text;
+    return text.replace(MEDIA_URL_REGEX, '').replace(/\s{2,}/g, ' ').trim();
+}
+
+async function applyMediaLinkStrip(message, strippedContent) {
+    const files = await downloadFiles(message.attachments);
+    if (message.deletable) await message.delete().catch(() => {});
+
+    const replyPrefix  = await buildReplyPrefix(message);
+    const finalContent = hideUserId(message.author.id)
+        + sanitizeMentions(replyPrefix + (strippedContent || '​'));
+
+    const opts = {
+        content:         finalContent,
+        files,
+        username:        message.member?.displayName || message.author.username,
+        avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
+        allowedMentions: { parse: ['users'] },
+    };
+    if (message.channel.isThread()) opts.threadId = message.channel.id;
+
+    await sendWebhook(message.channel, opts);
+    console.info(`[MEDIALINK] ${message.author.tag}(${message.author.id}) リンクをストリップして再投稿`);
+}
+
+/* =========================
    👹 呪い文字化け処理
 ========================= */
 const CORRUPT_CHARS = 'ﾊﾋﾌﾍﾎﾄｱｲｳｴｵｦｧｭｮｯｰｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉ░▒▓│┤╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀';
@@ -1091,6 +1123,14 @@ async function handleModerator(message) {
     // 外国語検知（免除なし・通過したメッセージのみ）
     if (!isExempt && strippedContent && detectForeignLanguage(strippedContent)) {
         await postForeignLangLog(message);
+    }
+
+    if (isMediaLinkBanned(message.author.id) && !isExempt) {
+        const stripped = stripMediaLinks(rawContent);
+        if (stripped !== rawContent) {
+            await applyMediaLinkStrip(message, stripped);
+            return;
+        }
     }
 
     if (isCursed(message.author.id) && !isExempt) {
