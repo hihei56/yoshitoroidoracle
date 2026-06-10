@@ -300,6 +300,10 @@ new SlashCommandBuilder()
         .addUserOption(opt =>
             opt.setName('user')
                 .setDescription('対象ユーザー（list以外は必須）')
+        )
+        .addChannelOption(opt =>
+            opt.setName('channel')
+                .setDescription('対象チャンネル（省略時は全チャンネル）')
         ),
 
 ].map(command => command.toJSON());
