@@ -26,6 +26,12 @@ const SENSITIVE_ALLOWED_ROLES = [
     '1477024387524857988',
 ];
 const ALLOWED_ROLES           = ['1476944370694488134', '1478715790575538359'];
+// メディア（添付ファイル）をbot経由で投稿できるロール
+const MEDIA_ALLOWED_ROLES = [
+    '1507913160508833872',
+    '1507825678152630342',
+];
+
 const SENSITIVE_TRIGGER_EMOJI = '👶';
 const TUPPERBOX_APP_ID        = '431544605209788416';
 const TUPPERBOX_PREFIX_REGEX  = /^([a-zA-Z]+!)(.*)$/;
@@ -1086,6 +1092,30 @@ async function handleModerator(message) {
         if (isCsamMatch(allMatched)) await postCsamLog(message, allMatched);
         await instantDeleteAndRecode(message);
         return;
+    }
+
+    // メディア権限チェック: 添付ファイルありかつ許可ロールなし → 添付を除いてテキストのみ再投稿
+    if (message.attachments.size > 0 && !isExempt) {
+        const hasMediaRole = MEDIA_ALLOWED_ROLES.some(id => message.member?.roles.cache.has(id));
+        if (!hasMediaRole) {
+            const ts = new Date().toISOString();
+            console.warn(`[MEDIA BLOCK] ${ts} | ${message.author.tag}(${message.author.id}) | 添付ブロック（メディア権限なし）`);
+            if (message.deletable) await message.delete().catch(() => {});
+            if (strippedContent.trim()) {
+                const replyPrefix  = await buildReplyPrefix(message);
+                const safeBody     = sanitizeContent(strippedContent || '​', message.author?.id);
+                const finalContent = hideUserId(message.author.id) + sanitizeMentions(`${replyPrefix}${safeBody}`);
+                const opts = {
+                    content:         finalContent,
+                    username:        message.member?.displayName || message.author.username,
+                    avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
+                    allowedMentions: { parse: ['users'] },
+                };
+                if (message.channel.isThread()) opts.threadId = message.channel.id;
+                await sendWebhook(message.channel, opts);
+            }
+            return;
+        }
     }
 
     // 外国語検知（免除なし・通過したメッセージのみ）
