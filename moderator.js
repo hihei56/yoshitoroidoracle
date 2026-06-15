@@ -1055,6 +1055,12 @@ async function handleModerator(message) {
         return;
     }
 
+    // メディア権限チェック: 添付ファイルありかつ許可ロールなし → botは何もしない（素通り）
+    if (message.attachments.size > 0) {
+        const hasMediaRole = MEDIA_ALLOWED_ROLES.some(id => message.member?.roles.cache.has(id));
+        if (!hasMediaRole) return;
+    }
+
     const excl     = getModExcludeList();
     const isExempt =
         EXEMPT_ROLES.some(id => message.member?.roles.cache.has(id)) ||
@@ -1092,12 +1098,6 @@ async function handleModerator(message) {
         if (isCsamMatch(allMatched)) await postCsamLog(message, allMatched);
         await instantDeleteAndRecode(message);
         return;
-    }
-
-    // メディア権限チェック: 添付ファイルありかつ許可ロールなし → botは何もしない（素通り）
-    if (message.attachments.size > 0 && !isExempt) {
-        const hasMediaRole = MEDIA_ALLOWED_ROLES.some(id => message.member?.roles.cache.has(id));
-        if (!hasMediaRole) return;
     }
 
     // 外国語検知（免除なし・通過したメッセージのみ）
