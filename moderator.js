@@ -31,6 +31,8 @@ const MEDIA_ALLOWED_ROLES = [
     '1507913160508833872',
     '1507825678152630342',
 ];
+// 全メディア（画像・動画）およびリンクをWebhook経由で再投稿するロール
+const MEDIA_REPOST_ROLE_ID = '1507424179241353466';
 
 const SENSITIVE_TRIGGER_EMOJI = '👶';
 const TUPPERBOX_APP_ID        = '431544605209788416';
@@ -698,6 +700,40 @@ async function handlePseudoReply(message) {
     return true;
 }
 
+const URL_REGEX = /https?:\/\/\S+/;
+
+async function handleMediaRepost(message) {
+    if (!message.member?.roles.cache.has(MEDIA_REPOST_ROLE_ID)) return false;
+
+    const hasAttachments = message.attachments.size > 0;
+    const hasLink        = URL_REGEX.test(message.content || '');
+    if (!hasAttachments && !hasLink) return false;
+
+    // 添付はURLを直接渡す（バッファ経由だと動画が失敗するため）
+    const files = [...message.attachments.values()].map(att => ({
+        attachment: att.url,
+        name:       att.name || 'file',
+    }));
+
+    if (message.deletable) await message.delete().catch(() => {});
+
+    const replyPrefix  = await buildReplyPrefix(message);
+    const bodyText     = sanitizeMentions(message.content || '');
+    const finalContent = hideUserId(message.author.id) + replyPrefix + (bodyText || '​');
+
+    const opts = {
+        content:         finalContent,
+        files,
+        username:        message.member?.displayName || message.author.username,
+        avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
+        allowedMentions: { parse: ['users'] },
+    };
+    if (message.channel.isThread()) opts.threadId = message.channel.id;
+
+    await sendWebhook(message.channel, opts);
+    return true;
+}
+
 async function handleSensitivePost(message) {
     const hasPerm = SENSITIVE_ALLOWED_ROLES.some(id => message.member?.roles.cache.has(id));
     if (!hasPerm) return false;
@@ -1030,6 +1066,8 @@ async function handleImpReply(message) {
 async function handleModerator(message) {
     if (!message.content && !message.attachments.size) return;
     if (message.author.bot) return;
+
+    if (await handleMediaRepost(message)) return;
 
     const hasRequiredRole = REQUIRED_ROLES.some(id => message.member?.roles.cache.has(id));
     if (!hasRequiredRole) {
