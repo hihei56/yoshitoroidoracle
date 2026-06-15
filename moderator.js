@@ -1094,28 +1094,10 @@ async function handleModerator(message) {
         return;
     }
 
-    // メディア権限チェック: 添付ファイルありかつ許可ロールなし → 添付を除いてテキストのみ再投稿
+    // メディア権限チェック: 添付ファイルありかつ許可ロールなし → botは何もしない（素通り）
     if (message.attachments.size > 0 && !isExempt) {
         const hasMediaRole = MEDIA_ALLOWED_ROLES.some(id => message.member?.roles.cache.has(id));
-        if (!hasMediaRole) {
-            const ts = new Date().toISOString();
-            console.warn(`[MEDIA BLOCK] ${ts} | ${message.author.tag}(${message.author.id}) | 添付ブロック（メディア権限なし）`);
-            if (message.deletable) await message.delete().catch(() => {});
-            if (strippedContent.trim()) {
-                const replyPrefix  = await buildReplyPrefix(message);
-                const safeBody     = sanitizeContent(strippedContent || '​', message.author?.id);
-                const finalContent = hideUserId(message.author.id) + sanitizeMentions(`${replyPrefix}${safeBody}`);
-                const opts = {
-                    content:         finalContent,
-                    username:        message.member?.displayName || message.author.username,
-                    avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
-                    allowedMentions: { parse: ['users'] },
-                };
-                if (message.channel.isThread()) opts.threadId = message.channel.id;
-                await sendWebhook(message.channel, opts);
-            }
-            return;
-        }
+        if (!hasMediaRole) return;
     }
 
     // 外国語検知（免除なし・通過したメッセージのみ）
