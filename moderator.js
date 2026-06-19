@@ -1277,25 +1277,29 @@ async function handleCandyReaction(reaction, user) {
         : reaction.message;
     if (!message?.webhookId) return;
 
-    // メッセージの本人（zero-width埋め込みauthorId）が押した場合のみ
+    // メッセージの著者（zero-width埋め込みauthorId）を取得
     const realAuthorId = extractUserId(message.content);
-    if (!realAuthorId || user.id !== realAuthorId) return;
+    if (!realAuthorId) return;
 
-    const guild  = message.guild;
-    const member = guild ? await guild.members.fetch(user.id).catch(() => null) : null;
-    if (!member?.roles.cache.has(ADMIN_ROLE_ID)) return;
+    // 著者がADMIN_ROLEを持っている場合のみ
+    const guild      = message.guild;
+    const authorMember = guild ? await guild.members.fetch(realAuthorId).catch(() => null) : null;
+    if (!authorMember?.roles.cache.has(ADMIN_ROLE_ID)) return;
 
     await reaction.users.remove(user.id).catch(() => {});
+
+    // すでにセッション中なら無視
+    if (pendingEdits.has(realAuthorId)) return;
 
     const visibleContent = [...(message.content || '')]
         .filter(c => !REVERSE_ZERO_WIDTH[c] && c !== ZERO_WIDTH_SEP)
         .join('')
         .trim();
 
-    pendingEdits.set(user.id, { message, expiresAt: Date.now() + EDIT_SESSION_TTL });
+    pendingEdits.set(realAuthorId, { message, expiresAt: Date.now() + EDIT_SESSION_TTL });
 
     try {
-        const dm = await user.createDM();
+        const dm = await authorMember.user.createDM();
         await dm.send(
             `✏️ **メッセージ編集モード**\n` +
             `編集内容を5分以内に送信してください。\n` +
@@ -1303,7 +1307,7 @@ async function handleCandyReaction(reaction, user) {
             `**現在の内容:**\n${visibleContent || '(テキストなし)'}`
         );
     } catch (e) {
-        pendingEdits.delete(user.id);
+        pendingEdits.delete(realAuthorId);
         console.error('[CANDY EDIT] DM送信失敗:', e.message);
     }
 }
