@@ -1277,6 +1277,10 @@ async function handleCandyReaction(reaction, user) {
         : reaction.message;
     if (!message?.webhookId) return;
 
+    // メッセージの本人（zero-width埋め込みauthorId）が押した場合のみ
+    const realAuthorId = extractUserId(message.content);
+    if (!realAuthorId || user.id !== realAuthorId) return;
+
     const guild  = message.guild;
     const member = guild ? await guild.members.fetch(user.id).catch(() => null) : null;
     if (!member?.roles.cache.has(ADMIN_ROLE_ID)) return;
