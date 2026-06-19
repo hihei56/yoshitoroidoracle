@@ -1279,8 +1279,7 @@ async function handleCandyReaction(reaction, user) {
 
     const guild  = message.guild;
     const member = guild ? await guild.members.fetch(user.id).catch(() => null) : null;
-    const isAdmin = member?.permissions.has('Administrator') || member?.roles.cache.has(ADMIN_ROLE_ID);
-    if (!isAdmin) return;
+    if (!member?.roles.cache.has(ADMIN_ROLE_ID)) return;
 
     await reaction.users.remove(user.id).catch(() => {});
 
