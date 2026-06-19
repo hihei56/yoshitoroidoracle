@@ -10,7 +10,7 @@ const { handleCurse }            = require('./curse');
 const { initLurker, handleLurker } = require('./lurker');
 const { recordActivity, backfillActivity } = require('./activity_tracker');
 const { handleDeathmatch }       = require('./deathmatch');
-const { handleModerator, handlePoopReaction, handleCryReaction, handleEmbedModerator } = require('./moderator');
+const { handleModerator, handlePoopReaction, handleCryReaction, handleEmbedModerator, handleCandyReaction, handleEditDM } = require('./moderator');
 const { handleImpersonate }      = require('./impersonate');
 const { handleImp }              = require('./imp');
 const { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel, handlePresence, restorePresence } = require('./admin');
@@ -68,7 +68,11 @@ client.once(Events.ClientReady, async c => {
 });
 
 client.on(Events.MessageCreate, async m => {
-    if (m.author.bot || !m.guild) return;
+    if (m.author.bot) return;
+    if (!m.guild) {
+        handleEditDM(m).catch(e => console.error('[EditDM Error]:', e));
+        return;
+    }
     recordActivity(m.author.id);
     handleInviteFilter(m, client).catch(err => console.error('[InviteFilter Error]:', err));
     handleModerator(m).catch(err => console.error('[Mod Error]:', err));
@@ -83,6 +87,7 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
 client.on(Events.MessageReactionAdd, async (reaction, user) => {
     handlePoopReaction(reaction, user).catch(e => console.error('[PoopReaction]:', e));
     handleCryReaction(reaction, user).catch(e => console.error('[CryReaction]:', e));
+    handleCandyReaction(reaction, user).catch(e => console.error('[CandyReaction]:', e));
 });
 
 client.on(Events.InteractionCreate, async i => {

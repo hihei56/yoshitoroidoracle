@@ -1252,9 +1252,111 @@ async function handleEmbedModerator(oldMessage, newMessage) {
     await instantDeleteAndRecode(newMessage);
 }
 
+/* =========================
+   🍬 リアクション → DM編集
+========================= */
+const CANDY_EMOJI      = '🍬';
+const EDIT_SESSION_TTL = 5 * 60 * 1000;
+
+const pendingEdits = new Map();
+
+setInterval(() => {
+    const now = Date.now();
+    for (const [id, s] of pendingEdits) {
+        if (now > s.expiresAt) pendingEdits.delete(id);
+    }
+}, 60_000);
+
+async function handleCandyReaction(reaction, user) {
+    if (user.bot) return;
+    if (reaction.emoji.name !== CANDY_EMOJI) return;
+
+    if (reaction.partial) await reaction.fetch().catch(() => {});
+    const message = reaction.message.partial
+        ? await reaction.message.fetch().catch(() => null)
+        : reaction.message;
+    if (!message?.webhookId) return;
+
+    const guild  = message.guild;
+    const member = guild ? await guild.members.fetch(user.id).catch(() => null) : null;
+    const isAdmin = member?.permissions.has('Administrator') || member?.roles.cache.has(ADMIN_ROLE_ID);
+    if (!isAdmin) return;
+
+    await reaction.users.remove(user.id).catch(() => {});
+
+    const visibleContent = [...(message.content || '')]
+        .filter(c => !REVERSE_ZERO_WIDTH[c] && c !== ZERO_WIDTH_SEP)
+        .join('')
+        .trim();
+
+    pendingEdits.set(user.id, { message, expiresAt: Date.now() + EDIT_SESSION_TTL });
+
+    try {
+        const dm = await user.createDM();
+        await dm.send(
+            `✏️ **メッセージ編集モード**\n` +
+            `編集内容を5分以内に送信してください。\n` +
+            `キャンセルは \`cancel\` と送ってください。\n\n` +
+            `**現在の内容:**\n${visibleContent || '(テキストなし)'}`
+        );
+    } catch (e) {
+        pendingEdits.delete(user.id);
+        console.error('[CANDY EDIT] DM送信失敗:', e.message);
+    }
+}
+
+async function handleEditDM(message) {
+    if (message.author.bot) return false;
+    if (message.guild) return false; // DM以外は無視
+
+    const session = pendingEdits.get(message.author.id);
+    if (!session) return false;
+
+    pendingEdits.delete(message.author.id);
+
+    if (Date.now() > session.expiresAt) {
+        await message.reply('⏰ セッションが期限切れです。もう一度 🍬 を押してください。').catch(() => {});
+        return true;
+    }
+
+    if (message.content.trim().toLowerCase() === 'cancel') {
+        await message.reply('❌ キャンセルしました。').catch(() => {});
+        return true;
+    }
+
+    const orig = session.message;
+
+    // zero-width userId プレフィックスを元メッセージから引き継ぐ
+    const prefixChars = [];
+    for (const c of (orig.content || '')) {
+        if (REVERSE_ZERO_WIDTH[c] || c === ZERO_WIDTH_SEP) prefixChars.push(c);
+        else break;
+    }
+    const prefix     = prefixChars.join('');
+    const newContent = prefix + sanitizeMentions(message.content);
+
+    try {
+        const wh = await getOrCreateWebhook(orig.channel);
+        if (!wh) throw new Error('Webhook取得失敗');
+
+        const editOpts = { content: newContent };
+        if (orig.channel.isThread()) editOpts.threadId = orig.channel.id;
+        await wh.editMessage(orig.id, editOpts);
+
+        await message.reply('✅ 編集しました。').catch(() => {});
+        console.info(`[CANDY EDIT] ${message.author.tag}(${message.author.id}) がメッセージ ${orig.id} を編集`);
+    } catch (e) {
+        console.error('[CANDY EDIT] 編集失敗:', e.message);
+        await message.reply(`⚠️ 編集に失敗しました: ${e.message}`).catch(() => {});
+    }
+    return true;
+}
+
 module.exports = {
     handleModerator,
     handlePoopReaction,
     handleCryReaction,
     handleEmbedModerator,
+    handleCandyReaction,
+    handleEditDM,
 };
