@@ -94,6 +94,9 @@ async function handleEditMonitor(oldMessage, newMessage) {
     // 内容変化なし（embed展開など）はスキップ
     if (oldContent !== null && oldContent === newContent) return;
 
+    // 編集前後ともに空（Webhook embed更新など）はスキップ
+    if (!newContent.trim() && (!oldContent || !oldContent.trim())) return;
+
     // 投稿から10分未満の編集は記録しない
     const age = Date.now() - newMessage.createdTimestamp;
     if (age < MIN_AGE_TO_LOG) return;
