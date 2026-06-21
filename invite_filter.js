@@ -117,34 +117,48 @@ async function handleNGServer(interaction) {
         return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    const serverId = interaction.options.getString('server_id').trim();
-    if (!/^\d{17,20}$/.test(serverId)) {
-        return interaction.reply({ content: '❌ サーバーIDは17〜20桁の数字で入力してください。', ephemeral: true });
+    const input = interaction.options.getString('server_id').trim();
+
+    // 招待リンクが入力された場合はサーバーIDを自動解決
+    let serverId = input;
+    const inviteMatch = input.match(/discord(?:app)?\.(?:gg|com)(?:\/invite)?\/([A-Za-z0-9-]{2,32})/);
+    if (inviteMatch) {
+        await interaction.deferReply({ ephemeral: true });
+        const resolved = await resolveInvite(interaction.client, inviteMatch[1]);
+        if (!resolved || resolved === 'INVALID') {
+            return interaction.editReply({ content: '❌ 招待リンクが無効か期限切れです。' });
+        }
+        serverId = resolved;
+    } else if (!/^\d{17,20}$/.test(serverId)) {
+        return interaction.reply({ content: '❌ サーバーIDは17〜20桁の数字、または有効な招待リンクを入力してください。', ephemeral: true });
     }
+
+    const reply = interaction.deferred
+        ? (opts) => interaction.editReply(opts)
+        : (opts) => interaction.reply({ ...opts, ephemeral: true });
 
     const list = getNGList();
 
     if (sub === 'add') {
         if (list.includes(serverId)) {
-            return interaction.reply({ content: `⚠️ \`${serverId}\` は既にNGリストに登録済みです。`, ephemeral: true });
+            return reply({ content: `⚠️ \`${serverId}\` は既にNGリストに登録済みです。` });
         }
         list.push(serverId);
         saveNGList(list);
-        // キャッシュをクリアして次回再解決させる
         for (const [code, id] of resolvedCache) {
             if (id === serverId) resolvedCache.delete(code);
         }
-        return interaction.reply({ content: `✅ \`${serverId}\` をNGリストに追加しました。`, ephemeral: true });
+        return reply({ content: `✅ \`${serverId}\` をNGリストに追加しました。` });
     }
 
     if (sub === 'remove') {
         const idx = list.indexOf(serverId);
         if (idx === -1) {
-            return interaction.reply({ content: `⚠️ \`${serverId}\` はNGリストに存在しません。`, ephemeral: true });
+            return reply({ content: `⚠️ \`${serverId}\` はNGリストに存在しません。` });
         }
         list.splice(idx, 1);
         saveNGList(list);
-        return interaction.reply({ content: `✅ \`${serverId}\` をNGリストから削除しました。`, ephemeral: true });
+        return reply({ content: `✅ \`${serverId}\` をNGリストから削除しました。` });
     }
 }
 
