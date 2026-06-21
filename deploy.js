@@ -213,7 +213,7 @@ new SlashCommandBuilder()
                 )
                 .addStringOption(opt =>
                     opt.setName('server_id')
-                        .setDescription('NGにするサーバーID（追加・削除時は必須）')
+                        .setDescription('NGにするサーバーID、または招待リンク（追加・削除時は必須）')
                 )
         ),
 
