@@ -56,6 +56,7 @@ const COLOR = {
 function buildStatusEmbed() {
     const excl     = getModExcludeList();
     const settings = getSettings();
+    if (!settings.cryAllowedUsers) settings.cryAllowedUsers = [];
 
     const fmtUsers    = ids => ids.length ? ids.map(id => `<@${id}>`).join(' ')  : 'なし';
     const fmtRoles    = ids => ids.length ? ids.map(id => `<@&${id}>`).join(' ') : 'なし';
@@ -83,6 +84,7 @@ function buildStatusEmbed() {
             { name: '📋 Anonログチャンネル',  value: logCh,                                           inline: false },
             { name: '😴 目覚ましチャンネル',  value: lurkerCh,  inline: false },
             { name: '🀄 中国思想家置き換え',  value: thinker,   inline: false },
+            { name: '😿 Webhook化許可ユーザー', value: fmtUsers(settings.cryAllowedUsers), inline: false },
         )
         .setTimestamp();
 }
@@ -327,6 +329,52 @@ async function handleAdmin(interaction) {
         }
 
         return interaction.reply({ content: 'enable または action を指定してください。', ephemeral: true });
+    }
+
+    // ── 😿 Webhook化許可ユーザー管理 ──
+    if (sub === 'cry_allow') {
+        const action     = interaction.options.getString('action');
+        const targetUser = interaction.options.getUser('user');
+        const settings   = getSettings();
+        if (!settings.cryAllowedUsers) settings.cryAllowedUsers = [];
+
+        if (action === 'list') {
+            const list = settings.cryAllowedUsers;
+            return interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('😿 Webhook化許可ユーザー一覧')
+                        .setColor(COLOR.info)
+                        .setDescription(list.length ? list.map(id => `<@${id}>`).join('\n') : 'なし')
+                        .setTimestamp()
+                ],
+                ephemeral: true,
+            });
+        }
+
+        if (!targetUser) {
+            return interaction.reply({ content: 'ユーザーを指定してください。', ephemeral: true });
+        }
+
+        if (action === 'add') {
+            if (!settings.cryAllowedUsers.includes(targetUser.id))
+                settings.cryAllowedUsers.push(targetUser.id);
+        } else {
+            settings.cryAllowedUsers = settings.cryAllowedUsers.filter(id => id !== targetUser.id);
+        }
+        saveSettings(settings);
+
+        const verb = action === 'add' ? '許可に追加' : '許可から解除';
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle(`😿 Webhook化 — ${verb}`)
+                    .setColor(action === 'add' ? COLOR.add : COLOR.remove)
+                    .setDescription(`<@${targetUser.id}>`)
+                    .setTimestamp()
+            ],
+            ephemeral: true,
+        });
     }
 
     // ── 現在の設定を表示 ──

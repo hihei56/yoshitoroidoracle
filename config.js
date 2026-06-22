@@ -18,6 +18,7 @@ function getSettings() {
     if (!data.lurkerChannelId)        data.lurkerChannelId        = null;
     if (data.chineseThinkerReplace === undefined)     data.chineseThinkerReplace     = true;
     if (!data.chineseThinkerExcludeUsers)             data.chineseThinkerExcludeUsers = [];
+    if (!data.cryAllowedUsers)                        data.cryAllowedUsers = [];
     return data;
 }
 
