@@ -3,6 +3,7 @@ const axios  = require('axios');
 const { OpenAI } = require('openai');
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const { getModExcludeList } = require('./exclude_manager');
+const { getSettings } = require('./config');
 const whStore = require('./webhook_store');
 const { isCursed } = require('./curse_manager');
 const { isImpersonated } = require('./impersonate_manager');
@@ -1153,7 +1154,14 @@ async function handleCryReaction(reaction, user) {
         : message.author?.id;
     const isAuthor = !!realAuthorId && user.id === realAuthorId;
 
+    // 管理者でも著者でもない場合は弾く
     if (!isAdmin && !isAuthor) return;
+
+    // 著者本人の場合は許可リストに入っているか確認（管理者は免除）
+    if (!isAdmin) {
+        const cryAllowed = getSettings().cryAllowedUsers ?? [];
+        if (!cryAllowed.includes(user.id)) return;
+    }
 
     // 管理者以外は投稿から30分以内のみ許可
     const CRY_TIME_LIMIT_MS = 30 * 60 * 1000;

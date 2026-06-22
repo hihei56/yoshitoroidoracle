@@ -168,6 +168,25 @@ new SlashCommandBuilder()
         )
         .addSubcommand(subcommand =>
             subcommand
+                .setName('cry_allow')
+                .setDescription('😿リアクションによるWebhook化を許可するユーザーを管理します。')
+                .addStringOption(opt =>
+                    opt.setName('action')
+                        .setDescription('操作を選択')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: '許可', value: 'add'    },
+                            { name: '解除', value: 'remove' },
+                            { name: '一覧', value: 'list'   },
+                        )
+                )
+                .addUserOption(opt =>
+                    opt.setName('user')
+                        .setDescription('対象ユーザー（add/remove時に必須）')
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('servers')
                 .setDescription('ボットが加入しているサーバー一覧を表示し、退出操作ができます。')
         )
