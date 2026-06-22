@@ -95,6 +95,9 @@ async function handleEditMonitor(oldMessage, newMessage) {
     const oldContent = oldMessage.partial ? null : (oldMessage.content ?? '');
     const newContent = newMessage.content ?? '';
 
+    // 編集前がキャッシュにない場合はスキップ
+    if (oldMessage.partial || oldContent === null) return;
+
     // 内容変化なし（embed展開など）はスキップ
     if (oldContent !== null && oldContent === newContent) return;
 
