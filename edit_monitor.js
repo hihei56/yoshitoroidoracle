@@ -39,6 +39,7 @@ function detectForeignLanguage(text) {
 
 function isMediaReplacement(oldContent, newContent) {
     if (!newContent) return false;
+    if (oldContent === null) return false; // キャッシュなしは判定不能
     const hadMedia = MEDIA_LINK_REGEX.test(oldContent) || MEDIA_SERVICE_REGEX.test(oldContent);
     const hasMedia = MEDIA_LINK_REGEX.test(newContent) || MEDIA_SERVICE_REGEX.test(newContent);
     // 元にメディアがなく、新しくメディアリンクが追加された
@@ -46,9 +47,12 @@ function isMediaReplacement(oldContent, newContent) {
 }
 
 function buildDiff(oldText, newText) {
-    const o = (oldText || '').slice(0, 500);
+    const o = oldText === null ? null : (oldText || '').slice(0, 500);
     const n = (newText || '').slice(0, 500);
-    return { before: o || '*(空)*', after: n || '*(空)*' };
+    return {
+        before: o === null ? '*(キャッシュなし)*' : (o || '*(空)*'),
+        after:  n || '*(空)*',
+    };
 }
 
 // OpenAI Moderation で sexual/minors スコアを返す。APIキー未設定なら null
