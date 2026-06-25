@@ -29,7 +29,7 @@ const {
     setUserLevel, adjustXP, resetUser,
     setHideBadge, isHideBadge,
     addExcludedRole, removeExcludedRole, getExcludedRoles, isExcluded,
-    buildNickname, getLevelBadge,
+    buildNickname, getLevelBadge, getMonthlyRank,
 } = require('./xp');
 
 const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
@@ -112,6 +112,23 @@ client.once(Events.ClientReady, async c => {
     const guild = client.guilds.cache.first();
     if (guild) backfillActivity(guild).catch(e => console.error('[Activity] バックフィルエラー:', e));
 
+    // 月間ランキングニックネーム 1時間ごと自動更新
+    async function syncMonthlyNicks() {
+        const g = client.guilds.cache.first();
+        if (!g) return;
+        const board = getLeaderboard(9999);
+        for (const e of board) {
+            if (isHideBadge(e.id)) continue;
+            const member = await g.members.fetch(e.id).catch(() => null);
+            if (!member?.manageable) continue;
+            const mRank = getMonthlyRank(e.id);
+            await member.setNickname(buildNickname(member.displayName, e.level, mRank)).catch(() => {});
+        }
+        console.log('[NickSync] 月間ランク同期完了');
+    }
+    syncMonthlyNicks().catch(e => console.error('[NickSync] 起動時エラー:', e));
+    setInterval(() => syncMonthlyNicks().catch(e => console.error('[NickSync] エラー:', e)), 60 * 60 * 1000);
+
     if (DEBUG_MODE) {
         postRanking(client).catch(e => console.error('[Ranking] 起動時エラー:', e));
         setInterval(() => {
@@ -153,7 +170,8 @@ client.on(Events.MessageCreate, async m => {
             const member = m.member ?? await m.guild.members.fetch(m.author.id).catch(() => null);
             if (member?.manageable) {
                 const base = member.displayName;
-                member.setNickname(buildNickname(base, xpResult.newLevel)).catch(e => console.error('[Nick Error]', e.message));
+                const mRank = getMonthlyRank(m.author.id);
+                member.setNickname(buildNickname(base, xpResult.newLevel, mRank)).catch(e => console.error('[Nick Error]', e.message));
             } else {
                 console.log(`[Nick Skip] manageable=false for ${m.author.id}`);
             }
@@ -340,8 +358,9 @@ client.on(Events.InteractionCreate, async i => {
                     const member = await i.guild.members.fetch(e.id).catch(() => null);
                     if (!member) { skip++; continue; }
                     if (!member.manageable) { skip++; continue; }
-                    const base = member.displayName;
-                    const err = await member.setNickname(buildNickname(base, e.level)).then(() => null).catch(e => e);
+                    const base   = member.displayName;
+                    const mRank  = getMonthlyRank(e.id);
+                    const err = await member.setNickname(buildNickname(base, e.level, mRank)).then(() => null).catch(e => e);
                     if (err) { fail++; console.error('[syncnicks]', e.id, err.message); }
                     else ok++;
                 }

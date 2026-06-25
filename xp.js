@@ -251,10 +251,19 @@ function getLevelBadge(level) {
     return LEVEL_BADGES.find(b => level >= b.min) ?? LEVEL_BADGES.at(-1);
 }
 
-function buildNickname(baseNick, level) {
+function getMonthlyRank(userId) {
+    const board = getLeaderboardByPeriod('month', 9999);
+    const idx   = board.findIndex(e => e.id === userId);
+    return idx === -1 ? null : idx + 1;
+}
+
+const NICK_STRIP = /\s*[🌱🔥⚡💎👑]#?\d+$/;
+
+function buildNickname(baseNick, level, monthRank = null) {
     const { emoji } = getLevelBadge(level);
-    const stripped  = baseNick.replace(/\s*[🌱🔥⚡💎👑]\d+$/, '');
-    return `${stripped} ${emoji}${level}`.slice(0, 32);
+    const stripped  = baseNick.replace(NICK_STRIP, '');
+    const suffix    = monthRank != null ? `${emoji}#${monthRank}` : `${emoji}${level}`;
+    return `${stripped} ${suffix}`.slice(0, 32);
 }
 
 module.exports = {
@@ -264,5 +273,5 @@ module.exports = {
     setUserLevel, adjustXP, resetUser,
     setHideBadge, isHideBadge,
     addExcludedRole, removeExcludedRole, getExcludedRoles, isExcluded,
-    buildNickname, getLevelBadge,
+    buildNickname, getLevelBadge, getMonthlyRank,
 };
