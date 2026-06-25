@@ -16,6 +16,7 @@ function getSettings() {
     if (!data.allowedSayChannels) data.allowedSayChannels = [];
     if (!data.anonLogChannelId)       data.anonLogChannelId       = null;
     if (!data.lurkerChannelId)        data.lurkerChannelId        = null;
+    if (data.chatterChannelId === undefined) data.chatterChannelId = null;
     if (data.chineseThinkerReplace === undefined)     data.chineseThinkerReplace     = true;
     if (!data.chineseThinkerExcludeUsers)             data.chineseThinkerExcludeUsers = [];
     if (!data.cryAllowedUsers)                        data.cryAllowedUsers = [];
