@@ -23,10 +23,34 @@ function saveNow() {
     writeJson(XP_FILE, store);
 }
 
+// ── JST日付ユーティリティ ─────────────────────────────────────────────
+function jstDateStr(offsetDays = 0) {
+    const d = new Date(Date.now() + (9 * 60 + offsetDays * 24 * 60) * 60 * 1000);
+    return d.toISOString().slice(0, 10);
+}
+
+function jstWeekDates() {
+    const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const day = now.getDay(); // 0=Sun
+    const diffToMon = day === 0 ? -6 : 1 - day;
+    const dates = [];
+    for (let i = diffToMon; i <= 0; i++) {
+        const d = new Date(now);
+        d.setDate(now.getDate() + i);
+        dates.push(d.toISOString().slice(0, 10));
+    }
+    return dates;
+}
+
+function jstMonthPrefix() {
+    return jstDateStr().slice(0, 7); // "2025-06"
+}
+
 function entry(userId) {
     if (!store[userId]) store[userId] = { xp: 0, level: 0, levelBase: 0 };
     // 旧データ（levelBaseなし）の移行
     if (store[userId].levelBase === undefined) store[userId].levelBase = store[userId].xp;
+    if (!store[userId].history) store[userId].history = {};
     return store[userId];
 }
 
@@ -83,6 +107,13 @@ function processMessage(userId, content, now = Date.now()) {
     const u = entry(userId);
     u.xp += gained;
 
+    // 履歴記録（JST日付）
+    const today = jstDateStr();
+    u.history[today] = parseFloat(((u.history[today] ?? 0) + gained).toFixed(2));
+    // 90日より古いエントリを削除
+    const cutoff = jstDateStr(-90);
+    for (const d of Object.keys(u.history)) { if (d < cutoff) delete u.history[d]; }
+
     let newLevel = null;
     while (u.xp - u.levelBase >= XP_PER_LEVEL) {
         u.level++;
@@ -113,6 +144,32 @@ function getLeaderboard(n = 10) {
         .filter(([k]) => !k.startsWith('_'))
         .map(([id, d]) => ({ id, ...d }))
         .sort((a, b) => b.xp - a.xp)
+        .slice(0, n);
+}
+
+function getPeriodXp(userId, period) {
+    const history = store[userId]?.history ?? {};
+    if (period === 'day') {
+        return history[jstDateStr()] ?? 0;
+    }
+    if (period === 'week') {
+        return jstWeekDates().reduce((s, d) => s + (history[d] ?? 0), 0);
+    }
+    if (period === 'month') {
+        const prefix = jstMonthPrefix();
+        return Object.entries(history)
+            .filter(([d]) => d.startsWith(prefix))
+            .reduce((s, [, v]) => s + v, 0);
+    }
+    return store[userId]?.xp ?? 0;
+}
+
+function getLeaderboardByPeriod(period, n = 10) {
+    return Object.keys(store)
+        .filter(k => !k.startsWith('_'))
+        .map(id => ({ id, periodXp: getPeriodXp(id, period), ...store[id] }))
+        .filter(e => e.periodXp > 0)
+        .sort((a, b) => b.periodXp - a.periodXp)
         .slice(0, n);
 }
 
@@ -203,6 +260,7 @@ function buildNickname(baseNick, level) {
 module.exports = {
     XP_PER_LEVEL,
     processMessage, getUserData, getRank, getLeaderboard, xpToNextLevel,
+    getPeriodXp, getLeaderboardByPeriod,
     setUserLevel, adjustXP, resetUser,
     setHideBadge, isHideBadge,
     addExcludedRole, removeExcludedRole, getExcludedRoles, isExcluded,

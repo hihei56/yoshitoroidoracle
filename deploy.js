@@ -331,7 +331,17 @@ new SlashCommandBuilder()
     // 13. XPランキング（全員）
     new SlashCommandBuilder()
         .setName('top')
-        .setDescription('XPランキング TOP10 を表示します。'),
+        .setDescription('XPランキング TOP10 を表示します。')
+        .addStringOption(opt =>
+            opt.setName('period')
+                .setDescription('集計期間（デフォルト: トータル）')
+                .addChoices(
+                    { name: 'トータル', value: 'total' },
+                    { name: '本日',     value: 'day'   },
+                    { name: '今週',     value: 'week'  },
+                    { name: '今月',     value: 'month' },
+                )
+        ),
 
     // 14. XP管理（管理者のみ）
     new SlashCommandBuilder()

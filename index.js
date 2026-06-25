@@ -25,6 +25,7 @@ const { generateRankCard, saveBgFromUrl, saveBgFromAttachment, deleteBg, getBgPa
 const {
     XP_PER_LEVEL,
     processMessage, getUserData, getRank, getLeaderboard, xpToNextLevel,
+    getPeriodXp, getLeaderboardByPeriod,
     setUserLevel, adjustXP, resetUser,
     setHideBadge, isHideBadge,
     addExcludedRole, removeExcludedRole, getExcludedRoles, isExcluded,
@@ -88,22 +89,25 @@ async function sendRankCard(replyTarget, targetUser, guild) {
 }
 
 // ── /top ランキングembed ───────────────────────────────────────────────
-async function buildTopEmbed(guild) {
-    const board = getLeaderboard(10);
+const PERIOD_LABELS = { total: 'トータル', day: '本日', week: '今週', month: '今月' };
+const MEDALS = ['🥇', '🥈', '🥉'];
+
+async function buildTopEmbed(guild, period = 'total') {
+    const board = period === 'total' ? getLeaderboard(10) : getLeaderboardByPeriod(period, 10);
     if (!board.length) return null;
 
-    const MEDALS = ['🥇', '🥈', '🥉'];
-    const lines  = await Promise.all(board.map(async (e, i) => {
-        const member = await guild.members.fetch(e.id).catch(() => null);
-        const name   = member?.displayName ?? `<@${e.id}>`;
-        const badge  = getLevelBadge(e.level);
-        const num    = MEDALS[i] ?? `\`${String(i + 1).padStart(2)}\``;
-        const xpStr  = Math.floor(e.xp).toLocaleString('en-US');
+    const lines = await Promise.all(board.map(async (e, i) => {
+        const member  = await guild.members.fetch(e.id).catch(() => null);
+        const name    = member?.displayName ?? `<@${e.id}>`;
+        const badge   = getLevelBadge(e.level);
+        const num     = MEDALS[i] ?? `\`${i + 1}\``;
+        const dispXp  = period === 'total' ? Math.floor(e.xp) : Math.floor(e.periodXp);
+        const xpStr   = dispXp.toLocaleString('en-US');
         return `${num} ${badge.emoji}**${e.level}** ${name} — ${xpStr} XP`;
     }));
 
     return {
-        title: '🏆 XP ランキング TOP10',
+        title: `🏆 XP ランキング TOP10　[${PERIOD_LABELS[period]}]`,
         description: lines.join('\n'),
         color: 0xf5a623,
         footer: { text: `全${getLeaderboard(9999).length}名` },
@@ -248,8 +252,9 @@ client.on(Events.InteractionCreate, async i => {
     if (i.commandName === 'top') {
         try {
             await i.deferReply();
-            const embed = await buildTopEmbed(i.guild);
-            if (!embed) return i.editReply({ content: 'まだ誰もXPを獲得していません。' });
+            const period = i.options.getString('period') ?? 'total';
+            const embed  = await buildTopEmbed(i.guild, period);
+            if (!embed) return i.editReply({ content: 'まだデータがありません。' });
             return i.editReply({ embeds: [embed] });
         } catch (e) { console.error('[Top Error]:', e); }
         return;
