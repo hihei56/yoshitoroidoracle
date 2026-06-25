@@ -1,6 +1,4 @@
 // xp.js — 経験値・レベルシステム
-// 4つの内部パラメータ（文字数/多様性/間隔/内容）でXPを動的計算
-// ファーミング耐性付き、70XPごとにレベルアップ
 const { resolveDataPath, ensureDir, readJson, writeJson } = require('./dataPath');
 
 const XP_FILE     = resolveDataPath('xp.json');
@@ -8,24 +6,31 @@ const XP_PER_LEVEL = 70;
 
 ensureDir(XP_FILE);
 
-// { userId: { xp: number, level: number } }
-let xpData = readJson(XP_FILE, {});
+// { userId: { xp, level }, _excludedRoles: [...] }
+let store = readJson(XP_FILE, {});
+if (!Array.isArray(store._excludedRoles)) store._excludedRoles = [];
 
-// メモリ上で最終発言時刻を管理（永続化不要）
 const lastMsgTime = {};
 
 let saveTimer = null;
 function scheduleSave() {
     if (saveTimer) return;
-    saveTimer = setTimeout(() => {
-        writeJson(XP_FILE, xpData);
-        saveTimer = null;
-    }, 30_000);
+    saveTimer = setTimeout(() => { writeJson(XP_FILE, store); saveTimer = null; }, 30_000);
+}
+function saveNow() {
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+    writeJson(XP_FILE, store);
 }
 
-// ── パラメータ1: 文字数係数 ──────────────────────────────────────
+function entry(userId) {
+    if (!store[userId]) store[userId] = { xp: 0, level: 0 };
+    return store[userId];
+}
+
+// ── 4パラメータ ──────────────────────────────────────────────────────
+
 function lengthFactor(content) {
-    const len = [...content].length; // Unicode対応
+    const len = [...content].length;
     if (len < 5)   return 0.5;
     if (len < 15)  return 1.0;
     if (len < 40)  return 1.5;
@@ -33,22 +38,18 @@ function lengthFactor(content) {
     return 2.5;
 }
 
-// ── パラメータ2: 多様性係数（文字の多様性でスパム抑制）────────────
 function diversityFactor(content) {
-    const chars = [...content].filter(c => c.trim()); // 空白除外
-    if (chars.length === 0) return 0.5;
-    const unique = new Set(chars).size;
-    const ratio  = unique / chars.length;
+    const chars = [...content].filter(c => c.trim());
+    if (!chars.length) return 0.5;
+    const ratio = new Set(chars).size / chars.length;
     if (ratio < 0.25) return 0.4;
     if (ratio < 0.45) return 0.7;
     if (ratio < 0.65) return 1.0;
     return 1.2;
 }
 
-// ── パラメータ3: 間隔係数（連投ファーミング対策）──────────────────
 function intervalFactor(userId, now) {
-    const last = lastMsgTime[userId] ?? 0;
-    const sec  = (now - last) / 1000;
+    const sec = (now - (lastMsgTime[userId] ?? 0)) / 1000;
     if (sec < 5)   return 0;
     if (sec < 30)  return 0.4;
     if (sec < 120) return 0.8;
@@ -56,81 +57,130 @@ function intervalFactor(userId, now) {
     return 1.5;
 }
 
-// ── パラメータ4: 内容係数（URL/メンション/質問/絵文字でボーナス）──
 function contentFactor(content) {
     let f = 1.0;
-    if (/https?:\/\/\S+/.test(content))          f += 0.25;
-    if (/<@!?\d+>/.test(content))                 f += 0.15;
-    if (/[？?！!。、…]{1}/.test(content))         f += 0.10;
+    if (/https?:\/\/\S+/.test(content))        f += 0.25;
+    if (/<@!?\d+>/.test(content))               f += 0.15;
+    if (/[？?！!。、…]/.test(content))          f += 0.10;
     if (/<a?:\w+:\d+>/.test(content) ||
-        /\p{Emoji_Presentation}/u.test(content))  f += 0.10;
+        /\p{Emoji_Presentation}/u.test(content)) f += 0.10;
     return Math.min(f, 1.5);
 }
 
-/**
- * メッセージからXPを計算して付与。
- * @returns {{ gained: number, before: number, after: number, newLevel: number|null }}
- */
+// ── コア ─────────────────────────────────────────────────────────────
+
 function processMessage(userId, content, now = Date.now()) {
-    const l = lengthFactor(content);
-    const d = diversityFactor(content);
-    const i = intervalFactor(userId, now);
-    const c = contentFactor(content);
-    const gained = parseFloat((l * d * i * c).toFixed(2));
+    const gained = parseFloat((
+        lengthFactor(content) * diversityFactor(content) *
+        intervalFactor(userId, now) * contentFactor(content)
+    ).toFixed(2));
 
     lastMsgTime[userId] = now;
 
-    if (!xpData[userId]) xpData[userId] = { xp: 0, level: 0 };
-    const before     = xpData[userId].xp;
-    const beforeLv   = xpData[userId].level;
-    xpData[userId].xp += gained;
+    const u = entry(userId);
+    u.xp += gained;
 
-    // レベルアップ判定
     let newLevel = null;
-    while (xpData[userId].xp >= (xpData[userId].level + 1) * XP_PER_LEVEL) {
-        xpData[userId].level++;
-        newLevel = xpData[userId].level;
+    while (u.xp >= (u.level + 1) * XP_PER_LEVEL) {
+        u.level++;
+        newLevel = u.level;
     }
 
     scheduleSave();
-    return { gained, before, after: xpData[userId].xp, level: xpData[userId].level, newLevel };
+    return { gained, xp: u.xp, level: u.level, newLevel };
 }
 
 function getUserData(userId) {
-    return xpData[userId] ?? { xp: 0, level: 0 };
+    return store[userId] ?? { xp: 0, level: 0 };
 }
 
-/** XPランキング上位n件を返す */
+function getRank(userId) {
+    const sorted = Object.entries(store)
+        .filter(([k]) => !k.startsWith('_'))
+        .sort(([, a], [, b]) => b.xp - a.xp);
+    const idx = sorted.findIndex(([id]) => id === userId);
+    return idx === -1 ? null : idx + 1;
+}
+
 function getLeaderboard(n = 10) {
-    return Object.entries(xpData)
+    return Object.entries(store)
+        .filter(([k]) => !k.startsWith('_'))
         .map(([id, d]) => ({ id, ...d }))
         .sort((a, b) => b.xp - a.xp)
         .slice(0, n);
 }
 
-/** 次のレベルまでに必要なXP */
-function xpToNextLevel(userData) {
-    return (userData.level + 1) * XP_PER_LEVEL - userData.xp;
+function xpToNextLevel(data) {
+    return (data.level + 1) * XP_PER_LEVEL - data.xp;
 }
 
+// ── 管理 ─────────────────────────────────────────────────────────────
+
+function setUserLevel(userId, level) {
+    const u = entry(userId);
+    u.level = level;
+    u.xp    = level * XP_PER_LEVEL;
+    saveNow();
+    return u;
+}
+
+function adjustXP(userId, amount) {
+    const u = entry(userId);
+    u.xp    = Math.max(0, u.xp + amount);
+    u.level = Math.floor(u.xp / XP_PER_LEVEL);
+    saveNow();
+    return u;
+}
+
+function resetUser(userId) {
+    store[userId] = { xp: 0, level: 0 };
+    saveNow();
+}
+
+// ── 除外ロール ────────────────────────────────────────────────────────
+
+function addExcludedRole(roleId) {
+    if (!store._excludedRoles.includes(roleId)) {
+        store._excludedRoles.push(roleId);
+        saveNow();
+    }
+}
+
+function removeExcludedRole(roleId) {
+    store._excludedRoles = store._excludedRoles.filter(id => id !== roleId);
+    saveNow();
+}
+
+function getExcludedRoles() { return [...store._excludedRoles]; }
+
+function isExcluded(member) {
+    return store._excludedRoles.some(id => member?.roles?.cache?.has(id));
+}
+
+// ── バッジ ────────────────────────────────────────────────────────────
+
 const LEVEL_BADGES = [
-    { min: 30, emoji: '👑' },
-    { min: 20, emoji: '💎' },
-    { min: 10, emoji: '⚡' },
-    { min: 5,  emoji: '🔥' },
-    { min: 0,  emoji: '🌱' },
+    { min: 30, emoji: '👑', color: 0xf5a623 },
+    { min: 20, emoji: '💎', color: 0x00d4ff },
+    { min: 10, emoji: '⚡', color: 0xb026ff },
+    { min: 5,  emoji: '🔥', color: 0xff4500 },
+    { min: 0,  emoji: '🌱', color: 0x57f287 },
 ];
 
 function getLevelBadge(level) {
-    return (LEVEL_BADGES.find(b => level >= b.min) ?? LEVEL_BADGES.at(-1)).emoji;
+    return LEVEL_BADGES.find(b => level >= b.min) ?? LEVEL_BADGES.at(-1);
 }
 
-/** ニックネームにレベルバッジを付与（末尾）した文字列を返す */
 function buildNickname(baseNick, level) {
-    const badge   = getLevelBadge(level);
-    const stripped = baseNick.replace(/\s*[🌱🔥⚡💎👑]\d+$/, '');
-    const result   = `${stripped} ${badge}${level}`;
-    return result.slice(0, 32); // Discordのnick上限
+    const { emoji } = getLevelBadge(level);
+    const stripped  = baseNick.replace(/\s*[🌱🔥⚡💎👑]\d+$/, '');
+    return `${stripped} ${emoji}${level}`.slice(0, 32);
 }
 
-module.exports = { processMessage, getUserData, getLeaderboard, xpToNextLevel, XP_PER_LEVEL, buildNickname };
+module.exports = {
+    XP_PER_LEVEL,
+    processMessage, getUserData, getRank, getLeaderboard, xpToNextLevel,
+    setUserLevel, adjustXP, resetUser,
+    addExcludedRole, removeExcludedRole, getExcludedRoles, isExcluded,
+    buildNickname, getLevelBadge,
+};
