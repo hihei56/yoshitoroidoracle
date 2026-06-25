@@ -376,6 +376,10 @@ new SlashCommandBuilder()
                         )
                 )
                 .addRoleOption(opt => opt.setName('role').setDescription('対象ロール（add/remove時は必須）'))
+        )
+        .addSubcommand(sub =>
+            sub.setName('syncnicks')
+                .setDescription('全ユーザーのニックネームにレベルバッジを一括反映します。')
         ),
 
 ].map(command => command.toJSON());

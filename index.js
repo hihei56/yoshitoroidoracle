@@ -343,6 +343,23 @@ client.on(Events.InteractionCreate, async i => {
                 return i.reply({ content: `✅ <@${user.id}> のXP・レベルをリセットしました。`, ephemeral: true });
             }
 
+            if (sub === 'syncnicks') {
+                await i.deferReply({ ephemeral: true });
+                const board = getLeaderboard(9999);
+                let ok = 0, skip = 0, fail = 0;
+                for (const e of board) {
+                    if (isHideBadge(e.id)) { skip++; continue; }
+                    const member = await i.guild.members.fetch(e.id).catch(() => null);
+                    if (!member) { skip++; continue; }
+                    if (!member.manageable) { skip++; continue; }
+                    const base = member.nickname ?? member.user.username;
+                    const err = await member.setNickname(buildNickname(base, e.level)).then(() => null).catch(e => e);
+                    if (err) { fail++; console.error('[syncnicks]', e.id, err.message); }
+                    else ok++;
+                }
+                return i.editReply({ content: `✅ ニックネーム同期完了: 更新 ${ok}名 / スキップ ${skip}名 / 失敗 ${fail}名` });
+            }
+
             if (sub === 'exclude') {
                 const action = i.options.getString('action');
                 const role   = i.options.getRole('role');
