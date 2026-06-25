@@ -302,6 +302,23 @@ new SlashCommandBuilder()
         .setName('permlist')
         .setDescription('危険な権限を持つロール・メンバーを一覧表示します。'),
 
+    // 12. XP・レベル確認
+    new SlashCommandBuilder()
+        .setName('rank')
+        .setDescription('経験値・レベルを確認します。')
+        .addSubcommand(sub =>
+            sub.setName('show')
+                .setDescription('自分または指定ユーザーの経験値を表示します。')
+                .addUserOption(opt =>
+                    opt.setName('user')
+                        .setDescription('確認するユーザー（省略時は自分）')
+                )
+        )
+        .addSubcommand(sub =>
+            sub.setName('top')
+                .setDescription('XPランキング TOP10 を表示します。')
+        ),
+
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);

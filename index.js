@@ -21,6 +21,7 @@ const { handleTimeoutList }      = require('./timeoutlist');
 const { initSecurity, handlePermList } = require('./security');
 const { handleInviteFilter, handleNGServer } = require('./invite_filter');
 const { handleEditMonitor } = require('./edit_monitor');
+const { processMessage, getUserData, getLeaderboard, xpToNextLevel, XP_PER_LEVEL } = require('./xp');
 
 const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
 if (DEBUG_MODE) console.log('🐛 [Debug] デバッグモード有効');
@@ -40,6 +41,11 @@ const client = new Client({
 const ALLOWED_ROLES = ['1476944370694488134', '1478715790575538359'];
 
 const ADMIN_ROLE_ID = '1495971497016164492';
+
+function buildProgressBar(current, max, size = 15) {
+    const filled = Math.round((current / max) * size);
+    return '█'.repeat(filled) + '░'.repeat(size - filled) + ` (${Math.floor(current)}/${max})`;
+}
 
 function hasPermission(member) {
     if (!member) return false;
@@ -77,6 +83,12 @@ client.on(Events.MessageCreate, async m => {
     recordActivity(m.author.id);
     handleInviteFilter(m, client).catch(err => console.error('[InviteFilter Error]:', err));
     handleModerator(m).catch(err => console.error('[Mod Error]:', err));
+
+    // XP処理
+    const xpResult = processMessage(m.author.id, m.content);
+    if (xpResult.newLevel !== null) {
+        m.channel.send(`🎉 <@${m.author.id}> がレベル **${xpResult.newLevel}** に上がりました！ (合計 ${Math.floor(xpResult.after)} XP)`).catch(() => {});
+    }
 });
 
 client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
@@ -118,6 +130,42 @@ client.on(Events.InteractionCreate, async i => {
     // /imp は独自権限チェックのためhasPermissionをスキップ
     if (i.commandName === 'imp') {
         return handleImp(i).catch(e => console.error('[Imp Error]:', e));
+    }
+
+    // /rank は全員使用可能
+    if (i.commandName === 'rank') {
+        try {
+            const sub = i.options.getSubcommand(false);
+            if (sub === 'top') {
+                const board = getLeaderboard(10);
+                if (!board.length) return i.reply({ content: 'まだ誰もXPを獲得していません。', ephemeral: true });
+                const lines = await Promise.all(board.map(async (e, idx) => {
+                    const member = await i.guild.members.fetch(e.id).catch(() => null);
+                    const name   = member?.displayName ?? `<@${e.id}>`;
+                    return `**${idx + 1}位** ${name} — Lv.**${e.level}** / ${Math.floor(e.xp)} XP`;
+                }));
+                return i.reply({ embeds: [{ title: '🏆 XPランキング TOP10', description: lines.join('\n'), color: 0xf5a623 }] });
+            }
+            // show (デフォルト)
+            const target  = i.options.getUser('user') ?? i.user;
+            const data    = getUserData(target.id);
+            const needed  = xpToNextLevel(data);
+            const current = data.xp - data.level * XP_PER_LEVEL;
+            const bar     = buildProgressBar(current, XP_PER_LEVEL);
+            return i.reply({ embeds: [{
+                title: `⭐ ${target.displayName ?? target.username} の経験値`,
+                description: [
+                    `レベル: **${data.level}**`,
+                    `累計XP: **${Math.floor(data.xp)}**`,
+                    `次のレベルまで: **${needed.toFixed(1)} XP**`,
+                    `${bar}`,
+                ].join('\n'),
+                color: 0x5865f2,
+            }] });
+        } catch (e) {
+            console.error('[Rank Error]:', e);
+        }
+        return;
     }
 
     if (!hasPermission(i.member)) {
