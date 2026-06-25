@@ -9,7 +9,7 @@ const BG_DIR = resolveDataPath('backgrounds');
 ensureDir(path.join(BG_DIR, '.keep'));
 
 const W = 900, H = 250;
-const FONT = '"Noto Sans CJK JP", "Noto Sans", sans-serif';
+const FONT = 'Noto Sans CJK JP, Noto Sans, sans-serif';
 
 function toHex(colorInt) {
     return '#' + colorInt.toString(16).padStart(6, '0');
@@ -76,18 +76,18 @@ function uiSvg({ level, xp, levelBase, accent, name, rank, badge }) {
         <rect x="0" y="0" width="6" height="${H}" fill="${accent}" rx="3"/>
 
         <!-- ユーザー名 -->
-        <text x="${textX}" y="68" font-family=${FONT} font-size="32" font-weight="700"
+        <text x="${textX}" y="68" font-family="${FONT}" font-size="32" font-weight="700"
               fill="#ffffff" filter="url(#shadow)">${safeName}</text>
 
         <!-- バッジ emoji + Lv -->
-        <text x="${textX}" y="112" font-family=${FONT} font-size="22" fill="${accent}" font-weight="600">${badge.emoji} Lv.${level}</text>
+        <text x="${textX}" y="112" font-family="${FONT}" font-size="22" fill="${accent}" font-weight="600">${badge.emoji} Lv.${level}</text>
 
         <!-- Rank と Total -->
-        <text x="${textX + 160}" y="112" font-family=${FONT} font-size="18" fill="#ffffffaa">Rank</text>
-        <text x="${textX + 210}" y="112" font-family=${FONT} font-size="22" fill="#ffffff" font-weight="700">${rankStr}</text>
+        <text x="${textX + 160}" y="112" font-family="${FONT}" font-size="18" fill="#ffffffaa">Rank</text>
+        <text x="${textX + 210}" y="112" font-family="${FONT}" font-size="22" fill="#ffffff" font-weight="700">${rankStr}</text>
 
-        <text x="${textX + 310}" y="112" font-family=${FONT} font-size="18" fill="#ffffffaa">Total XP</text>
-        <text x="${textX + 400}" y="112" font-family=${FONT} font-size="22" fill="#ffffff" font-weight="700">${totalStr}</text>
+        <text x="${textX + 310}" y="112" font-family="${FONT}" font-size="18" fill="#ffffffaa">Total XP</text>
+        <text x="${textX + 400}" y="112" font-family="${FONT}" font-size="22" fill="#ffffff" font-weight="700">${totalStr}</text>
 
         <!-- プログレスバー 背景 -->
         <rect x="${barX}" y="${barY}" width="${barW}" height="${barH}" rx="${barH / 2}" fill="#ffffff18"/>
@@ -97,7 +97,7 @@ function uiSvg({ level, xp, levelBase, accent, name, rank, badge }) {
         ${filled > 6 ? `<rect x="${barX + 3}" y="${barY + 4}" width="${Math.max(0, filled - 6)}" height="${barH / 2 - 4}" rx="${barH / 4}" fill="${accent}44"/>` : ''}
 
         <!-- XP テキスト -->
-        <text x="${barX}" y="${barY - 8}" font-family=${FONT} font-size="14" fill="#ffffffbb">${curStr} / ${nextStr} XP</text>
+        <text x="${barX}" y="${barY - 8}" font-family="${FONT}" font-size="14" fill="#ffffffbb">${curStr} / ${nextStr} XP</text>
     </svg>`;
 }
 
