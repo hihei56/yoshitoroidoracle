@@ -43,8 +43,17 @@ function jstWeekDates() {
 }
 
 function jstMonthPrefix() {
-    const offsetDays = parseInt(process.env.XP_MONTH_OFFSET_DAYS ?? '0', 10);
-    return jstDateStr(offsetDays).slice(0, 7);
+    return store._monthOverride ?? jstDateStr().slice(0, 7);
+}
+
+function setMonthOverride(ym) {
+    if (ym) store._monthOverride = ym;
+    else delete store._monthOverride;
+    saveNow();
+}
+
+function getMonthOverride() {
+    return store._monthOverride ?? null;
 }
 
 function entry(userId) {
@@ -286,4 +295,5 @@ module.exports = {
     addExcludedRole, removeExcludedRole, getExcludedRoles, isExcluded,
     buildNickname, getLevelBadge, getMonthlyRank,
     setAlias, getAlias,
+    setMonthOverride, getMonthOverride,
 };

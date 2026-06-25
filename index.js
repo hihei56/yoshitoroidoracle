@@ -31,6 +31,7 @@ const {
     addExcludedRole, removeExcludedRole, getExcludedRoles, isExcluded,
     buildNickname, getLevelBadge, getMonthlyRank,
     setAlias, getAlias,
+    setMonthOverride, getMonthOverride,
 } = require('./xp');
 
 const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
@@ -362,6 +363,20 @@ client.on(Events.InteractionCreate, async i => {
                     await member.setNickname(stripped).catch(() => {});
                 }
                 return i.reply({ content: `✅ <@${user.id}> のXP・レベルをリセットしました。`, ephemeral: true });
+            }
+
+            if (sub === 'setmonth') {
+                const ym = i.options.getString('month');
+                if (ym && !/^\d{4}-\d{2}$/.test(ym)) {
+                    return i.reply({ content: '❌ フォーマットは `YYYY-MM` で指定してください（例: `2026-07`）', ephemeral: true });
+                }
+                setMonthOverride(ym || null);
+                return i.reply({
+                    content: ym
+                        ? `✅ 月間ランキングの集計月を **${ym}** に固定しました。`
+                        : `✅ 月間ランキングの集計月を自動（現在月）に戻しました。現在: **${getMonthOverride() ?? new Date().toISOString().slice(0, 7)}**`,
+                    ephemeral: true,
+                });
             }
 
             if (sub === 'alias') {

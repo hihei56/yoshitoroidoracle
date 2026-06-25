@@ -382,6 +382,11 @@ new SlashCommandBuilder()
                 .setDescription('全ユーザーのニックネームにレベルバッジを一括反映します。')
         )
         .addSubcommand(sub =>
+            sub.setName('setmonth')
+                .setDescription('月間ランキングの集計月を手動設定します（省略で自動に戻す）。')
+                .addStringOption(opt => opt.setName('month').setDescription('対象月 (例: 2026-07)').setMaxLength(7))
+        )
+        .addSubcommand(sub =>
             sub.setName('alias')
                 .setDescription('ニックネームに使う通称を設定します（長い名前の短縮用）。')
                 .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー').setRequired(true))
