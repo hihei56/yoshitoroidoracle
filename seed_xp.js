@@ -17,7 +17,7 @@ const seeds = [
     { id: '1096854565896323213', level: 38,  name: '特殊名称' },
     { id: '1014908051851051169', level: 33,  name: '😿' },
     { id: '1474050297126064281', level: 31,  name: 'アスペboxing' },
-    { id: '1458088187854323867', level: 99,  name: 'カンストユーザー' },
+    { id: '1458088187854323867', level: 51,  name: 'カンストユーザー' },
 ];
 
 for (const { id, level, name } of seeds) {
