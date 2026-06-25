@@ -21,7 +21,7 @@ const { handleTimeoutList }      = require('./timeoutlist');
 const { initSecurity, handlePermList } = require('./security');
 const { handleInviteFilter, handleNGServer } = require('./invite_filter');
 const { handleEditMonitor } = require('./edit_monitor');
-const { processMessage, getUserData, getLeaderboard, xpToNextLevel, XP_PER_LEVEL } = require('./xp');
+const { processMessage, getUserData, getLeaderboard, xpToNextLevel, XP_PER_LEVEL, buildNickname } = require('./xp');
 
 const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
 if (DEBUG_MODE) console.log('🐛 [Debug] デバッグモード有効');
@@ -88,6 +88,12 @@ client.on(Events.MessageCreate, async m => {
     const xpResult = processMessage(m.author.id, m.content);
     if (xpResult.newLevel !== null) {
         m.channel.send(`🎉 <@${m.author.id}> がレベル **${xpResult.newLevel}** に上がりました！ (合計 ${Math.floor(xpResult.after)} XP)`).catch(() => {});
+        // ニックネーム末尾にレベルバッジを付与
+        const member = m.member ?? await m.guild.members.fetch(m.author.id).catch(() => null);
+        if (member && member.manageable) {
+            const base = member.nickname ?? member.user.username;
+            member.setNickname(buildNickname(base, xpResult.newLevel)).catch(() => {});
+        }
     }
 });
 

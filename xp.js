@@ -113,4 +113,24 @@ function xpToNextLevel(userData) {
     return (userData.level + 1) * XP_PER_LEVEL - userData.xp;
 }
 
-module.exports = { processMessage, getUserData, getLeaderboard, xpToNextLevel, XP_PER_LEVEL };
+const LEVEL_BADGES = [
+    { min: 30, emoji: '👑' },
+    { min: 20, emoji: '💎' },
+    { min: 10, emoji: '⚡' },
+    { min: 5,  emoji: '🔥' },
+    { min: 0,  emoji: '🌱' },
+];
+
+function getLevelBadge(level) {
+    return (LEVEL_BADGES.find(b => level >= b.min) ?? LEVEL_BADGES.at(-1)).emoji;
+}
+
+/** ニックネームにレベルバッジを付与（末尾）した文字列を返す */
+function buildNickname(baseNick, level) {
+    const badge   = getLevelBadge(level);
+    const stripped = baseNick.replace(/\s*[🌱🔥⚡💎👑]\d+$/, '');
+    const result   = `${stripped} ${badge}${level}`;
+    return result.slice(0, 32); // Discordのnick上限
+}
+
+module.exports = { processMessage, getUserData, getLeaderboard, xpToNextLevel, XP_PER_LEVEL, buildNickname };
