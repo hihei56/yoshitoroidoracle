@@ -258,7 +258,7 @@ client.on(Events.InteractionCreate, async i => {
             const member = i.member;
             if (member?.manageable) {
                 const base     = getAlias(i.user.id) ?? member.displayName;
-                const stripped = base.replace(/\s*[🌱🔥⚡💎👑](#\d+|#\?|\d*)$/, '');
+                const stripped = base.replace(/\s*[🌱🔥⚡💎👑].*$/, '');
                 let newNick;
                 if (hide) {
                     newNick = stripped;
@@ -366,7 +366,7 @@ client.on(Events.InteractionCreate, async i => {
                 resetUser(user.id);
                 const member = await i.guild.members.fetch(user.id).catch(() => null);
                 if (member?.manageable) {
-                    const stripped = (member.displayName).replace(/\s*[🌱🔥⚡💎👑](#\d+|#\?|\d*)$/, '');
+                    const stripped = (member.displayName).replace(/\s*[🌱🔥⚡💎👑].*$/, '');
                     await member.setNickname(stripped).catch(() => {});
                 }
                 return i.reply({ content: `✅ <@${user.id}> のXP・レベルをリセットしました。`, ephemeral: true });
@@ -403,7 +403,7 @@ client.on(Events.InteractionCreate, async i => {
                 const member = await i.guild.members.fetch(user.id).catch(() => null);
                 if (member?.manageable) {
                     const base = getAlias(user.id) ?? member.displayName;
-                    const stripped = base.replace(/\s*[🌱🔥⚡💎👑](#\d+|#\?|\d*)$/, '');
+                    const stripped = base.replace(/\s*[🌱🔥⚡💎👑].*$/, '');
                     let newNick;
                     if (hide) {
                         newNick = stripped;

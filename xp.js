@@ -302,7 +302,7 @@ function getMonthlyRank(userId) {
     return idx === -1 ? null : idx + 1;
 }
 
-const NICK_STRIP = /\s*[🌱🔥⚡💎👑](#\d+|#\?|\d*)$/;
+const NICK_STRIP = /\s*[🌱🔥⚡💎👑].*$/;
 
 function buildNickname(baseNick, level, monthRank = null) {
     const { emoji } = getLevelBadge(level);
