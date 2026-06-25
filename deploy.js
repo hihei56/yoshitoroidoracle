@@ -302,6 +302,61 @@ new SlashCommandBuilder()
         .setName('permlist')
         .setDescription('危険な権限を持つロール・メンバーを一覧表示します。'),
 
+    // 12. レベルバッジ表示切替（全員）
+    new SlashCommandBuilder()
+        .setName('xp')
+        .setDescription('ニックネームのレベルバッジ表示を切り替えます。')
+        .addSubcommand(sub => sub.setName('hide').setDescription('バッジを非表示にする'))
+        .addSubcommand(sub => sub.setName('show').setDescription('バッジを表示に戻す')),
+
+    // 13. XP・レベル確認（全員）
+    new SlashCommandBuilder()
+        .setName('rank')
+        .setDescription('自分または指定ユーザーの経験値・レベルを表示します。')
+        .addUserOption(opt =>
+            opt.setName('user').setDescription('確認するユーザー（省略時は自分）')
+        ),
+
+    // 13. XPランキング（全員）
+    new SlashCommandBuilder()
+        .setName('top')
+        .setDescription('XPランキング TOP10 を表示します。'),
+
+    // 14. XP管理（管理者のみ）
+    new SlashCommandBuilder()
+        .setName('xpadmin')
+        .setDescription('XP・レベルを管理します（管理者のみ）。')
+        .addSubcommand(sub =>
+            sub.setName('set')
+                .setDescription('ユーザーのレベルを直接設定します。')
+                .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー').setRequired(true))
+                .addIntegerOption(opt => opt.setName('level').setDescription('設定するレベル').setRequired(true).setMinValue(0).setMaxValue(999))
+        )
+        .addSubcommand(sub =>
+            sub.setName('add')
+                .setDescription('ユーザーのXPを加算・減算します。')
+                .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー').setRequired(true))
+                .addIntegerOption(opt => opt.setName('amount').setDescription('XP量（マイナスで減算）').setRequired(true))
+        )
+        .addSubcommand(sub =>
+            sub.setName('reset')
+                .setDescription('ユーザーのXP・レベルをリセットします。')
+                .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー').setRequired(true))
+        )
+        .addSubcommand(sub =>
+            sub.setName('exclude')
+                .setDescription('XP対象外ロールを管理します。')
+                .addStringOption(opt =>
+                    opt.setName('action').setDescription('操作').setRequired(true)
+                        .addChoices(
+                            { name: '追加', value: 'add' },
+                            { name: '解除', value: 'remove' },
+                            { name: '一覧', value: 'list' },
+                        )
+                )
+                .addRoleOption(opt => opt.setName('role').setDescription('対象ロール（add/remove時は必須）'))
+        ),
+
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
