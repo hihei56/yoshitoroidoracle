@@ -104,7 +104,7 @@ async function buildTopEmbed(guild, period = 'total') {
     });
 
     return {
-        title: 'ランキング',
+        author: { name: 'ギルドスコアランキング', icon_url: guild.iconURL() ?? undefined },
         description: `${PERIOD_SUBLABELS[period]} [1/${total}]\n\n${lines.join('\n')}`,
         color: 0x57f287,
         footer: { text: guild.name, icon_url: guild.iconURL() ?? undefined },
