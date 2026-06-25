@@ -90,6 +90,15 @@ function getSeasonStart() {
     return store._seasonStart ?? null;
 }
 
+function setLevelNotif(enabled) {
+    store._levelNotif = enabled;
+    saveNow();
+}
+
+function getLevelNotif() {
+    return store._levelNotif !== false; // デフォルトON
+}
+
 function entry(userId) {
     if (!store[userId]) store[userId] = { xp: 0, level: 0, levelBase: 0 };
     // 旧データ（levelBaseなし）の移行
@@ -102,30 +111,22 @@ function entry(userId) {
 
 function lengthFactor(content) {
     const len = [...content].length;
-    if (len < 5)   return 0.5;
+    if (len < 5)   return 0.8;
     if (len < 15)  return 1.0;
     if (len < 40)  return 1.5;
     if (len < 100) return 2.0;
     return 2.5;
 }
 
-function diversityFactor(content) {
-    const chars = [...content].filter(c => c.trim());
-    if (!chars.length) return 0.5;
-    const ratio = new Set(chars).size / chars.length;
-    if (ratio < 0.25) return 0.4;
-    if (ratio < 0.45) return 0.7;
-    if (ratio < 0.65) return 1.0;
-    return 1.2;
+function diversityFactor(_content) {
+    return 1.0;
 }
 
 function intervalFactor(userId, now) {
     const sec = (now - (lastMsgTime[userId] ?? 0)) / 1000;
-    if (sec < 5)   return 0;
-    if (sec < 30)  return 0.4;
-    if (sec < 120) return 0.8;
-    if (sec < 600) return 1.2;
-    return 1.5;
+    if (sec < 3)   return 0.5;
+    if (sec < 10)  return 0.8;
+    return 1.0;
 }
 
 function contentFactor(content) {
@@ -334,4 +335,5 @@ module.exports = {
     setAlias, getAlias,
     setMonthOverride, getMonthOverride,
     toggleMonthShift, getMonthShift, getSeasonStart,
+    setLevelNotif, getLevelNotif,
 };
