@@ -257,10 +257,16 @@ client.on(Events.InteractionCreate, async i => {
             setHideBadge(i.user.id, hide);
             const member = i.member;
             if (member?.manageable) {
-                const base     = member.displayName;
-                const stripped = base.replace(/\s*[🌱🔥⚡💎👑]\d+$/, '');
-                const newNick  = hide ? stripped : buildNickname(stripped, getUserData(i.user.id).level);
-                await member.setNickname(newNick).catch(() => {});
+                const base     = getAlias(i.user.id) ?? member.displayName;
+                const stripped = base.replace(/\s*[🌱🔥⚡💎👑]#?\d*$/, '');
+                let newNick;
+                if (hide) {
+                    newNick = stripped;
+                } else {
+                    const mRank = getMonthlyRank(i.user.id);
+                    newNick = buildNickname(stripped, getUserData(i.user.id).level, mRank);
+                }
+                await member.setNickname(newNick).catch(e => console.error('[xp hide nick]:', e.message));
             }
             return i.reply({
                 content: hide
