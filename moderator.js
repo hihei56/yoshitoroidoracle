@@ -1028,6 +1028,10 @@ async function handleModerator(message) {
 
     const hasRequiredRole = REQUIRED_ROLES.some(id => message.member?.roles.cache.has(id));
     if (!hasRequiredRole) {
+        // @everyone以外のロールが一切ない人のみ削除のみ処理
+        const hasAnyRole = (message.member?.roles.cache.size ?? 0) > 1;
+        if (hasAnyRole) return;
+
         if (!message.content?.trim()) return;
         const normalized = normalizeForDetection(message.content);
         const { hit, matched } = checkNgWords(normalized);
