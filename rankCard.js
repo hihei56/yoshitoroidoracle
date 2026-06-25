@@ -31,29 +31,32 @@ async function circleAvatar(buf, size = 160) {
         .toBuffer();
 }
 
-function uiSvg(level, xp, levelBase, rank, accent) {
+function uiSvg(level, xp, levelBase, accent) {
     const current  = Math.max(0, xp - (levelBase ?? xp));
     const progress = Math.min(current / XP_PER_LEVEL, 1);
-    const bX = 240, bY = 138, bW = 510, bH = 22;
-    const filled   = Math.round(bW * progress);
-    const totalStr = Math.floor(xp).toLocaleString('en-US');
-    const rankStr  = rank ? `#${rank}` : '---';
+    // バー: アバター右から右端まで
+    const bX = 220, bY = 150, bW = 550, bH = 24;
+    const filled = Math.round(bW * progress);
+
+    // レベルを示す四角いブロック（テキスト不使用）
+    const blockSize = 60;
+    const blockX = 225, blockY = 60;
 
     return `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
         <defs>
             <linearGradient id="bar" x1="0" y1="0" x2="${bW}" y2="0" gradientUnits="userSpaceOnUse">
                 <stop offset="0%" stop-color="${accent}"/>
-                <stop offset="100%" stop-color="${accent}44"/>
+                <stop offset="100%" stop-color="${accent}33"/>
             </linearGradient>
         </defs>
+        <!-- 左アクセントライン -->
         <rect x="0" y="0" width="6" height="${H}" fill="${accent}" rx="3"/>
-        <rect x="${bX}" y="${bY}" width="${bW}" height="${bH}" rx="${bH/2}" fill="#ffffff18"/>
+        <!-- バー背景 -->
+        <rect x="${bX}" y="${bY}" width="${bW}" height="${bH}" rx="${bH/2}" fill="#ffffff15"/>
+        <!-- バー -->
         ${filled > 0 ? `<rect x="${bX}" y="${bY}" width="${filled}" height="${bH}" rx="${bH/2}" fill="url(#bar)"/>` : ''}
-        <text x="${bX}" y="72"  font-family="Arial Black,Arial,sans-serif" font-size="13" font-weight="bold" fill="${accent}" letter-spacing="4">LVL</text>
-        <text x="${bX}" y="132" font-family="Arial Black,Arial,sans-serif" font-size="64" font-weight="900" fill="white">${level}</text>
-        <text x="${bX}" y="${bY+bH+22}" font-family="Arial,sans-serif" font-size="13" fill="#ffffff66">${Math.floor(current)} / ${XP_PER_LEVEL} XP</text>
-        <text x="${bX+bW}" y="${bY+bH+22}" font-family="Arial,sans-serif" font-size="13" fill="#ffffff66" text-anchor="end">Rank ${rankStr}</text>
-        <text x="${bX+bW}" y="72" font-family="Arial,sans-serif" font-size="13" fill="#ffffff44" text-anchor="end">Total ${totalStr} XP</text>
+        <!-- バー内グロー -->
+        ${filled > 4 ? `<rect x="${bX+2}" y="${bY+4}" width="${Math.max(0,filled-4)}" height="${bH/2-4}" rx="${bH/4}" fill="${accent}55"/>` : ''}
     </svg>`;
 }
 
@@ -92,7 +95,7 @@ async function generateRankCard(userData, user, rank) {
     }
 
     // ── レイヤー合成 ──────────────────────────────────────────────────
-    const layers = [{ input: Buffer.from(uiSvg(level, xp, levelBase, rank, accent)), left: 0, top: 0 }];
+    const layers = [{ input: Buffer.from(uiSvg(level, xp, levelBase, accent)), left: 0, top: 0 }];
 
     try {
         const avatarUrl = user.displayAvatarURL({ extension: 'png', size: 256, forceStatic: true });

@@ -70,11 +70,13 @@ async function sendRankCard(replyTarget, targetUser, guild) {
 
     const imgBuf = await generateRankCard(cardData, targetUser, rank);
 
+    const current = Math.max(0, data.xp - (data.levelBase ?? data.xp));
     const embed = {
         author: {
             name: `${name}   ${badge.emoji} Lv.${data.level}`,
             icon_url: targetUser.displayAvatarURL({ size: 128 }),
         },
+        description: `**${Math.floor(current)} / ${XP_PER_LEVEL} XP**　　🏆 **#${rank ?? '?'}**　　累計 **${Math.floor(data.xp).toLocaleString('en-US')} XP**`,
         image: { url: 'attachment://rank.png' },
         color: badge.color,
     };
@@ -95,14 +97,14 @@ async function buildTopEmbed(guild) {
         const member = await guild.members.fetch(e.id).catch(() => null);
         const name   = member?.displayName ?? `<@${e.id}>`;
         const badge  = getLevelBadge(e.level);
-        const num    = MEDALS[i] ?? `\`${i + 1}\``;
+        const num    = MEDALS[i] ?? `\`${String(i + 1).padStart(2)}\``;
         const xpStr  = Math.floor(e.xp).toLocaleString('en-US');
-        return `${num}  **${name}**\n　　${badge.emoji} Lv.**${e.level}**　${xpStr} XP`;
+        return `${num} ${badge.emoji}**${e.level}** ${name} — ${xpStr} XP`;
     }));
 
     return {
         title: '🏆 XP ランキング TOP10',
-        description: lines.join('\n\n'),
+        description: lines.join('\n'),
         color: 0xf5a623,
         footer: { text: `全${getLeaderboard(9999).length}名` },
     };
@@ -206,10 +208,12 @@ client.on(Events.InteractionCreate, async i => {
             const member = await i.guild.members.fetch(target.id).catch(() => null);
             const name   = member?.displayName ?? target.username;
             const bgPath = getBgPath(target.id);
-            const imgBuf = await generateRankCard({ ...data, bgUrl: bgPath }, target, rank);
+            const imgBuf  = await generateRankCard({ ...data, bgUrl: bgPath }, target, rank);
+            const current = Math.max(0, data.xp - (data.levelBase ?? data.xp));
             return i.editReply({
                 embeds: [{
                     author: { name: `${name}   ${badge.emoji} Lv.${data.level}`, icon_url: target.displayAvatarURL({ size: 128 }) },
+                    description: `**${Math.floor(current)} / ${XP_PER_LEVEL} XP**　　🏆 **#${rank ?? '?'}**　　累計 **${Math.floor(data.xp).toLocaleString('en-US')} XP**`,
                     image: { url: 'attachment://rank.png' },
                     color: badge.color,
                 }],
