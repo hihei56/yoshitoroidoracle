@@ -44,13 +44,21 @@ function jstWeekDates() {
 
 function jstMonthPrefix() {
     if (store._monthOverride) return store._monthOverride;
+    const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const currentYM = now.toISOString().slice(0, 7);
     if (store._monthShift) {
-        // 翌月として扱う
-        const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
-        now.setMonth(now.getMonth() + 1);
-        return now.toISOString().slice(0, 7);
+        const next = new Date(now);
+        next.setMonth(now.getMonth() + 1);
+        const nextYM = next.toISOString().slice(0, 7);
+        // 実際の月がシフト先に追いついたら自動解除
+        if (currentYM >= nextYM) {
+            delete store._monthShift;
+            saveNow();
+            return currentYM;
+        }
+        return nextYM;
     }
-    return jstDateStr().slice(0, 7);
+    return currentYM;
 }
 
 function setMonthOverride(ym) {
