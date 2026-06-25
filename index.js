@@ -90,26 +90,25 @@ async function sendRankCard(replyTarget, targetUser, guild) {
 
 // ── /top ランキングembed ───────────────────────────────────────────────
 const PERIOD_LABELS = { total: 'トータル', day: '今日', week: '今週', month: '今月' };
-const MEDALS = ['🥇', '🥈', '🥉'];
+const PERIOD_SUBLABELS = { total: 'トータルXPスコア', day: '今日のXPスコア', week: '今週のXPスコア', month: '今月のXPスコア' };
 
 async function buildTopEmbed(guild, period = 'total') {
     const board = period === 'total' ? getLeaderboard(10) : getLeaderboardByPeriod(period, 10);
     if (!board.length) return null;
 
-    const lines = await Promise.all(board.map(async (e, i) => {
-        const member = await guild.members.fetch(e.id).catch(() => null);
-        const name   = member ? `@${member.displayName}` : `<@${e.id}>`;
+    const total = getLeaderboard(9999).length;
+    const lines = board.map((e, i) => {
         const dispXp = period === 'total' ? Math.floor(e.xp) : Math.floor(e.periodXp);
         const xpStr  = dispXp.toLocaleString('en-US');
-        return `\`#${i + 1}\`  ${name}　XP: ${xpStr}`;
-    }));
+        return `**#${i + 1}** <@${e.id}> XP: ${xpStr}`;
+    });
 
-    const total = getLeaderboard(9999).length;
     return {
-        title: `${PERIOD_LABELS[period]}のランキング`,
-        description: lines.join('\n'),
-        color: 0x2b2d31,
-        footer: { text: `全${total}名` },
+        title: 'ランキング',
+        description: `${PERIOD_SUBLABELS[period]} [1/${total}]\n\n${lines.join('\n')}`,
+        color: 0x57f287,
+        footer: { text: guild.name, icon_url: guild.iconURL() ?? undefined },
+        timestamp: new Date().toISOString(),
     };
 }
 
