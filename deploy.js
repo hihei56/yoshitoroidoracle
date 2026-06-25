@@ -302,7 +302,18 @@ new SlashCommandBuilder()
         .setName('permlist')
         .setDescription('危険な権限を持つロール・メンバーを一覧表示します。'),
 
-    // 12. レベルバッジ表示切替（全員）
+    // 12. ランクカード背景設定（全員）
+    new SlashCommandBuilder()
+        .setName('setbg')
+        .setDescription('ランクカードの背景画像を設定します。')
+        .addAttachmentOption(opt => opt.setName('image').setDescription('背景にする画像ファイル'))
+        .addStringOption(opt => opt.setName('url').setDescription('背景にする画像のURL')),
+
+    new SlashCommandBuilder()
+        .setName('delbg')
+        .setDescription('ランクカードの背景をデフォルトに戻します。'),
+
+    // 13. レベルバッジ表示切替（全員）
     new SlashCommandBuilder()
         .setName('xp')
         .setDescription('ニックネームのレベルバッジ表示を切り替えます。')
