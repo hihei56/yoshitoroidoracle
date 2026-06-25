@@ -390,6 +390,12 @@ new SlashCommandBuilder()
                 .setDescription('ニックネームに使う通称を設定します（長い名前の短縮用）。')
                 .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー').setRequired(true))
                 .addStringOption(opt => opt.setName('name').setDescription('通称（省略するとリセット）').setMaxLength(20))
+        )
+        .addSubcommand(sub =>
+            sub.setName('hidebadge')
+                .setDescription('指定ユーザーのバッジ表示を強制オン/オフします。')
+                .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー').setRequired(true))
+                .addBooleanOption(opt => opt.setName('hide').setDescription('true=非表示 / false=表示').setRequired(true))
         ),
 
 ].map(command => command.toJSON());

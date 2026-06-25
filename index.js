@@ -396,6 +396,31 @@ client.on(Events.InteractionCreate, async i => {
                 }
             }
 
+            if (sub === 'hidebadge') {
+                const user = i.options.getUser('user');
+                const hide = i.options.getBoolean('hide');
+                setHideBadge(user.id, hide);
+                const member = await i.guild.members.fetch(user.id).catch(() => null);
+                if (member?.manageable) {
+                    const base = getAlias(user.id) ?? member.displayName;
+                    const stripped = base.replace(/\s*[🌱🔥⚡💎👑]#?\d*$/, '');
+                    let newNick;
+                    if (hide) {
+                        newNick = stripped;
+                    } else {
+                        const mRank = getMonthlyRank(user.id);
+                        newNick = buildNickname(stripped, getUserData(user.id).level, mRank);
+                    }
+                    await member.setNickname(newNick).catch(e => console.error('[hidebadge nick]:', e.message));
+                }
+                return i.reply({
+                    content: hide
+                        ? `✅ <@${user.id}> のバッジを非表示にしました。`
+                        : `✅ <@${user.id}> のバッジを表示に戻しました。`,
+                    ephemeral: true,
+                });
+            }
+
             if (sub === 'syncnicks') {
                 await i.deferReply({ ephemeral: true });
                 const board = getLeaderboard(9999);
