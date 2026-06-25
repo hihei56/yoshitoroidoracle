@@ -67,23 +67,11 @@ async function sendRankCard(replyTarget, targetUser, guild) {
 
     // カスタム背景パスをdataに注入
     const bgPath = getBgPath(targetUser.id);
-    const cardData = { ...data, bgUrl: bgPath };
+    const cardData = { ...data, bgUrl: bgPath, displayName: name };
 
     const imgBuf = await generateRankCard(cardData, targetUser, rank);
 
-    const current = Math.max(0, data.xp - (data.levelBase ?? data.xp));
-    const embed = {
-        author: {
-            name: `${name}   ${badge.emoji} Lv.${data.level}`,
-            icon_url: targetUser.displayAvatarURL({ size: 128 }),
-        },
-        description: `**${Math.floor(current)} / ${XP_PER_LEVEL} XP**　　🏆 **#${rank ?? '?'}**　　累計 **${Math.floor(data.xp).toLocaleString('en-US')} XP**`,
-        image: { url: 'attachment://rank.png' },
-        color: badge.color,
-    };
-
     return replyTarget.reply({
-        embeds: [embed],
         files: [{ attachment: imgBuf, name: 'rank.png' }],
     });
 }
