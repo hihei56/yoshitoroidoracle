@@ -30,6 +30,7 @@ const {
     setHideBadge, isHideBadge,
     addExcludedRole, removeExcludedRole, getExcludedRoles, isExcluded,
     buildNickname, getLevelBadge, getMonthlyRank,
+    setAlias, getAlias,
 } = require('./xp');
 
 const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
@@ -122,7 +123,8 @@ client.once(Events.ClientReady, async c => {
             const member = await g.members.fetch(e.id).catch(() => null);
             if (!member?.manageable) continue;
             const mRank = getMonthlyRank(e.id);
-            await member.setNickname(buildNickname(member.displayName, e.level, mRank)).catch(() => {});
+            const base  = getAlias(e.id) ?? member.displayName;
+            await member.setNickname(buildNickname(base, e.level, mRank)).catch(() => {});
         }
         console.log('[NickSync] 月間ランク同期完了');
     }
@@ -349,6 +351,17 @@ client.on(Events.InteractionCreate, async i => {
                 return i.reply({ content: `✅ <@${user.id}> のXP・レベルをリセットしました。`, ephemeral: true });
             }
 
+            if (sub === 'alias') {
+                const user  = i.options.getUser('user');
+                const alias = i.options.getString('name');
+                setAlias(user.id, alias || null);
+                if (alias) {
+                    return i.reply({ content: `✅ <@${user.id}> の通称を **${alias}** に設定しました。`, ephemeral: true });
+                } else {
+                    return i.reply({ content: `✅ <@${user.id}> の通称をリセットしました。`, ephemeral: true });
+                }
+            }
+
             if (sub === 'syncnicks') {
                 await i.deferReply({ ephemeral: true });
                 const board = getLeaderboard(9999);
@@ -358,7 +371,7 @@ client.on(Events.InteractionCreate, async i => {
                     const member = await i.guild.members.fetch(e.id).catch(() => null);
                     if (!member) { skip++; continue; }
                     if (!member.manageable) { skip++; continue; }
-                    const base   = member.displayName;
+                    const base   = getAlias(e.id) ?? member.displayName;
                     const mRank  = getMonthlyRank(e.id);
                     const err = await member.setNickname(buildNickname(base, e.level, mRank)).then(() => null).catch(e => e);
                     if (err) { fail++; console.error('[syncnicks]', e.id, err.message); }

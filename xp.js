@@ -6,10 +6,10 @@ const XP_PER_LEVEL = 70;
 
 ensureDir(XP_FILE);
 
-// { userId: { xp, level, levelBase }, _excludedRoles: [...] }
-// levelBase = そのレベルに到達した時点の累計XP（ここからの差分でレベルアップ判定）
+// { userId: { xp, level, levelBase }, _excludedRoles: [...], _aliases: { userId: '通称' } }
 let store = readJson(XP_FILE, {});
 if (!Array.isArray(store._excludedRoles)) store._excludedRoles = [];
+if (!store._aliases || typeof store._aliases !== 'object') store._aliases = {};
 
 const lastMsgTime = {};
 
@@ -251,6 +251,16 @@ function getLevelBadge(level) {
     return LEVEL_BADGES.find(b => level >= b.min) ?? LEVEL_BADGES.at(-1);
 }
 
+function setAlias(userId, alias) {
+    if (alias) store._aliases[userId] = alias;
+    else delete store._aliases[userId];
+    saveNow();
+}
+
+function getAlias(userId) {
+    return store._aliases[userId] ?? null;
+}
+
 function getMonthlyRank(userId) {
     const board = getLeaderboardByPeriod('month', 9999);
     const idx   = board.findIndex(e => e.id === userId);
@@ -274,4 +284,5 @@ module.exports = {
     setHideBadge, isHideBadge,
     addExcludedRole, removeExcludedRole, getExcludedRoles, isExcluded,
     buildNickname, getLevelBadge, getMonthlyRank,
+    setAlias, getAlias,
 };

@@ -380,6 +380,12 @@ new SlashCommandBuilder()
         .addSubcommand(sub =>
             sub.setName('syncnicks')
                 .setDescription('全ユーザーのニックネームにレベルバッジを一括反映します。')
+        )
+        .addSubcommand(sub =>
+            sub.setName('alias')
+                .setDescription('ニックネームに使う通称を設定します（長い名前の短縮用）。')
+                .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー').setRequired(true))
+                .addStringOption(opt => opt.setName('name').setDescription('通称（省略するとリセット）').setMaxLength(20))
         ),
 
 ].map(command => command.toJSON());
