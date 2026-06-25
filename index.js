@@ -152,7 +152,7 @@ client.on(Events.MessageCreate, async m => {
         if (!isHideBadge(m.author.id)) {
             const member = m.member ?? await m.guild.members.fetch(m.author.id).catch(() => null);
             if (member?.manageable) {
-                const base = member.nickname ?? member.user.username;
+                const base = member.displayName;
                 member.setNickname(buildNickname(base, xpResult.newLevel)).catch(e => console.error('[Nick Error]', e.message));
             } else {
                 console.log(`[Nick Skip] manageable=false for ${m.author.id}`);
@@ -222,7 +222,7 @@ client.on(Events.InteractionCreate, async i => {
             setHideBadge(i.user.id, hide);
             const member = i.member;
             if (member?.manageable) {
-                const base     = member.nickname ?? member.user.username;
+                const base     = member.displayName;
                 const stripped = base.replace(/\s*[🌱🔥⚡💎👑]\d+$/, '');
                 const newNick  = hide ? stripped : buildNickname(stripped, getUserData(i.user.id).level);
                 await member.setNickname(newNick).catch(() => {});
@@ -303,7 +303,7 @@ client.on(Events.InteractionCreate, async i => {
                 // ニックネーム更新
                 const member = await i.guild.members.fetch(user.id).catch(() => null);
                 if (member?.manageable) {
-                    const base = member.nickname ?? member.user.username;
+                    const base = member.displayName;
                     await member.setNickname(buildNickname(base, level)).catch(() => {});
                 }
                 return i.reply({ content: `✅ <@${user.id}> をLv.**${level}** (${Math.floor(u.xp)} XP) に設定しました。`, ephemeral: true });
@@ -315,7 +315,7 @@ client.on(Events.InteractionCreate, async i => {
                 const sign   = amount >= 0 ? '+' : '';
                 const member = await i.guild.members.fetch(user.id).catch(() => null);
                 if (member?.manageable) {
-                    const base = member.nickname ?? member.user.username;
+                    const base = member.displayName;
                     await member.setNickname(buildNickname(base, u.level)).catch(() => {});
                 }
                 return i.reply({ content: `✅ <@${user.id}> のXPを ${sign}${amount} 調整 → Lv.**${u.level}** / ${Math.floor(u.xp)} XP`, ephemeral: true });
@@ -325,7 +325,7 @@ client.on(Events.InteractionCreate, async i => {
                 resetUser(user.id);
                 const member = await i.guild.members.fetch(user.id).catch(() => null);
                 if (member?.manageable) {
-                    const stripped = (member.nickname ?? member.user.username).replace(/\s*[🌱🔥⚡💎👑]\d+$/, '');
+                    const stripped = (member.displayName).replace(/\s*[🌱🔥⚡💎👑]\d+$/, '');
                     await member.setNickname(stripped).catch(() => {});
                 }
                 return i.reply({ content: `✅ <@${user.id}> のXP・レベルをリセットしました。`, ephemeral: true });
@@ -340,7 +340,7 @@ client.on(Events.InteractionCreate, async i => {
                     const member = await i.guild.members.fetch(e.id).catch(() => null);
                     if (!member) { skip++; continue; }
                     if (!member.manageable) { skip++; continue; }
-                    const base = member.nickname ?? member.user.username;
+                    const base = member.displayName;
                     const err = await member.setNickname(buildNickname(base, e.level)).then(() => null).catch(e => e);
                     if (err) { fail++; console.error('[syncnicks]', e.id, err.message); }
                     else ok++;
