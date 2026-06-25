@@ -165,7 +165,9 @@ client.on(Events.MessageCreate, async m => {
             const member = m.member ?? await m.guild.members.fetch(m.author.id).catch(() => null);
             if (member?.manageable) {
                 const base = member.nickname ?? member.user.username;
-                member.setNickname(buildNickname(base, xpResult.newLevel)).catch(() => {});
+                member.setNickname(buildNickname(base, xpResult.newLevel)).catch(e => console.error('[Nick Error]', e.message));
+            } else {
+                console.log(`[Nick Skip] manageable=false for ${m.author.id}`);
             }
         }
     }
