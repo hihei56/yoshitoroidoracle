@@ -21,6 +21,7 @@ const { handleTimeoutList }      = require('./timeoutlist');
 const { initSecurity, handlePermList } = require('./security');
 const { handleInviteFilter, handleNGServer } = require('./invite_filter');
 const { handleEditMonitor } = require('./edit_monitor');
+const { generateRankCard, saveBgFromUrl, saveBgFromAttachment, deleteBg, getBgPath } = require('./rankCard');
 const {
     XP_PER_LEVEL,
     processMessage, getUserData, getRank, getLeaderboard, xpToNextLevel,
@@ -55,55 +56,55 @@ function hasPermission(member) {
     return ALLOWED_ROLES.some(id => member.roles.cache.has(id));
 }
 
-// ── XPランクカードembedを生成 ─────────────────────────────────────────
-async function buildRankEmbed(targetUser, guild) {
-    const data    = getUserData(targetUser.id);
-    const rank    = getRank(targetUser.id);
-    const badge   = getLevelBadge(data.level);
-    const current = data.xp - data.level * XP_PER_LEVEL;
-    const needed  = XP_PER_LEVEL;
-    const filled  = Math.round((current / needed) * 20);
-    const bar     = '█'.repeat(filled) + '░'.repeat(20 - filled);
+// ── ランクカード（画像）を送信 ────────────────────────────────────────
+async function sendRankCard(replyTarget, targetUser, guild) {
+    const data   = getUserData(targetUser.id);
+    const rank   = getRank(targetUser.id);
+    const badge  = getLevelBadge(data.level);
+    const member = await guild?.members.fetch(targetUser.id).catch(() => null);
+    const name   = member?.displayName ?? targetUser.username;
 
-    const member  = await guild?.members.fetch(targetUser.id).catch(() => null);
-    const name    = member?.displayName ?? targetUser.username;
+    // カスタム背景パスをdataに注入
+    const bgPath = getBgPath(targetUser.id);
+    const cardData = { ...data, bgUrl: bgPath };
 
-    return {
+    const imgBuf = await generateRankCard(cardData, targetUser, rank);
+
+    const embed = {
         author: {
-            name: `${name}  ${badge.emoji}Lv.${data.level}`,
+            name: `${name}   ${badge.emoji} Lv.${data.level}`,
             icon_url: targetUser.displayAvatarURL({ size: 128 }),
         },
-        description: [
-            `\`${bar}\``,
-            `**${Math.floor(current)} / ${needed} XP**　　🏆 サーバー順位 **#${rank ?? '?'}**`,
-            `累計 **${Math.floor(data.xp).toLocaleString('ja-JP')} XP**`,
-        ].join('\n'),
+        image: { url: 'attachment://rank.png' },
         color: badge.color,
     };
+
+    return replyTarget.reply({
+        embeds: [embed],
+        files: [{ attachment: imgBuf, name: 'rank.png' }],
+    });
 }
 
-// ── /top ランキングembedを生成 ────────────────────────────────────────
-const MEDALS = ['🥇', '🥈', '🥉'];
-
-async function buildTopEmbed(guild, page = 1) {
-    const perPage = 10;
-    const board   = getLeaderboard(perPage * page).slice((page - 1) * perPage);
+// ── /top ランキングembed ───────────────────────────────────────────────
+async function buildTopEmbed(guild) {
+    const board = getLeaderboard(10);
     if (!board.length) return null;
 
-    const lines = await Promise.all(board.map(async (e, i) => {
-        const idx    = (page - 1) * perPage + i;
-        const medal  = MEDALS[idx] ?? `**${idx + 1}**`;
+    const MEDALS = ['🥇', '🥈', '🥉'];
+    const lines  = await Promise.all(board.map(async (e, i) => {
         const member = await guild.members.fetch(e.id).catch(() => null);
         const name   = member?.displayName ?? `<@${e.id}>`;
         const badge  = getLevelBadge(e.level);
-        return `${medal}　${name}　${badge.emoji}**${e.level}**　${Math.floor(e.xp).toLocaleString('ja-JP')} XP`;
+        const num    = MEDALS[i] ?? `\`${i + 1}\``;
+        const xpStr  = Math.floor(e.xp).toLocaleString('en-US');
+        return `${num}  **${name}**\n　　${badge.emoji} Lv.**${e.level}**　${xpStr} XP`;
     }));
 
     return {
-        title: '🏆 XPランキング',
-        description: lines.join('\n'),
+        title: '🏆 XP ランキング TOP10',
+        description: lines.join('\n\n'),
         color: 0xf5a623,
-        footer: { text: `全${getLeaderboard(9999).length}名中` },
+        footer: { text: `全${getLeaderboard(9999).length}名` },
     };
 }
 
@@ -140,11 +141,9 @@ client.on(Events.MessageCreate, async m => {
 
     // !xp プレフィックスコマンド
     if (m.content.startsWith('!xp')) {
-        const mentioned = m.mentions.users.first();
-        const target    = mentioned ?? m.author;
+        const target = m.mentions.users.first() ?? m.author;
         try {
-            const embed = await buildRankEmbed(target, m.guild);
-            return m.reply({ embeds: [embed] });
+            await sendRankCard(m, target, m.guild);
         } catch (e) {
             console.error('[!xp Error]:', e);
         }
@@ -199,9 +198,23 @@ client.on(Events.InteractionCreate, async i => {
 
     if (i.commandName === 'rank') {
         try {
+            await i.deferReply();
             const target = i.options.getUser('user') ?? i.user;
-            const embed  = await buildRankEmbed(target, i.guild);
-            return i.reply({ embeds: [embed] });
+            const data   = getUserData(target.id);
+            const rank   = getRank(target.id);
+            const badge  = getLevelBadge(data.level);
+            const member = await i.guild.members.fetch(target.id).catch(() => null);
+            const name   = member?.displayName ?? target.username;
+            const bgPath = getBgPath(target.id);
+            const imgBuf = await generateRankCard({ ...data, bgUrl: bgPath }, target, rank);
+            return i.editReply({
+                embeds: [{
+                    author: { name: `${name}   ${badge.emoji} Lv.${data.level}`, icon_url: target.displayAvatarURL({ size: 128 }) },
+                    image: { url: 'attachment://rank.png' },
+                    color: badge.color,
+                }],
+                files: [{ attachment: imgBuf, name: 'rank.png' }],
+            });
         } catch (e) { console.error('[Rank Error]:', e); }
         return;
     }
@@ -230,11 +243,32 @@ client.on(Events.InteractionCreate, async i => {
 
     if (i.commandName === 'top') {
         try {
+            await i.deferReply();
             const embed = await buildTopEmbed(i.guild);
-            if (!embed) return i.reply({ content: 'まだ誰もXPを獲得していません。', ephemeral: true });
-            return i.reply({ embeds: [embed] });
+            if (!embed) return i.editReply({ content: 'まだ誰もXPを獲得していません。' });
+            return i.editReply({ embeds: [embed] });
         } catch (e) { console.error('[Top Error]:', e); }
         return;
+    }
+
+    if (i.commandName === 'setbg') {
+        try {
+            const attachment = i.options.getAttachment('image');
+            const url        = i.options.getString('url');
+            const src        = attachment?.url ?? url;
+            if (!src) return i.reply({ content: '画像ファイルかURLを指定してください。', ephemeral: true });
+            await i.deferReply({ ephemeral: true });
+            await saveBgFromUrl(i.user.id, src);
+            return i.editReply({ content: '✅ ランクカードの背景を設定しました！' });
+        } catch (e) {
+            console.error('[setbg Error]:', e);
+            return i.editReply({ content: '❌ 画像の読み込みに失敗しました。別の画像を試してください。' });
+        }
+    }
+
+    if (i.commandName === 'delbg') {
+        deleteBg(i.user.id);
+        return i.reply({ content: '🗑️ 背景画像をデフォルトに戻しました。', ephemeral: true });
     }
 
     // ── 管理者のみ ────────────────────────────────────────────────────
