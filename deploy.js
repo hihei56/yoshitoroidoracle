@@ -393,9 +393,10 @@ new SlashCommandBuilder()
         )
         .addSubcommand(sub =>
             sub.setName('hidebadge')
-                .setDescription('指定ユーザーのバッジ表示を強制オン/オフします。')
-                .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー').setRequired(true))
+                .setDescription('ユーザーまたはロール単位でバッジ表示を強制オン/オフします。')
                 .addBooleanOption(opt => opt.setName('hide').setDescription('true=非表示 / false=表示').setRequired(true))
+                .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー（userかroleどちらか必須）'))
+                .addRoleOption(opt => opt.setName('role').setDescription('対象ロール（そのロールの全メンバーに適用）'))
         ),
 
 ].map(command => command.toJSON());

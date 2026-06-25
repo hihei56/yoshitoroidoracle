@@ -397,27 +397,44 @@ client.on(Events.InteractionCreate, async i => {
             }
 
             if (sub === 'hidebadge') {
-                const user = i.options.getUser('user');
-                const hide = i.options.getBoolean('hide');
-                setHideBadge(user.id, hide);
-                const member = await i.guild.members.fetch(user.id).catch(() => null);
-                if (member?.manageable) {
-                    const base = getAlias(user.id) ?? member.displayName;
+                const hide   = i.options.getBoolean('hide');
+                const user   = i.options.getUser('user');
+                const role   = i.options.getRole('role');
+                if (!user && !role) {
+                    return i.reply({ content: '❌ `user` または `role` のどちらかを指定してください。', ephemeral: true });
+                }
+                await i.deferReply({ ephemeral: true });
+
+                async function applyHide(member) {
+                    setHideBadge(member.id, hide);
+                    if (!member.manageable) return;
+                    const base     = getAlias(member.id) ?? member.displayName;
                     const stripped = base.replace(/\s*[🌱🔥⚡💎👑].*$/, '');
-                    let newNick;
-                    if (hide) {
-                        newNick = stripped;
-                    } else {
-                        const mRank = getMonthlyRank(user.id);
-                        newNick = buildNickname(stripped, getUserData(user.id).level, mRank);
-                    }
+                    const newNick  = hide
+                        ? stripped
+                        : buildNickname(stripped, getUserData(member.id).level, getMonthlyRank(member.id));
                     await member.setNickname(newNick).catch(e => console.error('[hidebadge nick]:', e.message));
                 }
-                return i.reply({
+
+                if (user) {
+                    const member = await i.guild.members.fetch(user.id).catch(() => null);
+                    if (member) await applyHide(member);
+                    return i.editReply({
+                        content: hide
+                            ? `✅ <@${user.id}> のバッジを非表示にしました。`
+                            : `✅ <@${user.id}> のバッジを表示に戻しました。`,
+                    });
+                }
+
+                // ロール指定
+                const members = await i.guild.members.fetch();
+                const targets = members.filter(m => m.roles.cache.has(role.id));
+                let ok = 0;
+                for (const m of targets.values()) { await applyHide(m); ok++; }
+                return i.editReply({
                     content: hide
-                        ? `✅ <@${user.id}> のバッジを非表示にしました。`
-                        : `✅ <@${user.id}> のバッジを表示に戻しました。`,
-                    ephemeral: true,
+                        ? `✅ ロール **${role.name}** の ${ok} 人のバッジを非表示にしました。`
+                        : `✅ ロール **${role.name}** の ${ok} 人のバッジを表示に戻しました。`,
                 });
             }
 
