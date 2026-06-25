@@ -1,12 +1,13 @@
 // xp.js — 経験値・レベルシステム
 const { resolveDataPath, ensureDir, readJson, writeJson } = require('./dataPath');
 
-const XP_FILE     = resolveDataPath('xp.json');
+const XP_FILE      = resolveDataPath('xp.json');
 const XP_PER_LEVEL = 70;
 
 ensureDir(XP_FILE);
 
-// { userId: { xp, level }, _excludedRoles: [...] }
+// { userId: { xp, level, levelBase }, _excludedRoles: [...] }
+// levelBase = そのレベルに到達した時点の累計XP（ここからの差分でレベルアップ判定）
 let store = readJson(XP_FILE, {});
 if (!Array.isArray(store._excludedRoles)) store._excludedRoles = [];
 
@@ -23,7 +24,9 @@ function saveNow() {
 }
 
 function entry(userId) {
-    if (!store[userId]) store[userId] = { xp: 0, level: 0 };
+    if (!store[userId]) store[userId] = { xp: 0, level: 0, levelBase: 0 };
+    // 旧データ（levelBaseなし）の移行
+    if (store[userId].levelBase === undefined) store[userId].levelBase = store[userId].xp;
     return store[userId];
 }
 
@@ -59,9 +62,9 @@ function intervalFactor(userId, now) {
 
 function contentFactor(content) {
     let f = 1.0;
-    if (/https?:\/\/\S+/.test(content))        f += 0.25;
-    if (/<@!?\d+>/.test(content))               f += 0.15;
-    if (/[？?！!。、…]/.test(content))          f += 0.10;
+    if (/https?:\/\/\S+/.test(content))         f += 0.25;
+    if (/<@!?\d+>/.test(content))                f += 0.15;
+    if (/[？?！!。、…]/.test(content))           f += 0.10;
     if (/<a?:\w+:\d+>/.test(content) ||
         /\p{Emoji_Presentation}/u.test(content)) f += 0.10;
     return Math.min(f, 1.5);
@@ -81,8 +84,9 @@ function processMessage(userId, content, now = Date.now()) {
     u.xp += gained;
 
     let newLevel = null;
-    while (u.xp >= (u.level + 1) * XP_PER_LEVEL) {
+    while (u.xp - u.levelBase >= XP_PER_LEVEL) {
         u.level++;
+        u.levelBase += XP_PER_LEVEL;
         newLevel = u.level;
     }
 
@@ -91,7 +95,9 @@ function processMessage(userId, content, now = Date.now()) {
 }
 
 function getUserData(userId) {
-    return store[userId] ?? { xp: 0, level: 0 };
+    const d = store[userId];
+    if (!d) return { xp: 0, level: 0, levelBase: 0 };
+    return { ...d, levelBase: d.levelBase ?? d.xp };
 }
 
 function getRank(userId) {
@@ -111,29 +117,37 @@ function getLeaderboard(n = 10) {
 }
 
 function xpToNextLevel(data) {
-    return (data.level + 1) * XP_PER_LEVEL - data.xp;
+    const base = data.levelBase ?? data.xp;
+    return XP_PER_LEVEL - (data.xp - base);
 }
 
 // ── 管理 ─────────────────────────────────────────────────────────────
 
-function setUserLevel(userId, level) {
+function setUserLevel(userId, level, xp = null) {
     const u = entry(userId);
-    u.level = level;
-    u.xp    = level * XP_PER_LEVEL;
+    u.level     = level;
+    u.xp        = xp ?? u.xp;
+    u.levelBase = u.xp;
     saveNow();
     return u;
 }
 
 function adjustXP(userId, amount) {
     const u = entry(userId);
-    u.xp    = Math.max(0, u.xp + amount);
-    u.level = Math.floor(u.xp / XP_PER_LEVEL);
+    u.xp = Math.max(u.levelBase, u.xp + amount);
+    // 減算でレベル割り込む場合はlevelBaseを再調整
+    if (u.xp < u.levelBase) { u.levelBase = u.xp; }
+    // 加算でレベルアップ
+    while (u.xp - u.levelBase >= XP_PER_LEVEL) {
+        u.level++;
+        u.levelBase += XP_PER_LEVEL;
+    }
     saveNow();
     return u;
 }
 
 function resetUser(userId) {
-    store[userId] = { xp: 0, level: 0 };
+    store[userId] = { xp: 0, level: 0, levelBase: 0 };
     saveNow();
 }
 
