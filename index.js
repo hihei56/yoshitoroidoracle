@@ -114,22 +114,35 @@ client.once(Events.ClientReady, async c => {
     if (guild) backfillActivity(guild).catch(e => console.error('[Activity] バックフィルエラー:', e));
 
     // 月間ランキングニックネーム 1時間ごと自動更新
-    async function syncMonthlyNicks() {
+    async function syncMonthlyNicks(trigger = 'manual') {
         const g = client.guilds.cache.first();
         if (!g) return;
         const board = getLeaderboard(9999);
+        let ok = 0, skip = 0, fail = 0;
         for (const e of board) {
-            if (isHideBadge(e.id)) continue;
+            if (isHideBadge(e.id)) { skip++; continue; }
             const member = await g.members.fetch(e.id).catch(() => null);
-            if (!member?.manageable) continue;
-            const mRank = getMonthlyRank(e.id);
-            const base  = getAlias(e.id) ?? member.displayName;
-            await member.setNickname(buildNickname(base, e.level, mRank)).catch(() => {});
+            if (!member) { skip++; continue; }
+            if (!member.manageable) {
+                console.log(`[NickSync] SKIP manageable=false uid=${e.id} name=${member.displayName}`);
+                skip++; continue;
+            }
+            const mRank   = getMonthlyRank(e.id);
+            const base    = getAlias(e.id) ?? member.displayName;
+            const newNick = buildNickname(base, e.level, mRank);
+            const err = await member.setNickname(newNick).then(() => null).catch(e => e);
+            if (err) {
+                console.error(`[NickSync] FAIL uid=${e.id} nick=${newNick} err=${err.message}`);
+                fail++;
+            } else {
+                console.log(`[NickSync] OK uid=${e.id} nick=${newNick}`);
+                ok++;
+            }
         }
-        console.log('[NickSync] 月間ランク同期完了');
+        console.log(`[NickSync] 完了(${trigger}): OK=${ok} SKIP=${skip} FAIL=${fail}`);
     }
-    syncMonthlyNicks().catch(e => console.error('[NickSync] 起動時エラー:', e));
-    setInterval(() => syncMonthlyNicks().catch(e => console.error('[NickSync] エラー:', e)), 60 * 60 * 1000);
+    syncMonthlyNicks('startup').catch(e => console.error('[NickSync] 起動時エラー:', e));
+    setInterval(() => syncMonthlyNicks('hourly').catch(e => console.error('[NickSync] エラー:', e)), 60 * 60 * 1000);
 
     if (DEBUG_MODE) {
         postRanking(client).catch(e => console.error('[Ranking] 起動時エラー:', e));
