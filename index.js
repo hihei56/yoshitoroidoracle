@@ -98,12 +98,10 @@ async function buildTopEmbed(guild, period = 'total') {
 
     const lines = await Promise.all(board.map(async (e, i) => {
         const member = await guild.members.fetch(e.id).catch(() => null);
-        const name   = member?.displayName ?? `<@${e.id}>`;
+        const name   = member ? `@${member.displayName}` : `<@${e.id}>`;
         const dispXp = period === 'total' ? Math.floor(e.xp) : Math.floor(e.periodXp);
         const xpStr  = dispXp.toLocaleString('en-US');
-        const prefix = i < 3 ? MEDALS[i] : `\`${i + 1}.\``;
-        const lvInfo = period === 'total' ? ` Lv.${e.level}` : '';
-        return `${prefix}  **${name}**${lvInfo}　${xpStr} XP`;
+        return `\`#${i + 1}\`  ${name}　XP: ${xpStr}`;
     }));
 
     const total = getLeaderboard(9999).length;
