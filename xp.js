@@ -272,8 +272,8 @@ const NICK_STRIP = /\s*[🌱🔥⚡💎👑]#?\d+$/;
 function buildNickname(baseNick, level, monthRank = null) {
     const { emoji } = getLevelBadge(level);
     const stripped  = baseNick.replace(NICK_STRIP, '');
-    const suffix    = monthRank != null ? `${emoji}#${monthRank}` : `${emoji}${level}`;
-    return `${stripped} ${suffix}`.slice(0, 32);
+    const rankStr   = monthRank != null ? `#${monthRank}` : '#?';
+    return `${stripped} ${emoji}${rankStr}`.slice(0, 32);
 }
 
 module.exports = {
