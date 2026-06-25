@@ -90,6 +90,15 @@ function getSeasonStart() {
     return store._seasonStart ?? null;
 }
 
+function setLevelNotif(enabled) {
+    store._levelNotif = enabled;
+    saveNow();
+}
+
+function getLevelNotif() {
+    return store._levelNotif !== false; // デフォルトON
+}
+
 function entry(userId) {
     if (!store[userId]) store[userId] = { xp: 0, level: 0, levelBase: 0 };
     // 旧データ（levelBaseなし）の移行
@@ -334,4 +343,5 @@ module.exports = {
     setAlias, getAlias,
     setMonthOverride, getMonthOverride,
     toggleMonthShift, getMonthShift, getSeasonStart,
+    setLevelNotif, getLevelNotif,
 };

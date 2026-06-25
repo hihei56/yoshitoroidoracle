@@ -397,6 +397,11 @@ new SlashCommandBuilder()
                 .addBooleanOption(opt => opt.setName('hide').setDescription('true=非表示 / false=表示').setRequired(true))
                 .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー（userかroleどちらか必須）'))
                 .addRoleOption(opt => opt.setName('role').setDescription('対象ロール（そのロールの全メンバーに適用）'))
+        )
+        .addSubcommand(sub =>
+            sub.setName('levelnotif')
+                .setDescription('レベルアップ通知のON/OFFを切り替えます。')
+                .addBooleanOption(opt => opt.setName('enable').setDescription('true=ON / false=OFF').setRequired(true))
         ),
 
 ].map(command => command.toJSON());

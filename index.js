@@ -33,6 +33,7 @@ const {
     setAlias, getAlias,
     setMonthOverride, getMonthOverride,
     toggleMonthShift, getMonthShift, getSeasonStart,
+    setLevelNotif, getLevelNotif,
 } = require('./xp');
 
 const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
@@ -182,7 +183,9 @@ client.on(Events.MessageCreate, async m => {
     // XP処理
     const xpResult = processMessage(m.author.id, m.content);
     if (xpResult.newLevel !== null) {
-        m.channel.send(`🎉 <@${m.author.id}> がレベル **${xpResult.newLevel}** に上がりました！ (累計 ${Math.floor(xpResult.xp).toLocaleString('ja-JP')} XP)`).catch(() => {});
+        if (getLevelNotif()) {
+            m.channel.send(`🎉 <@${m.author.id}> がレベル **${xpResult.newLevel}** に上がりました！ (累計 ${Math.floor(xpResult.xp).toLocaleString('ja-JP')} XP)`).catch(() => {});
+        }
         if (!isHideBadge(m.author.id)) {
             const member = m.member ?? await m.guild.members.fetch(m.author.id).catch(() => null);
             if (member?.manageable) {
@@ -444,6 +447,17 @@ client.on(Events.InteractionCreate, async i => {
                     content: hide
                         ? `✅ ロール **${role.name}** の ${ok} 人のバッジを非表示にしました。`
                         : `✅ ロール **${role.name}** の ${ok} 人のバッジを表示に戻しました。`,
+                });
+            }
+
+            if (sub === 'levelnotif') {
+                const enable = i.options.getBoolean('enable');
+                setLevelNotif(enable);
+                return i.reply({
+                    content: enable
+                        ? '✅ レベルアップ通知を **ON** にしました。'
+                        : '✅ レベルアップ通知を **OFF** にしました。',
+                    ephemeral: true,
                 });
             }
 
