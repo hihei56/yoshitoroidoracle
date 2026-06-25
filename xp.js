@@ -24,8 +24,10 @@ function saveNow() {
 }
 
 // ── JST日付ユーティリティ ─────────────────────────────────────────────
+const DATE_OFFSET = parseInt(process.env.XP_DATE_OFFSET_DAYS ?? '0', 10);
+
 function jstDateStr(offsetDays = 0) {
-    const d = new Date(Date.now() + (9 * 60 + offsetDays * 24 * 60) * 60 * 1000);
+    const d = new Date(Date.now() + (9 * 60 + (offsetDays + DATE_OFFSET) * 24 * 60) * 60 * 1000);
     return d.toISOString().slice(0, 10);
 }
 
