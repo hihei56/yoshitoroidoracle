@@ -8,6 +8,7 @@ const { Client, GatewayIntentBits, Partials, Events } = require('discord.js');
 const { handleAnon }             = require('./anon');
 const { handleCurse }            = require('./curse');
 const { initLurker, handleLurker } = require('./lurker');
+const { initChatter, recordMessage: recordChatterMessage } = require('./chatter');
 const { recordActivity, backfillActivity } = require('./activity_tracker');
 const { handleDeathmatch }       = require('./deathmatch');
 const { handleModerator, handlePoopReaction, handleCryReaction, handleEmbedModerator, handleCandyReaction, handleEditDM } = require('./moderator');
@@ -111,6 +112,7 @@ client.once(Events.ClientReady, async c => {
     initSecurity(client);
     initRSS(client);
     initLurker(client);
+    initChatter(client);
     restorePresence(client).catch(e => console.error('[PRESENCE] 復元エラー:', e));
 
     const guild = client.guilds.cache.first();
@@ -163,6 +165,7 @@ client.on(Events.MessageCreate, async m => {
     }
 
     recordActivity(m.author.id);
+    recordChatterMessage(m.channel.id);
     handleInviteFilter(m, client).catch(err => console.error('[InviteFilter Error]:', err));
     handleModerator(m).catch(err => console.error('[Mod Error]:', err));
 
