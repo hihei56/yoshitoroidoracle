@@ -341,11 +341,11 @@ client.on(Events.InteractionCreate, async i => {
             if (sub === 'set') {
                 const level = i.options.getInteger('level');
                 const u     = setUserLevel(user.id, level);
-                // ニックネーム更新
                 const member = await i.guild.members.fetch(user.id).catch(() => null);
                 if (member?.manageable) {
-                    const base = member.displayName;
-                    await member.setNickname(buildNickname(base, level)).catch(() => {});
+                    const base = getAlias(user.id) ?? member.displayName;
+                    const stripped = base.replace(/\s*[🌱🔥⚡💎👑].*$/, '');
+                    await member.setNickname(buildNickname(stripped, level, getMonthlyRank(user.id))).catch(() => {});
                 }
                 return i.reply({ content: `✅ <@${user.id}> をLv.**${level}** (${Math.floor(u.xp)} XP) に設定しました。`, ephemeral: true });
             }
@@ -356,8 +356,9 @@ client.on(Events.InteractionCreate, async i => {
                 const sign   = amount >= 0 ? '+' : '';
                 const member = await i.guild.members.fetch(user.id).catch(() => null);
                 if (member?.manageable) {
-                    const base = member.displayName;
-                    await member.setNickname(buildNickname(base, u.level)).catch(() => {});
+                    const base = getAlias(user.id) ?? member.displayName;
+                    const stripped = base.replace(/\s*[🌱🔥⚡💎👑].*$/, '');
+                    await member.setNickname(buildNickname(stripped, u.level, getMonthlyRank(user.id))).catch(() => {});
                 }
                 return i.reply({ content: `✅ <@${user.id}> のXPを ${sign}${amount} 調整 → Lv.**${u.level}** / ${Math.floor(u.xp)} XP`, ephemeral: true });
             }
@@ -366,7 +367,8 @@ client.on(Events.InteractionCreate, async i => {
                 resetUser(user.id);
                 const member = await i.guild.members.fetch(user.id).catch(() => null);
                 if (member?.manageable) {
-                    const stripped = (member.displayName).replace(/\s*[🌱🔥⚡💎👑].*$/, '');
+                    const base = getAlias(user.id) ?? member.displayName;
+                    const stripped = base.replace(/\s*[🌱🔥⚡💎👑].*$/, '');
                     await member.setNickname(stripped).catch(() => {});
                 }
                 return i.reply({ content: `✅ <@${user.id}> のXP・レベルをリセットしました。`, ephemeral: true });
