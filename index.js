@@ -25,6 +25,7 @@ const {
     XP_PER_LEVEL,
     processMessage, getUserData, getRank, getLeaderboard, xpToNextLevel,
     setUserLevel, adjustXP, resetUser,
+    setHideBadge, isHideBadge,
     addExcludedRole, removeExcludedRole, getExcludedRoles, isExcluded,
     buildNickname, getLevelBadge,
 } = require('./xp');
@@ -157,10 +158,12 @@ client.on(Events.MessageCreate, async m => {
     const xpResult = processMessage(m.author.id, m.content);
     if (xpResult.newLevel !== null) {
         m.channel.send(`🎉 <@${m.author.id}> がレベル **${xpResult.newLevel}** に上がりました！ (累計 ${Math.floor(xpResult.xp).toLocaleString('ja-JP')} XP)`).catch(() => {});
-        const member = m.member ?? await m.guild.members.fetch(m.author.id).catch(() => null);
-        if (member?.manageable) {
-            const base = member.nickname ?? member.user.username;
-            member.setNickname(buildNickname(base, xpResult.newLevel)).catch(() => {});
+        if (!isHideBadge(m.author.id)) {
+            const member = m.member ?? await m.guild.members.fetch(m.author.id).catch(() => null);
+            if (member?.manageable) {
+                const base = member.nickname ?? member.user.username;
+                member.setNickname(buildNickname(base, xpResult.newLevel)).catch(() => {});
+            }
         }
     }
 });
@@ -200,6 +203,28 @@ client.on(Events.InteractionCreate, async i => {
             const embed  = await buildRankEmbed(target, i.guild);
             return i.reply({ embeds: [embed] });
         } catch (e) { console.error('[Rank Error]:', e); }
+        return;
+    }
+
+    if (i.commandName === 'xp') {
+        try {
+            const sub    = i.options.getSubcommand();
+            const hide   = sub === 'hide';
+            setHideBadge(i.user.id, hide);
+            const member = i.member;
+            if (member?.manageable) {
+                const base     = member.nickname ?? member.user.username;
+                const stripped = base.replace(/\s*[🌱🔥⚡💎👑]\d+$/, '');
+                const newNick  = hide ? stripped : buildNickname(stripped, getUserData(i.user.id).level);
+                await member.setNickname(newNick).catch(() => {});
+            }
+            return i.reply({
+                content: hide
+                    ? '🙈 ニックネームのレベルバッジを非表示にしました。'
+                    : '👁️ ニックネームのレベルバッジを表示に戻しました。',
+                ephemeral: true,
+            });
+        } catch (e) { console.error('[xp cmd Error]:', e); }
         return;
     }
 

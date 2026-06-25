@@ -151,6 +151,15 @@ function resetUser(userId) {
     saveNow();
 }
 
+function setHideBadge(userId, hide) {
+    entry(userId).hideBadge = hide;
+    saveNow();
+}
+
+function isHideBadge(userId) {
+    return store[userId]?.hideBadge === true;
+}
+
 // ── 除外ロール ────────────────────────────────────────────────────────
 
 function addExcludedRole(roleId) {
@@ -195,6 +204,7 @@ module.exports = {
     XP_PER_LEVEL,
     processMessage, getUserData, getRank, getLeaderboard, xpToNextLevel,
     setUserLevel, adjustXP, resetUser,
+    setHideBadge, isHideBadge,
     addExcludedRole, removeExcludedRole, getExcludedRoles, isExcluded,
     buildNickname, getLevelBadge,
 };

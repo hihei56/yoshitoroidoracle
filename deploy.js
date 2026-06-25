@@ -302,7 +302,14 @@ new SlashCommandBuilder()
         .setName('permlist')
         .setDescription('危険な権限を持つロール・メンバーを一覧表示します。'),
 
-    // 12. XP・レベル確認（全員）
+    // 12. レベルバッジ表示切替（全員）
+    new SlashCommandBuilder()
+        .setName('xp')
+        .setDescription('ニックネームのレベルバッジ表示を切り替えます。')
+        .addSubcommand(sub => sub.setName('hide').setDescription('バッジを非表示にする'))
+        .addSubcommand(sub => sub.setName('show').setDescription('バッジを表示に戻す')),
+
+    // 13. XP・レベル確認（全員）
     new SlashCommandBuilder()
         .setName('rank')
         .setDescription('自分または指定ユーザーの経験値・レベルを表示します。')
