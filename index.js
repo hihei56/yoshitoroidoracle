@@ -131,7 +131,7 @@ client.once(Events.ClientReady, async c => {
             }
             const mRank   = getMonthlyRank(e.id);
             const base    = getAlias(e.id) ?? member.displayName;
-            const newNick = buildNickname(base, e.level, mRank);
+            const newNick = buildNickname(base, e.level, mRank, e.id);
             const err = await member.setNickname(newNick).then(() => null).catch(e => e);
             if (err) {
                 console.error(`[NickSync] FAIL uid=${e.id} nick=${newNick} err=${err.message}`);
@@ -188,7 +188,7 @@ client.on(Events.MessageCreate, async m => {
             if (member?.manageable) {
                 const base = member.displayName;
                 const mRank = getMonthlyRank(m.author.id);
-                member.setNickname(buildNickname(base, xpResult.newLevel, mRank)).catch(e => console.error('[Nick Error]', e.message));
+                member.setNickname(buildNickname(base, xpResult.newLevel, mRank, m.author.id)).catch(e => console.error('[Nick Error]', e.message));
             } else {
                 console.log(`[Nick Skip] manageable=false for ${m.author.id}`);
             }
@@ -264,7 +264,7 @@ client.on(Events.InteractionCreate, async i => {
                     newNick = stripped;
                 } else {
                     const mRank = getMonthlyRank(i.user.id);
-                    newNick = buildNickname(stripped, getUserData(i.user.id).level, mRank);
+                    newNick = buildNickname(stripped, getUserData(i.user.id).level, mRank, i.user.id);
                 }
                 await member.setNickname(newNick).catch(e => console.error('[xp hide nick]:', e.message));
             }
@@ -345,7 +345,7 @@ client.on(Events.InteractionCreate, async i => {
                 if (member?.manageable) {
                     const base = getAlias(user.id) ?? member.displayName;
                     const stripped = base.replace(/\s*[🌱🔥⚡💎👑].*$/, '');
-                    await member.setNickname(buildNickname(stripped, level, getMonthlyRank(user.id))).catch(() => {});
+                    await member.setNickname(buildNickname(stripped, level, getMonthlyRank(user.id), user.id)).catch(() => {});
                 }
                 return i.reply({ content: `✅ <@${user.id}> をLv.**${level}** (${Math.floor(u.xp)} XP) に設定しました。`, ephemeral: true });
             }
@@ -358,7 +358,7 @@ client.on(Events.InteractionCreate, async i => {
                 if (member?.manageable) {
                     const base = getAlias(user.id) ?? member.displayName;
                     const stripped = base.replace(/\s*[🌱🔥⚡💎👑].*$/, '');
-                    await member.setNickname(buildNickname(stripped, u.level, getMonthlyRank(user.id))).catch(() => {});
+                    await member.setNickname(buildNickname(stripped, u.level, getMonthlyRank(user.id), user.id)).catch(() => {});
                 }
                 return i.reply({ content: `✅ <@${user.id}> のXPを ${sign}${amount} 調整 → Lv.**${u.level}** / ${Math.floor(u.xp)} XP`, ephemeral: true });
             }
@@ -414,7 +414,7 @@ client.on(Events.InteractionCreate, async i => {
                     const stripped = base.replace(/\s*[🌱🔥⚡💎👑].*$/, '');
                     const newNick  = hide
                         ? stripped
-                        : buildNickname(stripped, getUserData(member.id).level, getMonthlyRank(member.id));
+                        : buildNickname(stripped, getUserData(member.id).level, getMonthlyRank(member.id), member.id);
                     await member.setNickname(newNick).catch(e => console.error('[hidebadge nick]:', e.message));
                 }
 
@@ -451,7 +451,7 @@ client.on(Events.InteractionCreate, async i => {
                     if (!member.manageable) { skip++; continue; }
                     const base   = getAlias(e.id) ?? member.displayName;
                     const mRank  = getMonthlyRank(e.id);
-                    const err = await member.setNickname(buildNickname(base, e.level, mRank)).then(() => null).catch(e => e);
+                    const err = await member.setNickname(buildNickname(base, e.level, mRank, e.id)).then(() => null).catch(e => e);
                     if (err) { fail++; console.error('[syncnicks]', e.id, err.message); }
                     else ok++;
                 }

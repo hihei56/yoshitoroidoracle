@@ -304,9 +304,12 @@ function getMonthlyRank(userId) {
 
 const NICK_STRIP = /\s*[🌱🔥⚡💎👑].*$/;
 
-function buildNickname(baseNick, level, monthRank = null) {
+function buildNickname(baseNick, level, monthRank = null, userId = null) {
+    const stripped = baseNick.replace(NICK_STRIP, '');
+    if (userId != null && getPeriodXp(userId, 'month') === 0) {
+        return stripped.slice(0, 32);
+    }
     const { emoji } = getLevelBadge(level);
-    const stripped  = baseNick.replace(NICK_STRIP, '');
     const rankStr   = monthRank != null ? `#${monthRank}` : '#?';
     return `${stripped} ${emoji}${rankStr}`.slice(0, 32);
 }
