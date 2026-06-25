@@ -32,7 +32,7 @@ const {
     buildNickname, getLevelBadge, getMonthlyRank,
     setAlias, getAlias,
     setMonthOverride, getMonthOverride,
-    toggleMonthShift, getMonthShift,
+    toggleMonthShift, getMonthShift, getSeasonStart,
 } = require('./xp');
 
 const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
@@ -377,14 +377,21 @@ client.on(Events.InteractionCreate, async i => {
             if (sub === 'setmonth') {
                 const on = toggleMonthShift();
                 const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
-                const nextMonth = new Date(now);
-                nextMonth.setMonth(now.getMonth() + 1);
-                return i.reply({
-                    content: on
-                        ? `✅ 月間ランキングを **翌月モード** にしました。今月のXPが **${nextMonth.toISOString().slice(0, 7)}** 分としてカウントされます。`
-                        : `✅ 月間ランキングを **通常モード** に戻しました。今月のXPが **${now.toISOString().slice(0, 7)}** 分としてカウントされます。`,
-                    ephemeral: true,
-                });
+                if (on) {
+                    const seasonStart = getSeasonStart();
+                    const [sy, sm] = seasonStart.split('-').map(Number);
+                    const endMonth = new Date(sy, sm, 1).toISOString().slice(0, 7); // 翌月
+                    return i.reply({
+                        content: `✅ シーズン延長モードにしました。**${seasonStart}** シーズンを **${endMonth}** 末まで延長します。`,
+                        ephemeral: true,
+                    });
+                } else {
+                    const currentYM = now.toISOString().slice(0, 7);
+                    return i.reply({
+                        content: `✅ 通常モードに戻しました。今月のXPは **${currentYM}** 分としてカウントされます。`,
+                        ephemeral: true,
+                    });
+                }
             }
 
             if (sub === 'alias') {

@@ -46,17 +46,16 @@ function jstMonthPrefix() {
     if (store._monthOverride) return store._monthOverride;
     const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
     const currentYM = now.toISOString().slice(0, 7);
-    if (store._monthShift) {
-        const next = new Date(now);
-        next.setMonth(now.getMonth() + 1);
-        const nextYM = next.toISOString().slice(0, 7);
-        // 実際の月がシフト先に追いついたら自動解除
-        if (currentYM >= nextYM) {
-            delete store._monthShift;
+    if (store._seasonStart) {
+        // シーズン開始月の翌月末まで延長: 翌々月になったら自動解除
+        const [sy, sm] = store._seasonStart.split('-').map(Number);
+        const expireDate = new Date(sy, sm + 1, 1); // 翌々月1日 = 翌月末の翌日
+        if (now >= expireDate) {
+            delete store._seasonStart;
             saveNow();
             return currentYM;
         }
-        return nextYM;
+        return store._seasonStart;
     }
     return currentYM;
 }
@@ -72,13 +71,23 @@ function getMonthOverride() {
 }
 
 function toggleMonthShift() {
-    store._monthShift = !store._monthShift;
+    if (store._seasonStart) {
+        delete store._seasonStart;
+        saveNow();
+        return false;
+    }
+    const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    store._seasonStart = now.toISOString().slice(0, 7);
     saveNow();
-    return store._monthShift;
+    return true;
 }
 
 function getMonthShift() {
-    return store._monthShift === true;
+    return !!store._seasonStart;
+}
+
+function getSeasonStart() {
+    return store._seasonStart ?? null;
 }
 
 function entry(userId) {
@@ -324,5 +333,5 @@ module.exports = {
     buildNickname, getLevelBadge, getMonthlyRank,
     setAlias, getAlias,
     setMonthOverride, getMonthOverride,
-    toggleMonthShift, getMonthShift,
+    toggleMonthShift, getMonthShift, getSeasonStart,
 };
