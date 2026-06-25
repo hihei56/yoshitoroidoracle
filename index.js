@@ -89,7 +89,7 @@ async function sendRankCard(replyTarget, targetUser, guild) {
 }
 
 // ── /top ランキングembed ───────────────────────────────────────────────
-const PERIOD_LABELS = { total: 'トータル', day: '本日', week: '今週', month: '今月' };
+const PERIOD_LABELS = { total: 'トータル', day: '今日', week: '今週', month: '今月' };
 const MEDALS = ['🥇', '🥈', '🥉'];
 
 async function buildTopEmbed(guild, period = 'total') {
@@ -97,20 +97,21 @@ async function buildTopEmbed(guild, period = 'total') {
     if (!board.length) return null;
 
     const lines = await Promise.all(board.map(async (e, i) => {
-        const member  = await guild.members.fetch(e.id).catch(() => null);
-        const name    = member?.displayName ?? `<@${e.id}>`;
-        const badge   = getLevelBadge(e.level);
-        const num     = MEDALS[i] ?? `\`${i + 1}\``;
-        const dispXp  = period === 'total' ? Math.floor(e.xp) : Math.floor(e.periodXp);
-        const xpStr   = dispXp.toLocaleString('en-US');
-        return `${num} ${badge.emoji}**${e.level}** ${name} — ${xpStr} XP`;
+        const member = await guild.members.fetch(e.id).catch(() => null);
+        const name   = member?.displayName ?? `<@${e.id}>`;
+        const dispXp = period === 'total' ? Math.floor(e.xp) : Math.floor(e.periodXp);
+        const xpStr  = dispXp.toLocaleString('en-US');
+        const prefix = i < 3 ? MEDALS[i] : `\`${i + 1}.\``;
+        const lvInfo = period === 'total' ? ` Lv.${e.level}` : '';
+        return `${prefix}  **${name}**${lvInfo}　${xpStr} XP`;
     }));
 
+    const total = getLeaderboard(9999).length;
     return {
-        title: `🏆 XP ランキング TOP10　[${PERIOD_LABELS[period]}]`,
+        title: `${PERIOD_LABELS[period]}のランキング`,
         description: lines.join('\n'),
-        color: 0xf5a623,
-        footer: { text: `全${getLeaderboard(9999).length}名` },
+        color: 0x2b2d31,
+        footer: { text: `全${total}名` },
     };
 }
 
