@@ -32,6 +32,7 @@ const {
     buildNickname, getLevelBadge, getMonthlyRank,
     setAlias, getAlias,
     setMonthOverride, getMonthOverride,
+    toggleMonthShift, getMonthShift,
 } = require('./xp');
 
 const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
@@ -366,15 +367,14 @@ client.on(Events.InteractionCreate, async i => {
             }
 
             if (sub === 'setmonth') {
-                const ym = i.options.getString('month');
-                if (ym && !/^\d{4}-\d{2}$/.test(ym)) {
-                    return i.reply({ content: '❌ フォーマットは `YYYY-MM` で指定してください（例: `2026-07`）', ephemeral: true });
-                }
-                setMonthOverride(ym || null);
+                const on = toggleMonthShift();
+                const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
+                const nextMonth = new Date(now);
+                nextMonth.setMonth(now.getMonth() + 1);
                 return i.reply({
-                    content: ym
-                        ? `✅ 月間ランキングの集計月を **${ym}** に固定しました。`
-                        : `✅ 月間ランキングの集計月を自動（現在月）に戻しました。現在: **${getMonthOverride() ?? new Date().toISOString().slice(0, 7)}**`,
+                    content: on
+                        ? `✅ 月間ランキングを **翌月モード** にしました。今月のXPが **${nextMonth.toISOString().slice(0, 7)}** 分としてカウントされます。`
+                        : `✅ 月間ランキングを **通常モード** に戻しました。今月のXPが **${now.toISOString().slice(0, 7)}** 分としてカウントされます。`,
                     ephemeral: true,
                 });
             }

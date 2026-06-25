@@ -43,7 +43,14 @@ function jstWeekDates() {
 }
 
 function jstMonthPrefix() {
-    return store._monthOverride ?? jstDateStr().slice(0, 7);
+    if (store._monthOverride) return store._monthOverride;
+    if (store._monthShift) {
+        // 翌月として扱う
+        const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
+        now.setMonth(now.getMonth() + 1);
+        return now.toISOString().slice(0, 7);
+    }
+    return jstDateStr().slice(0, 7);
 }
 
 function setMonthOverride(ym) {
@@ -54,6 +61,16 @@ function setMonthOverride(ym) {
 
 function getMonthOverride() {
     return store._monthOverride ?? null;
+}
+
+function toggleMonthShift() {
+    store._monthShift = !store._monthShift;
+    saveNow();
+    return store._monthShift;
+}
+
+function getMonthShift() {
+    return store._monthShift === true;
 }
 
 function entry(userId) {
@@ -296,4 +313,5 @@ module.exports = {
     buildNickname, getLevelBadge, getMonthlyRank,
     setAlias, getAlias,
     setMonthOverride, getMonthOverride,
+    toggleMonthShift, getMonthShift,
 };
