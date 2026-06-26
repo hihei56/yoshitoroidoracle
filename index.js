@@ -118,11 +118,11 @@ client.once(Events.ClientReady, async c => {
     const guild = client.guilds.cache.first();
     if (guild) backfillActivity(guild).catch(e => console.error('[Activity] バックフィルエラー:', e));
 
-    // 月間ランキングニックネーム 1時間ごと自動更新
+    // 月間ランキングニックネーム 6時間ごと自動更新（上位10人のみ）
     async function syncMonthlyNicks(trigger = 'manual') {
         const g = client.guilds.cache.first();
         if (!g) return;
-        const board = getLeaderboard(9999);
+        const board = getLeaderboard(10);
         let ok = 0, skip = 0, fail = 0;
         for (const e of board) {
             if (isHideBadge(e.id)) { skip++; continue; }
@@ -147,7 +147,7 @@ client.once(Events.ClientReady, async c => {
         console.log(`[NickSync] 完了(${trigger}): OK=${ok} SKIP=${skip} FAIL=${fail}`);
     }
     syncMonthlyNicks('startup').catch(e => console.error('[NickSync] 起動時エラー:', e));
-    setInterval(() => syncMonthlyNicks('hourly').catch(e => console.error('[NickSync] エラー:', e)), 60 * 60 * 1000);
+    setInterval(() => syncMonthlyNicks('6hourly').catch(e => console.error('[NickSync] エラー:', e)), 6 * 60 * 60 * 1000);
 
     if (DEBUG_MODE) {
         postRanking(client).catch(e => console.error('[Ranking] 起動時エラー:', e));
