@@ -240,7 +240,7 @@ client.on(Events.InteractionCreate, async i => {
             const member = await i.guild.members.fetch(target.id).catch(() => null);
             const name   = member?.displayName ?? target.username;
             const bgPath = getBgPath(target.id);
-            const imgBuf  = await generateRankCard({ ...data, bgUrl: bgPath }, target, rank);
+            const imgBuf  = await generateRankCard({ ...data, bgUrl: bgPath, displayName: name }, target, rank);
             const current = Math.max(0, data.xp - (data.levelBase ?? data.xp));
             return i.editReply({
                 embeds: [{
