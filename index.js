@@ -15,7 +15,6 @@ const { handleModerator, handlePoopReaction, handleCryReaction, handleEmbedModer
 const { handleImpersonate }      = require('./impersonate');
 const { handleImp }              = require('./imp');
 const { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel, handlePresence, restorePresence } = require('./admin');
-const { handleJoker }            = require('./joker');
 const { initRSS }                = require('./rssBot');
 const { postRanking, handleRanking } = require('./ranking');
 const { handleTimeoutList }      = require('./timeoutlist');
@@ -328,11 +327,10 @@ client.on(Events.InteractionCreate, async i => {
         if (i.commandName === 'lurker')      await handleLurker(i);
         if (i.commandName === 'admin') {
             const sub = i.options.getSubcommand();
-            if (sub === 'ngserver')      await handleNGServer(i);
-            else if (sub === 'presence') await handlePresence(i);
-            else                         await handleAdmin(i);
+            if (sub === 'ngserver')        await handleNGServer(i);
+            else if (sub === 'presence')   await handlePresence(i);
+            else                           await handleAdmin(i);
         }
-        if (i.commandName === 'joker')       await handleJoker(i);
         if (i.commandName === 'permlist')    await handlePermList(i);
         if (i.commandName === 'impersonate') await handleImpersonate(i);
         if (i.commandName === 'ranking') {
