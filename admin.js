@@ -395,6 +395,34 @@ async function handleAdmin(interaction) {
     if (sub === 'kick_inactive') {
         return handleKickInactive(interaction);
     }
+
+    // ── 全員のタイムアウト解除 ──
+    if (sub === 'timeout_remove') {
+        await interaction.deferReply({ ephemeral: true });
+        const members = await interaction.guild.members.fetch();
+        const timedOut = members.filter(m => m.communicationDisabledUntilTimestamp && m.communicationDisabledUntilTimestamp > Date.now());
+
+        if (timedOut.size === 0) {
+            return interaction.editReply('タイムアウト中のメンバーはいません。');
+        }
+
+        let ok = 0, fail = 0;
+        for (const member of timedOut.values()) {
+            await member.timeout(null, `admin timeout_remove by ${interaction.user.tag}`)
+                .then(() => ok++)
+                .catch(() => fail++);
+        }
+
+        return interaction.editReply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle('🔓 全員タイムアウト解除')
+                    .setColor(COLOR.add)
+                    .setDescription(`✅ **${ok}** 人のタイムアウトを解除しました。${fail ? `\n⚠️ ${fail} 人は権限不足により解除できませんでした。` : ''}`)
+                    .setTimestamp()
+            ],
+        });
+    }
 }
 
 /* =========================

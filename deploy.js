@@ -7,11 +7,6 @@ const commands = [
         .setName('dice')
         .setDescription('1日1回のダイス勝負。当たると制限がかかる場合があります。'),
 
-    // 2. JOKERシステム
-    new SlashCommandBuilder()
-        .setName('joker')
-        .setDescription('JOKERを実行。一か八かの制裁を下します。'),
-
     // 3. 匿名発言機能
     new SlashCommandBuilder()
         .setName('anon')
@@ -215,6 +210,11 @@ new SlashCommandBuilder()
                             { name: '📱 モバイル',     value: 'mobile'    },
                         )
                 )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('timeout_remove')
+                .setDescription('サーバー上の全員のタイムアウトを解除します（管理者のみ）。')
         )
         .addSubcommand(subcommand =>
             subcommand
