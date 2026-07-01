@@ -23,6 +23,10 @@ const { handleInviteFilter, handleNGServer } = require('./invite_filter');
 const { handleEditMonitor } = require('./edit_monitor');
 const { generateRankCard, saveBgFromUrl, saveBgFromAttachment, deleteBg, getBgPath } = require('./rankCard');
 const {
+    handleVoicePanel, handleVoicePanelVoiceState, handleVoicePanelButton,
+    handleVoicePanelSelect, handleVoicePanelUserSelect, handleVoicePanelModal,
+} = require('./voice_panel');
+const {
     XP_PER_LEVEL,
     processMessage, getUserData, getRank, getLeaderboard, xpToNextLevel,
     getPeriodXp, getLeaderboardByPeriod,
@@ -213,6 +217,10 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
     handleCandyReaction(reaction, user).catch(e => console.error('[CandyReaction]:', e));
 });
 
+client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+    handleVoicePanelVoiceState(oldState, newState).catch(e => console.error('[VoicePanel VC]:', e));
+});
+
 client.on(Events.InteractionCreate, async i => {
     if (i.isButton() && i.customId.startsWith('admin_reset:'))
         return handleAdminButton(i).catch(e => console.error('[AdminBtn]:', e));
@@ -222,6 +230,15 @@ client.on(Events.InteractionCreate, async i => {
         return handleServersLeaveConfirm(i, i.customId.split(':')[2]).catch(e => console.error('[ServersConfirm]:', e));
     if (i.isButton() && i.customId === 'admin_servers:leave_cancel')
         return handleServersLeaveCancel(i).catch(e => console.error('[ServersCancel]:', e));
+
+    if (i.isButton() && i.customId.startsWith('vcpanel_'))
+        return handleVoicePanelButton(i).catch(e => console.error('[VoicePanel Btn]:', e));
+    if (i.isStringSelectMenu() && i.customId === 'vcpanel_userlimit')
+        return handleVoicePanelSelect(i).catch(e => console.error('[VoicePanel Select]:', e));
+    if (i.isUserSelectMenu() && i.customId.startsWith('vcpanel_um_select_'))
+        return handleVoicePanelUserSelect(i).catch(e => console.error('[VoicePanel UserSelect]:', e));
+    if (i.isModalSubmit() && i.customId.startsWith('vcpanel_modal_'))
+        return handleVoicePanelModal(i).catch(e => console.error('[VoicePanel Modal]:', e));
 
     if (!i.isChatInputCommand()) return;
 
@@ -333,6 +350,7 @@ client.on(Events.InteractionCreate, async i => {
         }
         if (i.commandName === 'permlist')    await handlePermList(i);
         if (i.commandName === 'impersonate') await handleImpersonate(i);
+        if (i.commandName === 'voicepanel')  await handleVoicePanel(i);
         if (i.commandName === 'ranking') {
             if (!DEBUG_MODE) return i.reply({ content: '⚠️ DEBUG_MODE=true が必要です。', ephemeral: true });
             await handleRanking(i);
