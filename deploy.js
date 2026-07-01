@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { REST, Routes, SlashCommandBuilder } = require('discord.js');
+const { REST, Routes, SlashCommandBuilder, ChannelType } = require('discord.js');
 
 const commands = [
     // 1. ダイス勝負
@@ -402,6 +402,34 @@ new SlashCommandBuilder()
             sub.setName('levelnotif')
                 .setDescription('レベルアップ通知のON/OFFを切り替えます。')
                 .addBooleanOption(opt => opt.setName('enable').setDescription('true=ON / false=OFF').setRequired(true))
+        ),
+
+    // 15. 一時ボイスチャンネル パネル（管理者のみ）
+    new SlashCommandBuilder()
+        .setName('voicepanel')
+        .setDescription('一時ボイスチャンネル機能を設定します（管理者のみ）。')
+        .addSubcommand(sub =>
+            sub.setName('setup')
+                .setDescription('参加用チャンネルと作成先カテゴリを設定します。')
+                .addChannelOption(opt =>
+                    opt.setName('join_channel')
+                        .setDescription('参加すると一時チャンネルが作成されるボイスチャンネル')
+                        .addChannelTypes(ChannelType.GuildVoice)
+                        .setRequired(true)
+                )
+                .addChannelOption(opt =>
+                    opt.setName('category')
+                        .setDescription('作成先カテゴリ（省略時は参加用チャンネルと同じカテゴリ）')
+                        .addChannelTypes(ChannelType.GuildCategory)
+                )
+        )
+        .addSubcommand(sub =>
+            sub.setName('panel')
+                .setDescription('操作パネルをこのチャンネルに送信します。')
+        )
+        .addSubcommand(sub =>
+            sub.setName('status')
+                .setDescription('現在の設定を確認します。')
         ),
 
 ].map(command => command.toJSON());
