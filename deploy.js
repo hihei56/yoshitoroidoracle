@@ -234,6 +234,23 @@ new SlashCommandBuilder()
                     opt.setName('server_id')
                         .setDescription('NGにするサーバーID、または招待リンク（追加・削除時は必須）')
                 )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('voice_ban')
+                .setDescription('一時ボイスチャンネル機能の利用（作成・参加）を禁止するユーザー/ロールを管理します。')
+                .addStringOption(opt =>
+                    opt.setName('action')
+                        .setDescription('操作を選択')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: '追加', value: 'add'    },
+                            { name: '解除', value: 'remove' },
+                            { name: '一覧', value: 'list'   },
+                        )
+                )
+                .addUserOption(opt => opt.setName('user').setDescription('対象のユーザー（ロールと併用可）'))
+                .addRoleOption(opt => opt.setName('role').setDescription('対象のロール（ユーザーと併用可）'))
         ),
 
     // 6. ROM専目覚まし（管理者のみ）

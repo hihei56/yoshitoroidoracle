@@ -25,6 +25,7 @@ const { generateRankCard, saveBgFromUrl, saveBgFromAttachment, deleteBg, getBgPa
 const {
     handleVoicePanel, handleVoicePanelVoiceState, handleVoicePanelButton,
     handleVoicePanelSelect, handleVoicePanelUserSelect, handleVoicePanelModal,
+    handleVoiceBan,
 } = require('./voice_panel');
 const {
     XP_PER_LEVEL,
@@ -347,6 +348,7 @@ client.on(Events.InteractionCreate, async i => {
             const sub = i.options.getSubcommand();
             if (sub === 'ngserver')        await handleNGServer(i);
             else if (sub === 'presence')   await handlePresence(i);
+            else if (sub === 'voice_ban')  await handleVoiceBan(i);
             else                           await handleAdmin(i);
         }
         if (i.commandName === 'permlist')    await handlePermList(i);
