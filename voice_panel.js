@@ -134,26 +134,33 @@ async function handleVoiceBan(interaction) {
 // オーナーは常にConnect/ViewChannelを明示許可し、出禁ユーザー/ロールを個別に拒否する。
 // .edit()/.delete()は対象IDだけを操作するため、カテゴリ由来のオーバーライドや
 // ロック/非表示状態など、他のオーバーライドを巻き込んで消すことがない。
+// ロール/メンバーを実オブジェクトで渡し、discord.js側でのID解決の失敗（＝
+// オーナー許可オーバーライドが作成されず締め出される事故）を避ける。
 async function applyBanOverwrites(channel, ownerId, profile) {
-    await channel.permissionOverwrites.edit(ownerId, { Connect: true, ViewChannel: true }).catch(() => {});
+    const guild = channel.guild;
+    const owner = await guild.members.fetch(ownerId).catch(() => null);
+    await channel.permissionOverwrites.edit(owner ?? ownerId, { Connect: true, ViewChannel: true }).catch(() => {});
+
     for (const uid of profile.bannedUserIds) {
         if (uid === ownerId) continue;
-        await channel.permissionOverwrites.edit(uid, { Connect: false, ViewChannel: false }).catch(() => {});
+        const member = await guild.members.fetch(uid).catch(() => null);
+        await channel.permissionOverwrites.edit(member ?? uid, { Connect: false, ViewChannel: false }).catch(() => {});
     }
     for (const rid of profile.bannedRoleIds) {
-        await channel.permissionOverwrites.edit(rid, { Connect: false, ViewChannel: false }).catch(() => {});
+        const role = guild.roles.cache.get(rid);
+        await channel.permissionOverwrites.edit(role ?? rid, { Connect: false, ViewChannel: false }).catch(() => {});
     }
 }
 
 // 管理者が出禁設定を変更した際、既に存在する一時チャンネルへ即時反映する
-async function applyProfileToActiveChannel(guild, ownerId, { unbannedUserId, unbannedRoleId } = {}) {
+async function applyProfileToActiveChannel(guild, ownerId, { unbannedUser, unbannedRole } = {}) {
     const channelId = findActiveChannelId(ownerId);
     if (!channelId) return;
     const channel = guild.channels.cache.get(channelId);
     if (!channel) return;
 
-    if (unbannedUserId) await channel.permissionOverwrites.delete(unbannedUserId).catch(() => {});
-    if (unbannedRoleId) await channel.permissionOverwrites.delete(unbannedRoleId).catch(() => {});
+    if (unbannedUser) await channel.permissionOverwrites.delete(unbannedUser).catch(() => {});
+    if (unbannedRole) await channel.permissionOverwrites.delete(unbannedRole).catch(() => {});
 
     const profile = getRoomProfile(ownerId);
     await applyBanOverwrites(channel, ownerId, profile);
@@ -236,7 +243,7 @@ async function handleVoicePanel(interaction) {
             if (targetRole) profile.bannedRoleIds = profile.bannedRoleIds.filter(id => id !== targetRole.id);
             saveRoomProfile(owner.id, profile);
             await applyProfileToActiveChannel(interaction.guild, owner.id, {
-                unbannedUserId: targetUser?.id, unbannedRoleId: targetRole?.id,
+                unbannedUser: targetUser, unbannedRole: targetRole,
             });
             return interaction.reply({
                 content: `✅ ${owner} の部屋の出禁を解除しました（${targetUser ?? targetRole}）。`,
@@ -413,7 +420,7 @@ async function handleVoicePanelVoiceState(oldState, newState) {
 
             await applyBanOverwrites(channel, newState.member.id, profile);
             if (profile.defaultLocked) {
-                await channel.permissionOverwrites.edit(newState.guild.roles.everyone.id, { Connect: false }).catch(() => {});
+                await channel.permissionOverwrites.edit(newState.guild.roles.everyone, { Connect: false }).catch(() => {});
             }
 
             await newState.member.voice.setChannel(channel).catch(() => {});
@@ -465,19 +472,19 @@ async function handleVoicePanelButton(interaction) {
     switch (interaction.customId) {
         case 'vcpanel_lock':
             await interaction.deferUpdate();
-            await channel.permissionOverwrites.edit(interaction.guild.roles.everyone.id, { Connect: false }).catch(() => {});
+            await channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { Connect: false }).catch(() => {});
             break;
         case 'vcpanel_unlock':
             await interaction.deferUpdate();
-            await channel.permissionOverwrites.edit(interaction.guild.roles.everyone.id, { Connect: true }).catch(() => {});
+            await channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { Connect: true }).catch(() => {});
             break;
         case 'vcpanel_hide':
             await interaction.deferUpdate();
-            await channel.permissionOverwrites.edit(interaction.guild.roles.everyone.id, { ViewChannel: false }).catch(() => {});
+            await channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { ViewChannel: false }).catch(() => {});
             break;
         case 'vcpanel_unhide':
             await interaction.deferUpdate();
-            await channel.permissionOverwrites.edit(interaction.guild.roles.everyone.id, { ViewChannel: true }).catch(() => {});
+            await channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { ViewChannel: true }).catch(() => {});
             break;
         case 'vcpanel_mute':
             await interaction.deferUpdate();
