@@ -428,6 +428,26 @@ new SlashCommandBuilder()
                 .setDescription('操作パネルをこのチャンネルに送信します。')
         )
         .addSubcommand(sub =>
+            sub.setName('notify')
+                .setDescription('一時ボイスチャンネルの通話継続通知を設定します。')
+                .addChannelOption(opt =>
+                    opt.setName('channel')
+                        .setDescription('通知を送信するテキストチャンネル')
+                        .addChannelTypes(ChannelType.GuildText)
+                        .setRequired(true)
+                )
+                .addRoleOption(opt =>
+                    opt.setName('role')
+                        .setDescription('通知時にメンションするロール（省略でメンションなし）')
+                )
+                .addIntegerOption(opt =>
+                    opt.setName('minutes')
+                        .setDescription('通話継続何分で通知するか（デフォルト: 5分）')
+                        .setMinValue(1)
+                        .setMaxValue(180)
+                )
+        )
+        .addSubcommand(sub =>
             sub.setName('status')
                 .setDescription('現在の設定を確認します。')
         ),

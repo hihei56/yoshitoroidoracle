@@ -13,7 +13,10 @@ ensureDir(SETTINGS_FILE);
 ensureDir(OWNERS_FILE);
 
 function getVPSettings() {
-    return readJson(SETTINGS_FILE, { joinChannelId: null, categoryId: null });
+    return readJson(SETTINGS_FILE, {
+        joinChannelId: null, categoryId: null,
+        notifyChannelId: null, notifyRoleId: null, notifyMinutes: 5,
+    });
 }
 function saveVPSettings(settings) {
     writeJson(SETTINGS_FILE, settings);
@@ -104,12 +107,64 @@ async function handleVoicePanel(interaction) {
         return interaction.reply({ content: '✅ パネルを送信しました。', ephemeral: true });
     }
 
+    if (sub === 'notify') {
+        const notifyChannel = interaction.options.getChannel('channel');
+        const role          = interaction.options.getRole('role');
+        const minutes       = interaction.options.getInteger('minutes') ?? 5;
+        const settings = getVPSettings();
+        settings.notifyChannelId = notifyChannel.id;
+        settings.notifyRoleId    = role?.id ?? null;
+        settings.notifyMinutes   = minutes;
+        saveVPSettings(settings);
+        return interaction.reply({
+            content: `✅ 一時ボイスチャンネルの通話が **${minutes}分** 継続した場合、${notifyChannel} に${role ? `${role} をメンションして` : ''}通知します。`,
+            ephemeral: true,
+        });
+    }
+
     if (sub === 'status') {
         const settings = getVPSettings();
         return interaction.reply({
-            content: `📋 参加用チャンネル: ${settings.joinChannelId ? `<#${settings.joinChannelId}>` : '未設定'}\n📋 作成先カテゴリ: ${settings.categoryId ? `<#${settings.categoryId}>` : '参加用チャンネルと同じ'}`,
+            content: [
+                `📋 参加用チャンネル: ${settings.joinChannelId ? `<#${settings.joinChannelId}>` : '未設定'}`,
+                `📋 作成先カテゴリ: ${settings.categoryId ? `<#${settings.categoryId}>` : '参加用チャンネルと同じ'}`,
+                `📋 通話通知チャンネル: ${settings.notifyChannelId ? `<#${settings.notifyChannelId}>` : '未設定'}`,
+                `📋 通話通知ロール: ${settings.notifyRoleId ? `<@&${settings.notifyRoleId}>` : 'なし'}`,
+                `📋 通話通知までの時間: ${settings.notifyMinutes ?? 5}分`,
+            ].join('\n'),
             ephemeral: true,
         });
+    }
+}
+
+/* ===== 通話継続通知 ===== */
+const notifyTimers = new Map(); // channelId -> Timeout
+
+function scheduleCallNotify(channel, settings) {
+    if (!settings.notifyChannelId) return;
+    const minutes = settings.notifyMinutes ?? 5;
+    const timer = setTimeout(async () => {
+        notifyTimers.delete(channel.id);
+        const current = channel.guild.channels.cache.get(channel.id);
+        if (!current) return; // 通話は既に終了している
+        if (current.members.filter(m => !m.user.bot).size === 0) return;
+
+        const notifyChannel = await channel.guild.channels.fetch(settings.notifyChannelId).catch(() => null);
+        if (!notifyChannel) return;
+        const roleMention = settings.notifyRoleId ? `<@&${settings.notifyRoleId}> ` : '';
+        await notifyChannel.send({
+            content: `${roleMention}🔊 **${current.name}** で通話が ${minutes}分 以上続いています。`,
+            allowedMentions: { roles: settings.notifyRoleId ? [settings.notifyRoleId] : [] },
+        }).catch(() => {});
+    }, minutes * 60 * 1000);
+    notifyTimers.set(channel.id, timer);
+}
+
+function cancelCallNotify(channelId) {
+    const timer = notifyTimers.get(channelId);
+    if (timer) {
+        clearTimeout(timer);
+        notifyTimers.delete(channelId);
     }
 }
 
@@ -127,6 +182,7 @@ async function handleVoicePanelVoiceState(oldState, newState) {
             });
             setTempOwner(channel.id, newState.member.id);
             await newState.member.voice.setChannel(channel).catch(() => {});
+            scheduleCallNotify(channel, settings);
         } catch (e) {
             console.error('[VoicePanel] チャンネル作成エラー:', e);
         }
@@ -139,6 +195,7 @@ async function handleVoicePanelVoiceState(oldState, newState) {
             if (channel && channel.members.filter(m => !m.user.bot).size === 0) {
                 await channel.delete().catch(() => {});
                 deleteTempOwner(oldState.channelId);
+                cancelCallNotify(oldState.channelId);
             }
         }
     }
