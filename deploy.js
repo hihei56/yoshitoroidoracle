@@ -136,6 +136,15 @@ new SlashCommandBuilder()
         )
         .addSubcommand(subcommand =>
             subcommand
+                .setName('chatter_channel')
+                .setDescription('賑やかしBot（chatter）の自動投稿チャンネルを設定します。未指定で解除。')
+                .addChannelOption(option =>
+                    option.setName('channel')
+                        .setDescription('投稿先チャンネル（省略で解除）')
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('status')
                 .setDescription('現在の管理設定を表示します。')
         )
