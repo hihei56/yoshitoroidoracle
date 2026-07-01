@@ -25,7 +25,7 @@ const { generateRankCard, saveBgFromUrl, saveBgFromAttachment, deleteBg, getBgPa
 const {
     handleVoicePanel, handleVoicePanelVoiceState, handleVoicePanelButton,
     handleVoicePanelSelect, handleVoicePanelUserSelect, handleVoicePanelModal,
-    handleVoiceBan,
+    handleVoiceBan, initVoicePanelCleanup,
 } = require('./voice_panel');
 const {
     XP_PER_LEVEL,
@@ -118,6 +118,7 @@ client.once(Events.ClientReady, async c => {
     initRSS(client);
     initLurker(client);
     initChatter(client);
+    initVoicePanelCleanup(client);
     restorePresence(client).catch(e => console.error('[PRESENCE] 復元エラー:', e));
 
     const guild = client.guilds.cache.first();
