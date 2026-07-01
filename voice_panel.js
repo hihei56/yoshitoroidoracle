@@ -424,6 +424,10 @@ async function handleVoicePanelVoiceState(oldState, newState) {
             }
 
             await newState.member.voice.setChannel(channel).catch(() => {});
+            await channel.send({
+                embeds: [buildPanelEmbed(newState.guild)],
+                components: buildPanelComponents(),
+            }).catch(() => {});
             scheduleCallNotify(channel, settings, newState.member.id, Date.now());
         } catch (e) {
             console.error('[VoicePanel] チャンネル作成エラー:', e);
