@@ -565,13 +565,19 @@ async function handleVoicePanelButton(interaction) {
                 new ButtonBuilder().setCustomId('vcpanel_um_deafen').setLabel('スピーカーミュート').setEmoji('🔕').setStyle(ButtonStyle.Secondary),
                 new ButtonBuilder().setCustomId('vcpanel_um_undeafen').setLabel('スピーカーミュート解除').setEmoji('🔔').setStyle(ButtonStyle.Secondary),
             );
-            await interaction.reply({ components: [row], ephemeral: true });
+            const banRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('vcpanel_um_ban').setLabel('出禁').setEmoji('⛔').setStyle(ButtonStyle.Danger),
+                new ButtonBuilder().setCustomId('vcpanel_um_unban').setLabel('出禁解除').setEmoji('✅').setStyle(ButtonStyle.Secondary),
+            );
+            await interaction.reply({ components: [row, banRow], ephemeral: true });
             break;
         }
         case 'vcpanel_um_mute':
         case 'vcpanel_um_unmute':
         case 'vcpanel_um_deafen':
-        case 'vcpanel_um_undeafen': {
+        case 'vcpanel_um_undeafen':
+        case 'vcpanel_um_ban':
+        case 'vcpanel_um_unban': {
             const action = interaction.customId.replace('vcpanel_um_', '');
             const row = new ActionRowBuilder().addComponents(
                 new UserSelectMenuBuilder()
@@ -600,10 +606,30 @@ async function handleVoicePanelUserSelect(interaction) {
     if (error) return interaction.reply({ content: error, ephemeral: true });
     await interaction.deferUpdate();
 
-    const member = channel.members.get(interaction.values[0]);
-    if (!member) return;
+    const action   = interaction.customId.replace('vcpanel_um_select_', '');
+    const targetId = interaction.values[0];
 
-    const action = interaction.customId.replace('vcpanel_um_select_', '');
+    // 出禁/出禁解除は部屋の永続プロフィールに反映（部屋を作り直しても引き継がれる）
+    if (action === 'ban' || action === 'unban') {
+        if (targetId === interaction.user.id) return; // 自分自身は対象外
+        const profile = getRoomProfile(interaction.user.id);
+        const target  = await interaction.guild.members.fetch(targetId).catch(() => null);
+
+        if (action === 'ban') {
+            if (!profile.bannedUserIds.includes(targetId)) profile.bannedUserIds.push(targetId);
+            saveRoomProfile(interaction.user.id, profile);
+            await channel.permissionOverwrites.edit(target ?? targetId, { Connect: false, ViewChannel: false }).catch(() => {});
+            if (target?.voice.channelId === channel.id) await target.voice.disconnect().catch(() => {});
+        } else {
+            profile.bannedUserIds = profile.bannedUserIds.filter(id => id !== targetId);
+            saveRoomProfile(interaction.user.id, profile);
+            await channel.permissionOverwrites.delete(target ?? targetId).catch(() => {});
+        }
+        return;
+    }
+
+    const member = channel.members.get(targetId);
+    if (!member) return;
     if (action === 'mute')     await member.voice.setMute(true).catch(() => {});
     if (action === 'unmute')   await member.voice.setMute(false).catch(() => {});
     if (action === 'deafen')   await member.voice.setDeaf(true).catch(() => {});
