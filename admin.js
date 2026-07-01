@@ -63,8 +63,9 @@ function buildStatusEmbed() {
     const fmtRoles    = ids => ids.length ? ids.map(id => `<@&${id}>`).join(' ') : 'なし';
     const fmtChannels = ids => ids.length ? ids.map(id => `<#${id}>`).join(' ')  : '全チャンネル（無制限）';
 
-    const logCh    = settings.anonLogChannelId ? `<#${settings.anonLogChannelId}>` : '未設定';
-    const lurkerCh = settings.lurkerChannelId  ? `<#${settings.lurkerChannelId}>`  : '未設定';
+    const logCh     = settings.anonLogChannelId ? `<#${settings.anonLogChannelId}>` : '未設定';
+    const lurkerCh  = settings.lurkerChannelId  ? `<#${settings.lurkerChannelId}>`  : '未設定';
+    const chatterCh = settings.chatterChannelId ? `<#${settings.chatterChannelId}>` : '未設定（目覚ましチャンネルと共通）';
     const thinkerEnabled = settings.chineseThinkerReplace !== false;
     const thinkerExcl    = (settings.chineseThinkerExcludeUsers ?? []);
     const thinker        = thinkerEnabled
@@ -84,6 +85,7 @@ function buildStatusEmbed() {
             { name: '📢 Anon許可チャンネル',  value: fmtChannels(settings.allowedSayChannels ?? []), inline: false },
             { name: '📋 Anonログチャンネル',  value: logCh,                                           inline: false },
             { name: '😴 目覚ましチャンネル',  value: lurkerCh,  inline: false },
+            { name: '💬 賑やかしBot投稿チャンネル', value: chatterCh, inline: false },
             { name: '🀄 中国思想家置き換え',  value: thinker,   inline: false },
             { name: '😿 Webhook化許可ユーザー', value: fmtUsers(settings.cryAllowedUsers), inline: false },
         )
@@ -225,6 +227,25 @@ async function handleAdmin(interaction) {
             embeds: [
                 new EmbedBuilder()
                     .setTitle('😴 ROM専目覚ましチャンネル')
+                    .setColor(ch ? COLOR.add : COLOR.remove)
+                    .setDescription(verb)
+                    .setTimestamp()
+            ],
+            ephemeral: true,
+        });
+    }
+
+    // ── 賑やかしBot投稿チャンネル ──
+    if (sub === 'chatter_channel') {
+        const ch       = interaction.options.getChannel('channel');
+        const settings = getSettings();
+        settings.chatterChannelId = ch?.id ?? null;
+        saveSettings(settings);
+        const verb = ch ? `<#${ch.id}> に設定` : '解除';
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle('💬 賑やかしBot投稿チャンネル')
                     .setColor(ch ? COLOR.add : COLOR.remove)
                     .setDescription(verb)
                     .setTimestamp()
