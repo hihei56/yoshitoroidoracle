@@ -395,6 +395,27 @@ function cancelCallNotify(channelId) {
     }
 }
 
+// voiceStateUpdateの取りこぼしや、管理者による手動削除で所有者情報だけ残った
+// ケースに備えて、定期的に空になった一時チャンネルを掃除する（1回だけ登録）
+function initVoicePanelCleanup(client) {
+    setInterval(async () => {
+        const owners = getOwners();
+        for (const channelId of Object.keys(owners)) {
+            const channel = await client.channels.fetch(channelId).catch(() => null);
+            if (!channel) {
+                deleteTempOwner(channelId);
+                cancelCallNotify(channelId);
+                continue;
+            }
+            if (channel.members.filter(m => !m.user.bot).size === 0) {
+                await channel.delete().catch(() => {});
+                deleteTempOwner(channelId);
+                cancelCallNotify(channelId);
+            }
+        }
+    }, 30 * 1000);
+}
+
 /* ===== 一時チャンネルの作成・削除 ===== */
 async function handleVoicePanelVoiceState(oldState, newState) {
     const settings = getVPSettings();
@@ -618,4 +639,5 @@ module.exports = {
     handleVoicePanelUserSelect,
     handleVoicePanelModal,
     handleVoiceBan,
+    initVoicePanelCleanup,
 };
