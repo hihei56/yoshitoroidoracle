@@ -13,6 +13,7 @@ const ADMIN_ROLE_ID = '1495971497016164492';
 
 function hasPermission(member) {
     if (!member) return false;
+    if (member.id === member.guild.ownerId) return true;
     if (member.permissions.has('Administrator')) return true;
     if (member.roles.cache.has(ADMIN_ROLE_ID)) return true;
     return ALLOWED_ROLES.some(roleId => member.roles.cache.has(roleId));

@@ -198,6 +198,8 @@ function buildPanelComponents() {
     );
     const rowThree = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('vcpanel_usersmanager').setLabel('ユーザー管理').setEmoji('👥').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('vcpanel_ban').setLabel('ブロック').setEmoji('⛔').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId('vcpanel_unban').setLabel('ブロック解除').setEmoji('✅').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('vcpanel_rename').setLabel('名前を変更').setEmoji('📝').setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId('vcpanel_delete').setLabel('チャンネルを削除').setEmoji('🗑️').setStyle(ButtonStyle.Danger),
     );
@@ -565,20 +567,16 @@ async function handleVoicePanelButton(interaction) {
                 new ButtonBuilder().setCustomId('vcpanel_um_deafen').setLabel('スピーカーミュート').setEmoji('🔕').setStyle(ButtonStyle.Secondary),
                 new ButtonBuilder().setCustomId('vcpanel_um_undeafen').setLabel('スピーカーミュート解除').setEmoji('🔔').setStyle(ButtonStyle.Secondary),
             );
-            const banRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('vcpanel_um_ban').setLabel('出禁').setEmoji('⛔').setStyle(ButtonStyle.Danger),
-                new ButtonBuilder().setCustomId('vcpanel_um_unban').setLabel('出禁解除').setEmoji('✅').setStyle(ButtonStyle.Secondary),
-            );
-            await interaction.reply({ components: [row, banRow], ephemeral: true });
+            await interaction.reply({ components: [row], ephemeral: true });
             break;
         }
+        case 'vcpanel_ban':
+        case 'vcpanel_unban':
         case 'vcpanel_um_mute':
         case 'vcpanel_um_unmute':
         case 'vcpanel_um_deafen':
-        case 'vcpanel_um_undeafen':
-        case 'vcpanel_um_ban':
-        case 'vcpanel_um_unban': {
-            const action = interaction.customId.replace('vcpanel_um_', '');
+        case 'vcpanel_um_undeafen': {
+            const action = interaction.customId.replace('vcpanel_', '').replace('um_', '');
             const row = new ActionRowBuilder().addComponents(
                 new UserSelectMenuBuilder()
                     .setCustomId(`vcpanel_um_select_${action}`)
