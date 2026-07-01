@@ -450,6 +450,37 @@ new SlashCommandBuilder()
         .addSubcommand(sub =>
             sub.setName('status')
                 .setDescription('現在の設定を確認します。')
+        )
+        .addSubcommandGroup(group =>
+            group.setName('roomconfig')
+                .setDescription('特定ユーザーの一時ボイスチャンネルの永続設定を管理します。')
+                .addSubcommand(sub =>
+                    sub.setName('ban')
+                        .setDescription('指定ユーザーの部屋にユーザー/ロールを出禁にします（部屋を作り直しても引き継がれます）。')
+                        .addUserOption(opt => opt.setName('owner').setDescription('部屋の持ち主').setRequired(true))
+                        .addUserOption(opt => opt.setName('user').setDescription('出禁にするユーザー'))
+                        .addRoleOption(opt => opt.setName('role').setDescription('出禁にするロール'))
+                )
+                .addSubcommand(sub =>
+                    sub.setName('unban')
+                        .setDescription('指定ユーザーの部屋の出禁を解除します。')
+                        .addUserOption(opt => opt.setName('owner').setDescription('部屋の持ち主').setRequired(true))
+                        .addUserOption(opt => opt.setName('user').setDescription('出禁解除するユーザー'))
+                        .addRoleOption(opt => opt.setName('role').setDescription('出禁解除するロール'))
+                )
+                .addSubcommand(sub =>
+                    sub.setName('defaults')
+                        .setDescription('指定ユーザーの部屋のデフォルト設定（人数制限・ロック・NSFW）を変更します。')
+                        .addUserOption(opt => opt.setName('owner').setDescription('部屋の持ち主').setRequired(true))
+                        .addIntegerOption(opt => opt.setName('limit').setDescription('デフォルト人数制限（0で無制限）').setMinValue(0).setMaxValue(99))
+                        .addBooleanOption(opt => opt.setName('locked').setDescription('部屋を作成時に自動でロックするか'))
+                        .addBooleanOption(opt => opt.setName('nsfw').setDescription('NSFW設定にするか'))
+                )
+                .addSubcommand(sub =>
+                    sub.setName('show')
+                        .setDescription('指定ユーザーの部屋の永続設定を表示します。')
+                        .addUserOption(opt => opt.setName('owner').setDescription('部屋の持ち主').setRequired(true))
+                )
         ),
 
 ].map(command => command.toJSON());
