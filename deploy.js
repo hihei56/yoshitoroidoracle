@@ -442,7 +442,7 @@ new SlashCommandBuilder()
         )
         .addSubcommand(sub =>
             sub.setName('panel')
-                .setDescription('操作パネルをこのチャンネルに送信します。')
+                .setDescription('一時ボイスチャンネルのチャット内で、消えたパネルを再送信します。')
         )
         .addSubcommand(sub =>
             sub.setName('notify')

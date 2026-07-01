@@ -357,9 +357,20 @@ async function handleVoicePanel(interaction) {
     }
 
     if (sub === 'panel') {
-        const embed = buildPanelEmbed(interaction.guild);
+        // 任意のテキストチャンネルに投稿できてしまうと、ボタンを押した人自身の
+        // 「今いる一時ボイスチャンネル」を無関係な場所から操作できてしまうため、
+        // 既存の一時ボイスチャンネルのチャット内でのみ再投稿を許可する
+        const ownerId = getTempOwner(interaction.channel.id);
+        if (!ownerId) {
+            return interaction.reply({
+                content: '❌ このコマンドは一時ボイスチャンネルのチャット内でのみ使用できます（パネルを消してしまった場合の再投稿用）。',
+                ephemeral: true,
+            });
+        }
+        const embed = buildPanelEmbed(interaction.guild, ownerId);
         const components = buildPanelComponents();
-        await interaction.channel.send({ embeds: [embed], components });
+        const panelMsg = await interaction.channel.send({ embeds: [embed], components }).catch(() => null);
+        if (panelMsg) setPanelMessageId(interaction.channel.id, panelMsg.id);
         return interaction.reply({ content: '✅ パネルを送信しました。', ephemeral: true });
     }
 
