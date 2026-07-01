@@ -139,8 +139,24 @@ async function handleVoicePanel(interaction) {
 
 /* ===== 通話継続通知 ===== */
 const notifyTimers = new Map(); // channelId -> Timeout
+const notifyWebhookCache = new Map(); // textChannelId -> Webhook
 
-function scheduleCallNotify(channel, settings) {
+async function getNotifyWebhook(textChannel) {
+    if (notifyWebhookCache.has(textChannel.id)) return notifyWebhookCache.get(textChannel.id);
+    const hooks = await textChannel.fetchWebhooks();
+    let hook = hooks.find(h => h.owner?.id === textChannel.client.user.id && h.token);
+    if (!hook) hook = await textChannel.createWebhook({ name: '通話お知らせくん' });
+    notifyWebhookCache.set(textChannel.id, hook);
+    return hook;
+}
+
+function formatDateTimeJST(ts) {
+    const d = new Date(ts + 9 * 60 * 60 * 1000);
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getUTCFullYear()}/${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+}
+
+function scheduleCallNotify(channel, settings, ownerId, startedAt) {
     if (!settings.notifyChannelId) return;
     const minutes = settings.notifyMinutes ?? 5;
     const timer = setTimeout(async () => {
@@ -151,9 +167,29 @@ function scheduleCallNotify(channel, settings) {
 
         const notifyChannel = await channel.guild.channels.fetch(settings.notifyChannelId).catch(() => null);
         if (!notifyChannel) return;
+        const webhook = await getNotifyWebhook(notifyChannel).catch(() => null);
+        if (!webhook) return;
+
+        const owner = await channel.guild.members.fetch(ownerId).catch(() => null);
+        const avatarURL = owner?.user.displayAvatarURL({ extension: 'png', size: 128 })
+            ?? channel.client.user.displayAvatarURL({ extension: 'png', size: 128 });
         const roleMention = settings.notifyRoleId ? `<@&${settings.notifyRoleId}> ` : '';
-        await notifyChannel.send({
-            content: `${roleMention}🔊 **${current.name}** で通話が ${minutes}分 以上続いています。`,
+
+        const embed = new EmbedBuilder()
+            .setTitle('通話開始')
+            .setColor(0xEB459E)
+            .addFields(
+                { name: 'チャンネル', value: current.name, inline: true },
+                { name: '始めた人',   value: `${owner ? owner.displayName : '不明ユーザー'}さん`, inline: true },
+                { name: '開始時間',   value: formatDateTimeJST(startedAt), inline: true },
+            )
+            .setThumbnail(avatarURL);
+
+        await webhook.send({
+            content: `${roleMention}通話開始しました。`,
+            username: '通話お知らせくん',
+            avatarURL,
+            embeds: [embed],
             allowedMentions: { roles: settings.notifyRoleId ? [settings.notifyRoleId] : [] },
         }).catch(() => {});
     }, minutes * 60 * 1000);
@@ -182,7 +218,7 @@ async function handleVoicePanelVoiceState(oldState, newState) {
             });
             setTempOwner(channel.id, newState.member.id);
             await newState.member.voice.setChannel(channel).catch(() => {});
-            scheduleCallNotify(channel, settings);
+            scheduleCallNotify(channel, settings, newState.member.id, Date.now());
         } catch (e) {
             console.error('[VoicePanel] チャンネル作成エラー:', e);
         }
