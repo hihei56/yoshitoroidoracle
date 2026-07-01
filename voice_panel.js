@@ -7,12 +7,14 @@ const {
 } = require('discord.js');
 const { resolveDataPath, ensureDir, readJson, writeJson } = require('./dataPath');
 
-const SETTINGS_FILE = resolveDataPath('voice_panel_settings.json');
-const OWNERS_FILE   = resolveDataPath('voice_panel_owners.json');
-const PROFILES_FILE = resolveDataPath('voice_panel_profiles.json');
+const SETTINGS_FILE       = resolveDataPath('voice_panel_settings.json');
+const OWNERS_FILE         = resolveDataPath('voice_panel_owners.json');
+const PROFILES_FILE       = resolveDataPath('voice_panel_profiles.json');
+const PANEL_MESSAGES_FILE = resolveDataPath('voice_panel_messages.json');
 ensureDir(SETTINGS_FILE);
 ensureDir(OWNERS_FILE);
 ensureDir(PROFILES_FILE);
+ensureDir(PANEL_MESSAGES_FILE);
 
 function getVPSettings() {
     return {
@@ -44,6 +46,28 @@ function deleteTempOwner(channelId) {
     const owners = getOwners();
     delete owners[channelId];
     saveOwners(owners);
+    deletePanelMessageId(channelId);
+}
+
+// パネル埋め込みメッセージのID（出禁リスト等の変更時に編集して反映するため）
+function getPanelMessages() {
+    return readJson(PANEL_MESSAGES_FILE, {});
+}
+function savePanelMessages(messages) {
+    writeJson(PANEL_MESSAGES_FILE, messages);
+}
+function getPanelMessageId(channelId) {
+    return getPanelMessages()[channelId] ?? null;
+}
+function setPanelMessageId(channelId, messageId) {
+    const messages = getPanelMessages();
+    messages[channelId] = messageId;
+    savePanelMessages(messages);
+}
+function deletePanelMessageId(channelId) {
+    const messages = getPanelMessages();
+    delete messages[channelId];
+    savePanelMessages(messages);
 }
 
 /* ===== 部屋プロフィール（オーナー単位で永続化・管理者のみ変更） ===== */
@@ -73,6 +97,14 @@ function findActiveChannelId(ownerId) {
     return Object.keys(owners).find(chId => owners[chId] === ownerId) ?? null;
 }
 
+// ID一覧をメンション表示用に整形（embedのフィールド文字数上限1024を超えないよう40件で打ち切り）
+function formatMentionList(ids, mentionPrefix = '@') {
+    if (!ids.length) return 'なし';
+    const MAX = 40;
+    const shown = ids.slice(0, MAX).map(id => `<${mentionPrefix}${id}>`).join(' ');
+    return ids.length > MAX ? `${shown} 他${ids.length - MAX}件` : shown;
+}
+
 // 出禁対象かどうか（オーナー本人は常に除外＝自分のロール出禁で締め出されない）
 function isBanned(member, profile, ownerId) {
     if (member.id === ownerId) return false;
@@ -96,8 +128,8 @@ async function handleVoiceBan(interaction) {
     if (action === 'list') {
         return interaction.reply({
             content: [
-                `📋 出禁ユーザー: ${settings.bannedUserIds.length ? settings.bannedUserIds.map(id => `<@${id}>`).join(' ') : 'なし'}`,
-                `📋 出禁ロール: ${settings.bannedRoleIds.length ? settings.bannedRoleIds.map(id => `<@&${id}>`).join(' ') : 'なし'}`,
+                `📋 出禁ユーザー: ${formatMentionList(settings.bannedUserIds, '@')}`,
+                `📋 出禁ロール: ${formatMentionList(settings.bannedRoleIds, '@&')}`,
             ].join('\n'),
             ephemeral: true,
         });
@@ -169,18 +201,49 @@ async function applyProfileToActiveChannel(guild, ownerId, { unbannedUser, unban
     for (const member of channel.members.values()) {
         if (isBanned(member, profile, ownerId)) await member.voice.disconnect().catch(() => {});
     }
+
+    await refreshPanelEmbed(channel, ownerId);
 }
 
 const USER_LIMIT_CHOICES = [0, 1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 99];
 
+const UM_SELECT_TEXT_BY_ACTION = {
+    ban:      { placeholder: 'ブロックするユーザーを選択', content: '⛔ **ブロック**: 選択したユーザーはこの部屋に今後ずっと接続・閲覧できなくなります（部屋を削除しても引き継がれます）。' },
+    unban:    { placeholder: 'ブロック解除するユーザーを選択', content: '✅ **ブロック解除**: 選択したユーザーのブロックを解除します。' },
+    mute:     { placeholder: 'ミュートするユーザーを選択', content: '🔇 **ミュート**: 選択したユーザーをミュートします（一時的・退出でリセット）。' },
+    unmute:   { placeholder: 'ミュート解除するユーザーを選択', content: '🔊 **ミュート解除**: 選択したユーザーのミュートを解除します。' },
+    deafen:   { placeholder: 'スピーカーミュートするユーザーを選択', content: '🔕 **スピーカーミュート**: 選択したユーザーの音声受信を止めます（一時的・退出でリセット）。' },
+    undeafen: { placeholder: 'スピーカーミュート解除するユーザーを選択', content: '🔔 **スピーカーミュート解除**: 選択したユーザーのスピーカーミュートを解除します。' },
+};
+
 /* ===== パネル embed & コンポーネント ===== */
-function buildPanelEmbed(guild) {
-    return new EmbedBuilder()
+function buildPanelEmbed(guild, ownerId = null) {
+    const embed = new EmbedBuilder()
         .setAuthor({ name: '一時ボイスチャンネル パネル', iconURL: guild.client.user.displayAvatarURL() })
         .setDescription('*ボタンを押して、自分の一時ボイスチャンネルを操作できます。*')
         .setColor(0x5865F2)
         .setFooter({ text: guild.name, iconURL: guild.iconURL() ?? undefined })
         .setTimestamp();
+
+    if (ownerId) {
+        const profile = getRoomProfile(ownerId);
+        embed.addFields({ name: '⛔ ブロックリスト', value: formatMentionList(profile.bannedUserIds, '@') });
+    }
+    return embed;
+}
+
+// 出禁リストの変更などをパネルの埋め込みに反映する。呼び出し元でのハンドリング漏れを
+// 避けるため、失敗（embed組み立て・API呼び出しとも）はここで完結させ例外を伝播させない。
+async function refreshPanelEmbed(channel, ownerId) {
+    try {
+        const messageId = getPanelMessageId(channel.id);
+        if (!messageId) return;
+        const message = await channel.messages.fetch(messageId).catch(() => null);
+        if (!message) return;
+        await message.edit({ embeds: [buildPanelEmbed(channel.guild, ownerId)] }).catch(() => {});
+    } catch (e) {
+        console.error('[VoicePanel] パネル更新エラー:', e);
+    }
 }
 
 function buildPanelComponents() {
@@ -268,8 +331,8 @@ async function handleVoicePanel(interaction) {
             return interaction.reply({
                 content: [
                     `📋 対象: ${owner}`,
-                    `📋 出禁ユーザー: ${profile.bannedUserIds.length ? profile.bannedUserIds.map(id => `<@${id}>`).join(' ') : 'なし'}`,
-                    `📋 出禁ロール: ${profile.bannedRoleIds.length ? profile.bannedRoleIds.map(id => `<@&${id}>`).join(' ') : 'なし'}`,
+                    `📋 出禁ユーザー: ${formatMentionList(profile.bannedUserIds, '@')}`,
+                    `📋 出禁ロール: ${formatMentionList(profile.bannedRoleIds, '@&')}`,
                     `📋 デフォルト人数制限: ${profile.defaultUserLimit ?? '未設定（参加用チャンネルと同じ）'}`,
                     `📋 デフォルトロック: ${profile.defaultLocked ? '有効' : '無効'}`,
                     `📋 NSFW: ${profile.nsfw ? '有効' : '無効'}`,
@@ -447,10 +510,11 @@ async function handleVoicePanelVoiceState(oldState, newState) {
             }
 
             await newState.member.voice.setChannel(channel).catch(() => {});
-            await channel.send({
-                embeds: [buildPanelEmbed(newState.guild)],
+            const panelMsg = await channel.send({
+                embeds: [buildPanelEmbed(newState.guild, newState.member.id)],
                 components: buildPanelComponents(),
-            }).catch(() => {});
+            }).catch(() => null);
+            if (panelMsg) setPanelMessageId(channel.id, panelMsg.id);
             scheduleCallNotify(channel, settings, newState.member.id, Date.now());
         } catch (e) {
             console.error('[VoicePanel] チャンネル作成エラー:', e);
@@ -577,14 +641,15 @@ async function handleVoicePanelButton(interaction) {
         case 'vcpanel_um_deafen':
         case 'vcpanel_um_undeafen': {
             const action = interaction.customId.replace('vcpanel_', '').replace('um_', '');
+            const UM_SELECT_TEXT = UM_SELECT_TEXT_BY_ACTION[action];
             const row = new ActionRowBuilder().addComponents(
                 new UserSelectMenuBuilder()
                     .setCustomId(`vcpanel_um_select_${action}`)
-                    .setPlaceholder('ユーザーを選択')
+                    .setPlaceholder(UM_SELECT_TEXT.placeholder)
                     .setMinValues(1)
                     .setMaxValues(1),
             );
-            await interaction.reply({ components: [row], ephemeral: true });
+            await interaction.reply({ content: UM_SELECT_TEXT.content, components: [row], ephemeral: true });
             break;
         }
     }
@@ -609,9 +674,12 @@ async function handleVoicePanelUserSelect(interaction) {
 
     // 出禁/出禁解除は部屋の永続プロフィールに反映（部屋を作り直しても引き継がれる）
     if (action === 'ban' || action === 'unban') {
-        if (targetId === interaction.user.id) return; // 自分自身は対象外
+        if (targetId === interaction.user.id) {
+            return interaction.editReply({ content: '❌ 自分自身はブロックできません。', components: [] });
+        }
         const profile = getRoomProfile(interaction.user.id);
         const target  = await interaction.guild.members.fetch(targetId).catch(() => null);
+        const targetMention = target ? `${target}` : `<@${targetId}>`;
 
         if (action === 'ban') {
             if (!profile.bannedUserIds.includes(targetId)) profile.bannedUserIds.push(targetId);
@@ -623,7 +691,16 @@ async function handleVoicePanelUserSelect(interaction) {
             saveRoomProfile(interaction.user.id, profile);
             await channel.permissionOverwrites.delete(target ?? targetId).catch(() => {});
         }
-        return;
+
+        await refreshPanelEmbed(channel, interaction.user.id);
+
+        const listText = formatMentionList(profile.bannedUserIds, '@');
+        return interaction.editReply({
+            content: action === 'ban'
+                ? `⛔ ${targetMention} をこの部屋からブロックしました。\n📋 現在のブロックリスト: ${listText}`
+                : `✅ ${targetMention} のブロックを解除しました。\n📋 現在のブロックリスト: ${listText}`,
+            components: [],
+        });
     }
 
     const member = channel.members.get(targetId);
