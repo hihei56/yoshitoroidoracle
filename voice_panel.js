@@ -7,6 +7,16 @@ const {
 } = require('discord.js');
 const { resolveDataPath, ensureDir, readJson, writeJson } = require('./dataPath');
 
+const ADMIN_ROLE_ID = '1495971497016164492';
+
+// 管理者は自分の部屋でなくても、どの一時ボイスチャンネルのパネルも操作できる
+function isRoomAdmin(member) {
+    if (!member) return false;
+    if (member.id === member.guild.ownerId) return true;
+    if (member.permissions.has('Administrator')) return true;
+    return member.roles.cache.has(ADMIN_ROLE_ID);
+}
+
 const SETTINGS_FILE       = resolveDataPath('voice_panel_settings.json');
 const OWNERS_FILE         = resolveDataPath('voice_panel_owners.json');
 const PROFILES_FILE       = resolveDataPath('voice_panel_profiles.json');
@@ -558,12 +568,15 @@ async function handleVoicePanelVoiceState(oldState, newState) {
 
 /* ===== 所有者チェック ===== */
 function verifyOwner(interaction) {
-    const channel = interaction.member.voice.channel;
-    if (!channel) return { error: '❌ 一時ボイスチャンネルに参加していません。参加用チャンネルから作成してください。' };
-    if (getTempOwner(channel.id) !== interaction.user.id) {
+    // パネルは必ずその一時ボイスチャンネル自身のチャットに置かれるため、
+    // 操作対象は「押した人の現在のボイス接続先」ではなく「パネルがあるチャンネル」とする
+    const channel = interaction.channel;
+    const ownerId = getTempOwner(channel.id);
+    if (!ownerId) return { error: '❌ この一時ボイスチャンネルの情報が見つかりません。' };
+    if (ownerId !== interaction.user.id && !isRoomAdmin(interaction.member)) {
         return { error: '❌ このチャンネルの所有者ではありません。' };
     }
-    return { channel };
+    return { channel, ownerId };
 }
 
 /* ===== ボタン ===== */
@@ -676,7 +689,7 @@ async function handleVoicePanelSelect(interaction) {
 
 /* ===== ユーザー管理セレクトメニュー ===== */
 async function handleVoicePanelUserSelect(interaction) {
-    const { channel, error } = verifyOwner(interaction);
+    const { channel, ownerId, error } = verifyOwner(interaction);
     if (error) return interaction.reply({ content: error, ephemeral: true });
     await interaction.deferUpdate();
 
@@ -685,25 +698,25 @@ async function handleVoicePanelUserSelect(interaction) {
 
     // 出禁/出禁解除は部屋の永続プロフィールに反映（部屋を作り直しても引き継がれる）
     if (action === 'ban' || action === 'unban') {
-        if (targetId === interaction.user.id) {
-            return interaction.editReply({ content: '❌ 自分自身はブロックできません。', components: [] });
+        if (targetId === ownerId) {
+            return interaction.editReply({ content: '❌ 部屋の所有者はブロックできません。', components: [] });
         }
-        const profile = getRoomProfile(interaction.user.id);
+        const profile = getRoomProfile(ownerId);
         const target  = await interaction.guild.members.fetch(targetId).catch(() => null);
         const targetMention = target ? `${target}` : `<@${targetId}>`;
 
         if (action === 'ban') {
             if (!profile.bannedUserIds.includes(targetId)) profile.bannedUserIds.push(targetId);
-            saveRoomProfile(interaction.user.id, profile);
+            saveRoomProfile(ownerId, profile);
             await channel.permissionOverwrites.edit(target ?? targetId, { Connect: false, ViewChannel: false }).catch(() => {});
             if (target?.voice.channelId === channel.id) await target.voice.disconnect().catch(() => {});
         } else {
             profile.bannedUserIds = profile.bannedUserIds.filter(id => id !== targetId);
-            saveRoomProfile(interaction.user.id, profile);
+            saveRoomProfile(ownerId, profile);
             await channel.permissionOverwrites.delete(target ?? targetId).catch(() => {});
         }
 
-        await refreshPanelEmbed(channel, interaction.user.id);
+        await refreshPanelEmbed(channel, ownerId);
 
         const listText = formatMentionList(profile.bannedUserIds, '@');
         return interaction.editReply({
