@@ -15,10 +15,12 @@ ensureDir(OWNERS_FILE);
 ensureDir(PROFILES_FILE);
 
 function getVPSettings() {
-    return readJson(SETTINGS_FILE, {
+    return {
         joinChannelId: null, categoryId: null,
         notifyChannelId: null, notifyRoleId: null, notifyMinutes: 5,
-    });
+        bannedUserIds: [], bannedRoleIds: [],
+        ...readJson(SETTINGS_FILE, {}),
+    };
 }
 function saveVPSettings(settings) {
     writeJson(SETTINGS_FILE, settings);
@@ -76,6 +78,57 @@ function isBanned(member, profile, ownerId) {
     if (member.id === ownerId) return false;
     if (profile.bannedUserIds.includes(member.id)) return true;
     return profile.bannedRoleIds.some(rid => member.roles.cache.has(rid));
+}
+
+// 一時ボイスチャンネル機能自体の利用を禁止されているか（サーバー全体・管理者設定）
+function isGloballyBanned(member, settings) {
+    if (settings.bannedUserIds.includes(member.id)) return true;
+    return settings.bannedRoleIds.some(rid => member.roles.cache.has(rid));
+}
+
+/* ===== /admin voice_ban コマンド ===== */
+async function handleVoiceBan(interaction) {
+    const action = interaction.options.getString('action');
+    const user   = interaction.options.getUser('user');
+    const role   = interaction.options.getRole('role');
+    const settings = getVPSettings();
+
+    if (action === 'list') {
+        return interaction.reply({
+            content: [
+                `📋 出禁ユーザー: ${settings.bannedUserIds.length ? settings.bannedUserIds.map(id => `<@${id}>`).join(' ') : 'なし'}`,
+                `📋 出禁ロール: ${settings.bannedRoleIds.length ? settings.bannedRoleIds.map(id => `<@&${id}>`).join(' ') : 'なし'}`,
+            ].join('\n'),
+            ephemeral: true,
+        });
+    }
+
+    if (!user && !role) {
+        return interaction.reply({ content: '❌ user または role のどちらかを指定してください。', ephemeral: true });
+    }
+
+    if (action === 'add') {
+        if (user && !settings.bannedUserIds.includes(user.id)) settings.bannedUserIds.push(user.id);
+        if (role && !settings.bannedRoleIds.includes(role.id)) settings.bannedRoleIds.push(role.id);
+        saveVPSettings(settings);
+        if (user) {
+            const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+            if (member?.voice.channel && (member.voice.channelId === settings.joinChannelId || getTempOwner(member.voice.channelId))) {
+                await member.voice.disconnect().catch(() => {});
+            }
+        }
+        return interaction.reply({
+            content: `✅ ${user ?? role} を一時ボイスチャンネル機能から出禁にしました（作成・参加とも不可）。`,
+            ephemeral: true,
+        });
+    }
+
+    if (action === 'remove') {
+        if (user) settings.bannedUserIds = settings.bannedUserIds.filter(id => id !== user.id);
+        if (role) settings.bannedRoleIds = settings.bannedRoleIds.filter(id => id !== role.id);
+        saveVPSettings(settings);
+        return interaction.reply({ content: `✅ ${user ?? role} の出禁を解除しました。`, ephemeral: true });
+    }
 }
 
 // オーナーは常にConnect/ViewChannelを明示許可し、出禁ユーザー/ロールを個別に拒否する。
@@ -339,7 +392,14 @@ function cancelCallNotify(channelId) {
 async function handleVoicePanelVoiceState(oldState, newState) {
     const settings = getVPSettings();
 
-    if (settings.joinChannelId && newState.channelId === settings.joinChannelId) {
+    // 一時ボイスチャンネル機能自体を禁止されているユーザーは、参加用チャンネル・
+    // 既存の一時チャンネルのどちらに入っても即切断し、作成もさせない
+    const globallyBanned = newState.channelId && newState.member
+        && isGloballyBanned(newState.member, settings)
+        && (newState.channelId === settings.joinChannelId || getTempOwner(newState.channelId));
+    if (globallyBanned) {
+        await newState.member.voice.disconnect().catch(() => {});
+    } else if (settings.joinChannelId && newState.channelId === settings.joinChannelId) {
         try {
             const profile = getRoomProfile(newState.member.id);
             const channel = await newState.guild.channels.create({
@@ -546,4 +606,5 @@ module.exports = {
     handleVoicePanelSelect,
     handleVoicePanelUserSelect,
     handleVoicePanelModal,
+    handleVoiceBan,
 };
