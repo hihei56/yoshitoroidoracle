@@ -3,14 +3,16 @@ const {
     EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
     StringSelectMenuBuilder, UserSelectMenuBuilder,
     ModalBuilder, TextInputBuilder, TextInputStyle,
-    ChannelType, PermissionsBitField,
+    ChannelType,
 } = require('discord.js');
 const { resolveDataPath, ensureDir, readJson, writeJson } = require('./dataPath');
 
 const SETTINGS_FILE = resolveDataPath('voice_panel_settings.json');
 const OWNERS_FILE   = resolveDataPath('voice_panel_owners.json');
+const PROFILES_FILE = resolveDataPath('voice_panel_profiles.json');
 ensureDir(SETTINGS_FILE);
 ensureDir(OWNERS_FILE);
+ensureDir(PROFILES_FILE);
 
 function getVPSettings() {
     return readJson(SETTINGS_FILE, {
@@ -40,6 +42,73 @@ function deleteTempOwner(channelId) {
     const owners = getOwners();
     delete owners[channelId];
     saveOwners(owners);
+}
+
+/* ===== 部屋プロフィール（オーナー単位で永続化・管理者のみ変更） ===== */
+function getProfiles() {
+    return readJson(PROFILES_FILE, {});
+}
+function saveProfiles(profiles) {
+    writeJson(PROFILES_FILE, profiles);
+}
+function getRoomProfile(ownerId) {
+    const profiles = getProfiles();
+    return {
+        bannedUserIds: [], bannedRoleIds: [],
+        defaultUserLimit: null, defaultLocked: false, nsfw: false,
+        ...profiles[ownerId],
+    };
+}
+function saveRoomProfile(ownerId, profile) {
+    const profiles = getProfiles();
+    profiles[ownerId] = profile;
+    saveProfiles(profiles);
+}
+
+// そのオーナーが現在保有している一時チャンネルIDを探す
+function findActiveChannelId(ownerId) {
+    const owners = getOwners();
+    return Object.keys(owners).find(chId => owners[chId] === ownerId) ?? null;
+}
+
+// 出禁対象かどうか（オーナー本人は常に除外＝自分のロール出禁で締め出されない）
+function isBanned(member, profile, ownerId) {
+    if (member.id === ownerId) return false;
+    if (profile.bannedUserIds.includes(member.id)) return true;
+    return profile.bannedRoleIds.some(rid => member.roles.cache.has(rid));
+}
+
+// オーナーは常にConnect/ViewChannelを明示許可し、出禁ユーザー/ロールを個別に拒否する。
+// .edit()/.delete()は対象IDだけを操作するため、カテゴリ由来のオーバーライドや
+// ロック/非表示状態など、他のオーバーライドを巻き込んで消すことがない。
+async function applyBanOverwrites(channel, ownerId, profile) {
+    await channel.permissionOverwrites.edit(ownerId, { Connect: true, ViewChannel: true }).catch(() => {});
+    for (const uid of profile.bannedUserIds) {
+        if (uid === ownerId) continue;
+        await channel.permissionOverwrites.edit(uid, { Connect: false, ViewChannel: false }).catch(() => {});
+    }
+    for (const rid of profile.bannedRoleIds) {
+        await channel.permissionOverwrites.edit(rid, { Connect: false, ViewChannel: false }).catch(() => {});
+    }
+}
+
+// 管理者が出禁設定を変更した際、既に存在する一時チャンネルへ即時反映する
+async function applyProfileToActiveChannel(guild, ownerId, { unbannedUserId, unbannedRoleId } = {}) {
+    const channelId = findActiveChannelId(ownerId);
+    if (!channelId) return;
+    const channel = guild.channels.cache.get(channelId);
+    if (!channel) return;
+
+    if (unbannedUserId) await channel.permissionOverwrites.delete(unbannedUserId).catch(() => {});
+    if (unbannedRoleId) await channel.permissionOverwrites.delete(unbannedRoleId).catch(() => {});
+
+    const profile = getRoomProfile(ownerId);
+    await applyBanOverwrites(channel, ownerId, profile);
+
+    // 現在接続中の出禁対象を切断
+    for (const member of channel.members.values()) {
+        if (isBanned(member, profile, ownerId)) await member.voice.disconnect().catch(() => {});
+    }
 }
 
 const USER_LIMIT_CHOICES = [0, 1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 99];
@@ -85,7 +154,69 @@ function buildPanelComponents() {
 
 /* ===== /voicepanel コマンド ===== */
 async function handleVoicePanel(interaction) {
-    const sub = interaction.options.getSubcommand();
+    const group = interaction.options.getSubcommandGroup(false);
+    const sub   = interaction.options.getSubcommand();
+
+    if (group === 'roomconfig') {
+        const owner   = interaction.options.getUser('owner');
+        const profile = getRoomProfile(owner.id);
+
+        if (sub === 'ban' || sub === 'unban') {
+            const targetUser = interaction.options.getUser('user');
+            const targetRole = interaction.options.getRole('role');
+            if (!targetUser && !targetRole) {
+                return interaction.reply({ content: '❌ user または role のどちらかを指定してください。', ephemeral: true });
+            }
+
+            if (sub === 'ban') {
+                if (targetUser && !profile.bannedUserIds.includes(targetUser.id)) profile.bannedUserIds.push(targetUser.id);
+                if (targetRole && !profile.bannedRoleIds.includes(targetRole.id)) profile.bannedRoleIds.push(targetRole.id);
+                saveRoomProfile(owner.id, profile);
+                await applyProfileToActiveChannel(interaction.guild, owner.id);
+                return interaction.reply({
+                    content: `✅ ${owner} の部屋から ${targetUser ?? targetRole} を出禁にしました。`,
+                    ephemeral: true,
+                });
+            }
+
+            if (targetUser) profile.bannedUserIds = profile.bannedUserIds.filter(id => id !== targetUser.id);
+            if (targetRole) profile.bannedRoleIds = profile.bannedRoleIds.filter(id => id !== targetRole.id);
+            saveRoomProfile(owner.id, profile);
+            await applyProfileToActiveChannel(interaction.guild, owner.id, {
+                unbannedUserId: targetUser?.id, unbannedRoleId: targetRole?.id,
+            });
+            return interaction.reply({
+                content: `✅ ${owner} の部屋の出禁を解除しました（${targetUser ?? targetRole}）。`,
+                ephemeral: true,
+            });
+        }
+
+        if (sub === 'defaults') {
+            const limit  = interaction.options.getInteger('limit');
+            const locked = interaction.options.getBoolean('locked');
+            const nsfw   = interaction.options.getBoolean('nsfw');
+            if (limit !== null)  profile.defaultUserLimit = limit;
+            if (locked !== null) profile.defaultLocked    = locked;
+            if (nsfw !== null)   profile.nsfw             = nsfw;
+            saveRoomProfile(owner.id, profile);
+            return interaction.reply({ content: `✅ ${owner} の部屋のデフォルト設定を更新しました。`, ephemeral: true });
+        }
+
+        if (sub === 'show') {
+            return interaction.reply({
+                content: [
+                    `📋 対象: ${owner}`,
+                    `📋 出禁ユーザー: ${profile.bannedUserIds.length ? profile.bannedUserIds.map(id => `<@${id}>`).join(' ') : 'なし'}`,
+                    `📋 出禁ロール: ${profile.bannedRoleIds.length ? profile.bannedRoleIds.map(id => `<@&${id}>`).join(' ') : 'なし'}`,
+                    `📋 デフォルト人数制限: ${profile.defaultUserLimit ?? '未設定（参加用チャンネルと同じ）'}`,
+                    `📋 デフォルトロック: ${profile.defaultLocked ? '有効' : '無効'}`,
+                    `📋 NSFW: ${profile.nsfw ? '有効' : '無効'}`,
+                ].join('\n'),
+                ephemeral: true,
+            });
+        }
+        return;
+    }
 
     if (sub === 'setup') {
         const joinChannel = interaction.options.getChannel('join_channel');
@@ -210,17 +341,36 @@ async function handleVoicePanelVoiceState(oldState, newState) {
 
     if (settings.joinChannelId && newState.channelId === settings.joinChannelId) {
         try {
+            const profile = getRoomProfile(newState.member.id);
             const channel = await newState.guild.channels.create({
                 name: `${newState.member.displayName}のチャンネル`,
                 type: ChannelType.GuildVoice,
                 parent: settings.categoryId || newState.channel.parentId,
-                userLimit: newState.channel.userLimit || 0,
+                userLimit: profile.defaultUserLimit ?? (newState.channel.userLimit || 0),
+                nsfw: profile.nsfw,
             });
             setTempOwner(channel.id, newState.member.id);
+
+            await applyBanOverwrites(channel, newState.member.id, profile);
+            if (profile.defaultLocked) {
+                await channel.permissionOverwrites.edit(newState.guild.roles.everyone.id, { Connect: false }).catch(() => {});
+            }
+
             await newState.member.voice.setChannel(channel).catch(() => {});
             scheduleCallNotify(channel, settings, newState.member.id, Date.now());
         } catch (e) {
             console.error('[VoicePanel] チャンネル作成エラー:', e);
+        }
+    }
+
+    // 出禁対象が一時チャンネルに残っていたら切断（オーバーライド反映前の入室等への保険）
+    if (newState.channelId && newState.member) {
+        const roomOwnerId = getTempOwner(newState.channelId);
+        if (roomOwnerId) {
+            const profile = getRoomProfile(roomOwnerId);
+            if (isBanned(newState.member, profile, roomOwnerId)) {
+                await newState.member.voice.disconnect().catch(() => {});
+            }
         }
     }
 
@@ -255,29 +405,19 @@ async function handleVoicePanelButton(interaction) {
     switch (interaction.customId) {
         case 'vcpanel_lock':
             await interaction.deferUpdate();
-            await channel.permissionOverwrites.set([
-                { id: interaction.guild.roles.everyone.id, deny: [PermissionsBitField.Flags.Connect] },
-                { id: interaction.user.id, allow: [PermissionsBitField.Flags.Connect] },
-            ]);
+            await channel.permissionOverwrites.edit(interaction.guild.roles.everyone.id, { Connect: false }).catch(() => {});
             break;
         case 'vcpanel_unlock':
             await interaction.deferUpdate();
-            await channel.permissionOverwrites.set([
-                { id: interaction.guild.roles.everyone.id, allow: [PermissionsBitField.Flags.Connect] },
-            ]);
+            await channel.permissionOverwrites.edit(interaction.guild.roles.everyone.id, { Connect: true }).catch(() => {});
             break;
         case 'vcpanel_hide':
             await interaction.deferUpdate();
-            await channel.permissionOverwrites.set([
-                { id: interaction.guild.roles.everyone.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-                { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel] },
-            ]);
+            await channel.permissionOverwrites.edit(interaction.guild.roles.everyone.id, { ViewChannel: false }).catch(() => {});
             break;
         case 'vcpanel_unhide':
             await interaction.deferUpdate();
-            await channel.permissionOverwrites.set([
-                { id: interaction.guild.roles.everyone.id, allow: [PermissionsBitField.Flags.ViewChannel] },
-            ]);
+            await channel.permissionOverwrites.edit(interaction.guild.roles.everyone.id, { ViewChannel: true }).catch(() => {});
             break;
         case 'vcpanel_mute':
             await interaction.deferUpdate();
