@@ -25,6 +25,9 @@ const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp
 const COOLDOWN_MS = 10 * 1000;
 const lastUsed = new Map();
 
+// メンションなし(自動応答チャンネル)時の反応確率。毎回反応すると高頻度すぎるので間引く
+const AUTO_CHANNEL_RESPONSE_RATE = 0.2;
+
 // チャンネルごとの直近履歴(3往復)
 const HISTORY_LIMIT = 6;
 const history = new Map();
@@ -103,19 +106,28 @@ function buildSystemPrompt() {
 
 async function handleYoshiyoshi(message, client) {
     if (message.author.bot) return;
-    if (!message.mentions.has(client.user)) return;
-    // リプライの自動メンションでは発火させない(明示メンションのみ)
-    if (!message.content.includes(`<@${client.user.id}>`) &&
-        !message.content.includes(`<@!${client.user.id}>`)) return;
 
-    // config に yoshiyoshiChannelId を入れればチャンネル限定にできる
-    const settings = getSettings();
-    if (settings.yoshiyoshiChannelId && message.channelId !== settings.yoshiyoshiChannelId) return;
+    // 明示メンション(リプライの自動メンションは含めない)
+    const mentioned = message.mentions.has(client.user) && (
+        message.content.includes(`<@${client.user.id}>`) ||
+        message.content.includes(`<@!${client.user.id}>`)
+    );
+
+    // /admin yoshiyoshi_channel で設定したチャンネルなら、メンションなしでも反応する
+    const settings   = getSettings();
+    const inAutoChannel = !!settings.yoshiyoshiChannelId && message.channelId === settings.yoshiyoshiChannelId;
+    if (!mentioned && !inAutoChannel) return;
+
+    // メンションなし・自動応答チャンネル時は、そんな高頻度で反応しなくていいので確率で間引く
+    if (!mentioned && Math.random() > AUTO_CHANNEL_RESPONSE_RATE) return;
+
+    // /admin yoshiyoshi_ignore で設定した無視ユーザーには一切反応しない
+    if ((settings.yoshiyoshiIgnoredUsers ?? []).includes(message.author.id)) return;
 
     // クールダウン
     const now = Date.now();
     if (now - (lastUsed.get(message.author.id) ?? 0) < COOLDOWN_MS) {
-        return message.react('🕐').catch(() => {});
+        return mentioned ? message.react('🕐').catch(() => {}) : undefined;
     }
     lastUsed.set(message.author.id, now);
 

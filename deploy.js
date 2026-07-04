@@ -145,6 +145,34 @@ new SlashCommandBuilder()
         )
         .addSubcommand(subcommand =>
             subcommand
+                .setName('yoshiyoshi_channel')
+                .setDescription('よしよし機能がメンションなしで自動応答するチャンネルを設定します。未指定で解除。')
+                .addChannelOption(option =>
+                    option.setName('channel')
+                        .setDescription('自動応答チャンネル（省略で解除）')
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('yoshiyoshi_ignore')
+                .setDescription('よしよし機能が反応しないユーザーを管理します。')
+                .addStringOption(opt =>
+                    opt.setName('action')
+                        .setDescription('操作を選択')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: '追加', value: 'add'    },
+                            { name: '解除', value: 'remove' },
+                            { name: '一覧', value: 'list'   },
+                        )
+                )
+                .addUserOption(opt =>
+                    opt.setName('user')
+                        .setDescription('対象ユーザー（add/remove時に必須）')
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('status')
                 .setDescription('現在の管理設定を表示します。')
         )

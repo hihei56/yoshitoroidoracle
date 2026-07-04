@@ -20,6 +20,8 @@ function getSettings() {
     if (data.chineseThinkerReplace === undefined)     data.chineseThinkerReplace     = true;
     if (!data.chineseThinkerExcludeUsers)             data.chineseThinkerExcludeUsers = [];
     if (!data.cryAllowedUsers)                        data.cryAllowedUsers = [];
+    if (data.yoshiyoshiChannelId === undefined)        data.yoshiyoshiChannelId = null;
+    if (!data.yoshiyoshiIgnoredUsers)                  data.yoshiyoshiIgnoredUsers = [];
     return data;
 }
 

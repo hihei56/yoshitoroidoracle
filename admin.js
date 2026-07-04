@@ -66,6 +66,8 @@ function buildStatusEmbed() {
     const logCh     = settings.anonLogChannelId ? `<#${settings.anonLogChannelId}>` : '未設定';
     const lurkerCh  = settings.lurkerChannelId  ? `<#${settings.lurkerChannelId}>`  : '未設定';
     const chatterCh = settings.chatterChannelId ? `<#${settings.chatterChannelId}>` : '未設定（目覚ましチャンネルと共通）';
+    const yoshiyoshiCh = settings.yoshiyoshiChannelId ? `<#${settings.yoshiyoshiChannelId}>` : '未設定（メンション時のみ反応）';
+    const yoshiyoshiIgnored = settings.yoshiyoshiIgnoredUsers ?? [];
     const thinkerEnabled = settings.chineseThinkerReplace !== false;
     const thinkerExcl    = (settings.chineseThinkerExcludeUsers ?? []);
     const thinker        = thinkerEnabled
@@ -88,6 +90,8 @@ function buildStatusEmbed() {
             { name: '💬 賑やかしBot投稿チャンネル', value: chatterCh, inline: false },
             { name: '🀄 中国思想家置き換え',  value: thinker,   inline: false },
             { name: '😿 Webhook化許可ユーザー', value: fmtUsers(settings.cryAllowedUsers), inline: false },
+            { name: 'よしよし 自動応答チャンネル', value: yoshiyoshiCh, inline: false },
+            { name: 'よしよし 無視ユーザー',   value: fmtUsers(yoshiyoshiIgnored), inline: false },
         )
         .setTimestamp();
 }
@@ -248,6 +252,71 @@ async function handleAdmin(interaction) {
                     .setTitle('💬 賑やかしBot投稿チャンネル')
                     .setColor(ch ? COLOR.add : COLOR.remove)
                     .setDescription(verb)
+                    .setTimestamp()
+            ],
+            ephemeral: true,
+        });
+    }
+
+    // ── よしよし自動応答チャンネル ──
+    if (sub === 'yoshiyoshi_channel') {
+        const ch       = interaction.options.getChannel('channel');
+        const settings = getSettings();
+        settings.yoshiyoshiChannelId = ch?.id ?? null;
+        saveSettings(settings);
+        const verb = ch ? `<#${ch.id}> に設定` : '解除';
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle('よしよし 自動応答チャンネル')
+                    .setColor(ch ? COLOR.add : COLOR.remove)
+                    .setDescription(verb)
+                    .setTimestamp()
+            ],
+            ephemeral: true,
+        });
+    }
+
+    // ── よしよし無視ユーザー ──
+    if (sub === 'yoshiyoshi_ignore') {
+        const action     = interaction.options.getString('action');
+        const targetUser = interaction.options.getUser('user');
+        const settings   = getSettings();
+        if (!settings.yoshiyoshiIgnoredUsers) settings.yoshiyoshiIgnoredUsers = [];
+
+        if (action === 'list') {
+            const list = settings.yoshiyoshiIgnoredUsers;
+            return interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('よしよし 無視ユーザー一覧')
+                        .setColor(COLOR.info)
+                        .setDescription(list.length ? list.map(id => `<@${id}>`).join('\n') : 'なし')
+                        .setTimestamp()
+                ],
+                ephemeral: true,
+            });
+        }
+
+        if (!targetUser) {
+            return interaction.reply({ content: 'ユーザーを指定してください。', ephemeral: true });
+        }
+
+        if (action === 'add') {
+            if (!settings.yoshiyoshiIgnoredUsers.includes(targetUser.id))
+                settings.yoshiyoshiIgnoredUsers.push(targetUser.id);
+        } else {
+            settings.yoshiyoshiIgnoredUsers = settings.yoshiyoshiIgnoredUsers.filter(id => id !== targetUser.id);
+        }
+        saveSettings(settings);
+
+        const verb = action === 'add' ? '無視に追加' : '無視から解除';
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle(`よしよし — ${verb}`)
+                    .setColor(action === 'add' ? COLOR.add : COLOR.remove)
+                    .setDescription(`<@${targetUser.id}>`)
                     .setTimestamp()
             ],
             ephemeral: true,
