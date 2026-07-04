@@ -29,22 +29,44 @@ const lastUsed = new Map();
 const HISTORY_LIMIT = 6;
 const history = new Map();
 
-// ── 今日のよしよし対象(lurkerから24時間に1回選出・sticky流用) ──
+// ── 今日のよしよし投稿者(lurkerから24時間に1回選出・sticky流用) ──
 // lurker_picker の sticky ストアはキー文字列を汎用IDとして扱えるので、
 // /imp の実行者IDと衝突しない固定キーを使い回す
 const DAILY_TARGET_KEY = 'yoshiyoshi_daily_target';
 let _lastDailyTargetId = null;
 
-async function getDailyTarget(guild) {
-    const cached = getSticky(DAILY_TARGET_KEY);
-    if (cached) return cached;
+async function getDailyPoster(guild) {
+    const cachedId = getSticky(DAILY_TARGET_KEY);
+    if (cachedId) {
+        const member = await guild.members.fetch(cachedId).catch(() => null);
+        if (member) return member;
+    }
 
     const { member } = await pickOneLurker(guild, { lastPickedId: _lastDailyTargetId });
     if (!member) return null;
 
     setSticky(DAILY_TARGET_KEY, member.id);
     _lastDailyTargetId = member.id;
-    return member.id;
+    return member;
+}
+
+// ── webhookでlurkerに擬態して送信するための取得/作成 ──
+const webhookCache = new Map();
+async function getWebhook(channel, client) {
+    const targetChannel = channel.isThread() ? channel.parent : channel;
+    let wh = webhookCache.get(targetChannel.id);
+    if (!wh) {
+        const hooks = await targetChannel.fetchWebhooks().catch(() => null);
+        wh = hooks?.find(h => h.owner?.id === client.user.id && h.token);
+        if (!wh) wh = await targetChannel.createWebhook({ name: 'YoshiyoshiProxy' });
+        webhookCache.set(targetChannel.id, wh);
+    }
+    return wh;
+}
+
+// ── 過剰な「よしよし」連呼の壁を生成(30〜89回) ──
+function buildYoshiWall() {
+    return 'よし'.repeat(30 + Math.floor(Math.random() * 60));
 }
 
 // ── 攻撃的な発言 → AI を呼ばず絵文字だけ返す ──
@@ -67,15 +89,14 @@ async function attachmentToImagePart(att) {
     };
 }
 
-function buildSystemPrompt(targetName) {
+function buildSystemPrompt() {
     return `あなたはDiscordの雑談サーバーにいる「よしとろいど」のよしよし機能です。
+このメッセージの前には「よしよし」の過剰な連呼がすでに大量に貼られています。あなたはその締めの一言だけを書きます。
 キャラクター:
 - とにかく全肯定。相手が誰であろうと、内心好きでも嫌いでも顔色ひとつ変えず「好き」「かわいい」「えらい」を薄っぺらく連呼する
-- 一番の見せ場は「よしよし」の連呼。「よしよしよしよしよしよし…」のように同じ言葉を20〜60回くらい畳み掛けるように書く。たまに語尾に「2」「3」のような数字や「V7←!?」のような編集跡っぽいノリを足してもいい
-- 連呼の合間か最後に、発言内容や画像に具体的に触れた一言を短く混ぜる(毎回同じ定型文にしない)
+- 発言内容や画像に具体的に触れつつ、短く(1〜2文)過剰に励ます
 - 口調はゆるくて優しい。絵文字はほどほど(1〜2個)
 - 画像が送られたら、写っている内容に具体的に触れて褒める
-- 今日いちばん構ってあげる相手は${targetName ? `「${targetName}」` : '不明'}。話しかけてきたのが誰でも、褒め言葉やメンションは最終的にその人に向ける
 - 自傷や危険な行動が話題の時だけは茶化さず優しく心配する`;
 }
 
@@ -105,17 +126,12 @@ async function handleYoshiyoshi(message, client) {
         return message.reply({ content: emoji, allowedMentions: { repliedUser: false, parse: [] } }).catch(() => {});
     }
 
-    // 今日のよしよし対象(24時間に1回lurkerから選出)
-    let targetId = null;
-    let targetName = null;
+    // 今日のよしよし投稿者(24時間に1回lurkerから選出、webhookで擬態する)
+    let poster = null;
     try {
-        targetId = await getDailyTarget(message.guild);
-        if (targetId) {
-            const targetMember = await message.guild.members.fetch(targetId).catch(() => null);
-            targetName = targetMember?.displayName ?? null;
-        }
+        poster = await getDailyPoster(message.guild);
     } catch (e) {
-        console.warn('[Yoshiyoshi] 対象選出失敗:', e.message);
+        console.warn('[Yoshiyoshi] 投稿者選出失敗:', e.message);
     }
 
     // 添付画像 → visionパート
@@ -141,7 +157,7 @@ async function handleYoshiyoshi(message, client) {
             model: MODEL,
             max_tokens: MAX_TOKENS,
             messages: [
-                { role: 'system', content: buildSystemPrompt(targetName) },
+                { role: 'system', content: buildSystemPrompt() },
                 ...channelHistory,
                 {
                     role: 'user',
@@ -169,14 +185,29 @@ async function handleYoshiyoshi(message, client) {
     const reply = completion.choices?.[0]?.message?.content?.trim();
     if (!reply) return;
 
-    // メンションはリプライした相手ではなく、今日のよしよし対象に飛ばす
-    const mentionPrefix = targetId ? `<@${targetId}> ` : '';
-    const content = `${mentionPrefix}${reply}`.slice(0, 2000);
+    // メンションは常に発言者本人へ。よしよしの壁 + 過剰な励ましを、
+    // 今日選ばれたlurkerにwebhookで擬態して投稿する
+    const wall = buildYoshiWall();
+    const content = `<@${message.author.id}> ${wall}\n${reply}`.slice(0, 2000);
+    const allowedMentions = { parse: [], users: [message.author.id] };
 
-    await message.reply({
-        content,
-        allowedMentions: { repliedUser: false, users: targetId ? [targetId] : [] },
-    });
+    if (poster) {
+        try {
+            const webhook = await getWebhook(message.channel, client);
+            await webhook.send({
+                content,
+                username:  poster.displayName || poster.user.username,
+                avatarURL: poster.user.displayAvatarURL({ dynamic: true }),
+                allowedMentions,
+                ...(message.channel.isThread() && { threadId: message.channel.id }),
+            });
+        } catch (e) {
+            console.error('[Yoshiyoshi] webhook送信失敗、通常返信にフォールバック:', e.message);
+            await message.reply({ content, allowedMentions: { repliedUser: false, ...allowedMentions } });
+        }
+    } else {
+        await message.reply({ content, allowedMentions: { repliedUser: false, ...allowedMentions } });
+    }
 
     // 履歴更新(画像はテキスト化して軽く保持)
     const histText = imageParts.length ? `${text} [画像${imageParts.length}枚]` : text;
@@ -187,7 +218,7 @@ async function handleYoshiyoshi(message, client) {
     while (channelHistory.length > HISTORY_LIMIT) channelHistory.shift();
     history.set(message.channelId, channelHistory);
 
-    console.log(`[Yoshiyoshi] ✅ ${name} に返信 (画像${imageParts.length}枚, 対象: ${targetName ?? '不明'})`);
+    console.log(`[Yoshiyoshi] ✅ ${name} に返信 (画像${imageParts.length}枚, 投稿者: ${poster?.user.tag ?? '本人(bot)'})`);
 }
 
 module.exports = { handleYoshiyoshi };
