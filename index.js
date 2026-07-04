@@ -12,6 +12,7 @@ const { initChatter, recordMessage: recordChatterMessage } = require('./chatter'
 const { recordActivity, backfillActivity } = require('./activity_tracker');
 const { handleDeathmatch }       = require('./deathmatch');
 const { handleModerator, handlePoopReaction, handleCryReaction, handleEmbedModerator, handleCandyReaction, handleEditDM } = require('./moderator');
+const { handleYoshiyoshi }       = require('./yoshiyoshi');
 const { handleImpersonate }      = require('./impersonate');
 const { handleImp }              = require('./imp');
 const { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel, handlePresence, restorePresence } = require('./admin');
@@ -175,6 +176,7 @@ client.on(Events.MessageCreate, async m => {
     recordChatterMessage(m.channel.id);
     handleInviteFilter(m, client).catch(err => console.error('[InviteFilter Error]:', err));
     handleModerator(m).catch(err => console.error('[Mod Error]:', err));
+    handleYoshiyoshi(m, client).catch(e => console.error('[Yoshiyoshi Error]:', e));
 
     // !xp プレフィックスコマンド
     if (m.content.startsWith('!xp')) {
