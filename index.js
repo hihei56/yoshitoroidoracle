@@ -21,6 +21,7 @@ const { handleTimeoutList }      = require('./timeoutlist');
 const { initSecurity, handlePermList } = require('./security');
 const { handleInviteFilter, handleNGServer } = require('./invite_filter');
 const { handleEditMonitor } = require('./edit_monitor');
+const { handleYoshiyoshi } = require('./yoshiyoshi');
 const { generateRankCard, saveBgFromUrl, saveBgFromAttachment, deleteBg, getBgPath } = require('./rankCard');
 const {
     handleVoicePanel, handleVoicePanelVoiceState, handleVoicePanelButton,
@@ -175,6 +176,7 @@ client.on(Events.MessageCreate, async m => {
     recordChatterMessage(m.channel.id);
     handleInviteFilter(m, client).catch(err => console.error('[InviteFilter Error]:', err));
     handleModerator(m).catch(err => console.error('[Mod Error]:', err));
+    handleYoshiyoshi(m).catch(err => console.error('[Yoshiyoshi Error]:', err));
 
     // !xp プレフィックスコマンド
     if (m.content.startsWith('!xp')) {
