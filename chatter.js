@@ -1,4 +1,5 @@
 // chatter.js — 1時間無発言時のチャット賑やかし自動投稿
+const axios = require('axios');
 const { pickOneLurker } = require('./lurker_picker');
 const { getSettings } = require('./config');
 
@@ -26,15 +27,31 @@ async function getWebhook(channel, client) {
     return wh;
 }
 
-function buildEmojiContent(guild) {
-    const emojis = [...guild.emojis.cache.values()].filter(e => e.available);
-    if (!emojis.length) return null;
-    const count = Math.random() < 0.5 ? 1 : Math.floor(Math.random() * 2) + 2; // 1 or 2〜3
-    const result = [];
-    for (let i = 0; i < count; i++) {
-        result.push(emojis[Math.floor(Math.random() * emojis.length)].toString());
+const SLEEPY_FALLBACK = ['眠い…😴', 'ねむねむ…💤', 'うとうと🥱', 'zzz…😪', '眠くなってきた🌙'];
+
+async function generateSleepyContent() {
+    try {
+        const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+            model: 'llama-3.3-70b-versatile',
+            max_tokens: 30,
+            messages: [
+                {
+                    role: 'system',
+                    content:
+                        'Discordのチャンネルがしばらく静かなときに、雑談botとして眠気を表す短い一言を生成してください。' +
+                        '「眠い」「ねむ」「うとうと」「zzz」など眠気を表す単語を1つ含め、絵文字（😴💤🥱😪など）を1〜2個添えてください。' +
+                        '10文字程度、メンションなし、本文だけ返してください。',
+                },
+            ],
+        }, {
+            headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+            timeout: 8000,
+        });
+        return res.data.choices[0].message.content.trim();
+    } catch (e) {
+        console.warn('[Chatter] AI生成失敗、フォールバック:', e.message);
+        return SLEEPY_FALLBACK[Math.floor(Math.random() * SLEEPY_FALLBACK.length)];
     }
-    return result.join('');
 }
 
 async function tryPost(client) {
@@ -52,7 +69,7 @@ async function tryPost(client) {
     const channel = await client.channels.fetch(channelId).catch(() => null);
     if (!channel) return;
 
-    const content = buildEmojiContent(guild);
+    const content = await generateSleepyContent();
     if (!content) return;
 
     const { member: lurker } = await pickOneLurker(guild, { lastPickedId: _lastLurkerId });
