@@ -63,8 +63,8 @@ async function sendToChannel(client, channelId, payload) {
         if (channel.guild) {
             const me = channel.guild.members.me;
             const perms = me ? channel.permissionsFor(me) : null;
-            if (perms && !perms.has(PermissionsBitField.Flags.SendMessages)) {
-                console.error(`[Bump] チャンネル ${channelId} への送信権限がありません`);
+            if (perms && (!perms.has(PermissionsBitField.Flags.ViewChannel) || !perms.has(PermissionsBitField.Flags.SendMessages))) {
+                console.error(`[Bump] チャンネル ${channelId} への閲覧/送信権限がありません`);
                 return false;
             }
         }
@@ -86,7 +86,8 @@ async function handleBumpMessage(message) {
 
         const embed = message.embeds?.[0];
         const desc = embed?.description ?? '';
-        if (!/bump\s*done/i.test(desc)) return;
+        // Disboardはユーザーのロケールにより日本語（表示順をアップしたよ）/ 英語（Bump done）の両方を返す
+        if (!/bump\s*done/i.test(desc) && !desc.includes('表示順をアップしたよ')) return;
 
         const bumper = message.interactionMetadata?.user ?? message.interaction?.user ?? null;
 
@@ -202,8 +203,8 @@ async function handleBumpSetup(interaction) {
         try {
             const me = interaction.guild.members.me;
             const perms = me ? channel.permissionsFor(me) : null;
-            if (!perms || !perms.has(PermissionsBitField.Flags.SendMessages) || !perms.has(PermissionsBitField.Flags.EmbedLinks)) {
-                warning = '\n⚠️ このチャンネルへの送信権限またはEmbed権限が不足している可能性があります。';
+            if (!perms || !perms.has(PermissionsBitField.Flags.ViewChannel) || !perms.has(PermissionsBitField.Flags.SendMessages) || !perms.has(PermissionsBitField.Flags.EmbedLinks)) {
+                warning = '\n⚠️ このチャンネルへの閲覧/送信/Embed権限が不足している可能性があります。';
             } else {
                 await channel.send({
                     embeds: [
