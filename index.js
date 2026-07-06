@@ -22,6 +22,7 @@ const {
 }                                 = require('./bump');
 const { handleTimeout }           = require('./timeout');
 const { handleClean }              = require('./clean');
+const { checkImageAttachments }    = require('./image_spam_filter');
 const { initShiritori, handleShiritoriMessage } = require('./shiritori');
 const { initXpAnnounce }          = require('./xp_announce');
 const { postRanking, handleRanking } = require('./ranking');
@@ -190,6 +191,7 @@ client.on(Events.MessageCreate, async m => {
     handleInviteFilter(m, client).catch(err => console.error('[InviteFilter Error]:', err));
     handleModerator(m).catch(err => console.error('[Mod Error]:', err));
     handleShiritoriMessage(m).catch(err => console.error('[Shiritori Error]:', err));
+    checkImageAttachments(m).catch(err => console.error('[ImageSpam Error]:', err));
 
     // !xp プレフィックスコマンド
     if (m.content.startsWith('!xp')) {
