@@ -11,11 +11,37 @@ const SMALL_TO_LARGE = {
 };
 
 const gameState = new Map(); // channelId -> { currentWord: {surface, reading, last} | null, history: Set<string> }
+const webhookCache = new Map();
 
 function initShiritori() {
     getTokenizer()
         .then(() => console.log('[Shiritori] ✅ 辞書ロード完了'))
         .catch(e => console.error('[Shiritori] 辞書ロード失敗:', e.message));
+}
+
+async function getWebhook(channel, client) {
+    const targetChannel = channel.isThread() ? channel.parent : channel;
+    if (webhookCache.has(targetChannel.id)) return webhookCache.get(targetChannel.id);
+    const hooks = await targetChannel.fetchWebhooks();
+    let wh = hooks.find(h => h.owner?.id === client.user.id && h.token);
+    if (!wh) wh = await targetChannel.createWebhook({ name: 'しりとり', avatar: client.user.displayAvatarURL() });
+    webhookCache.set(targetChannel.id, wh);
+    return wh;
+}
+
+async function sendViaWebhook(message, embed) {
+    try {
+        const webhook = await getWebhook(message.channel, message.client);
+        await webhook.send({
+            embeds: [embed],
+            username: 'しりとり',
+            avatarURL: message.client.user.displayAvatarURL(),
+            allowedMentions: { parse: [] },
+            ...(message.channel.isThread() && { threadId: message.channel.id }),
+        });
+    } catch (e) {
+        console.error('[Shiritori] Webhook送信エラー:', e.message);
+    }
 }
 
 function katakanaToHiragana(str) {
@@ -70,13 +96,13 @@ async function handleShiritoriMessage(message) {
         }
 
         if (!info) {
-            await message.reply({ embeds: [buildEmbed(0xED4245, '❌ 辞書に見つかりませんでした。実在する単語（名詞など）を入力してください。')] }).catch(() => {});
+            await sendViaWebhook(message, buildEmbed(0xED4245, '❌ 辞書に見つかりませんでした。実在する単語（名詞など）を入力してください。'));
             return;
         }
 
         const { first, last, full } = getReadingEdges(info.reading);
         if (!full) {
-            await message.reply({ embeds: [buildEmbed(0xED4245, '❌ 有効な単語として認識できませんでした。')] }).catch(() => {});
+            await sendViaWebhook(message, buildEmbed(0xED4245, '❌ 有効な単語として認識できませんでした。'));
             return;
         }
 
@@ -88,17 +114,17 @@ async function handleShiritoriMessage(message) {
 
         if (last === 'ん') {
             gameState.set(channelId, { currentWord: null, history: new Set() });
-            await message.reply({ embeds: [buildEmbed(0xFEE75C, `💀 「ん」で終わったので **${message.author.username}** の負けです！しりとりをリセットしました。`)] }).catch(() => {});
+            await sendViaWebhook(message, buildEmbed(0xFEE75C, `💀 「ん」で終わったので **${message.author.username}** の負けです！しりとりをリセットしました。`));
             return;
         }
 
         if (state.currentWord && state.currentWord.last !== first) {
-            await message.reply({ embeds: [buildEmbed(0xED4245, `❌ 前の単語の語尾「${state.currentWord.last}」から始まる言葉にしてください。`)] }).catch(() => {});
+            await sendViaWebhook(message, buildEmbed(0xED4245, `❌ 前の単語の語尾「${state.currentWord.last}」から始まる言葉にしてください。`));
             return;
         }
 
         if (state.history.has(full)) {
-            await message.reply({ embeds: [buildEmbed(0xED4245, '❌ その単語はすでに使われています。')] }).catch(() => {});
+            await sendViaWebhook(message, buildEmbed(0xED4245, '❌ その単語はすでに使われています。'));
             return;
         }
 
@@ -108,7 +134,7 @@ async function handleShiritoriMessage(message) {
         }
         state.currentWord = { surface, reading: full, last };
 
-        await message.reply({ embeds: [buildEmbed(0x57F287, `✅ **${surface}**（${full}）\n次は「${last}」から始まる言葉をどうぞ！`)] }).catch(() => {});
+        await sendViaWebhook(message, buildEmbed(0x57F287, `✅ **${surface}**（${full}）\n次は「${last}」から始まる言葉をどうぞ！`));
     } catch (e) {
         console.error('[Shiritori] 処理エラー:', e);
     }
