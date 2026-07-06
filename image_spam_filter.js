@@ -3,6 +3,7 @@
 const fs = require('fs');
 const { createWorker } = require('tesseract.js');
 const { resolveDataPath } = require('./dataPath');
+const { getModExcludeList } = require('./exclude_manager');
 
 const SCORE_THRESHOLD = 200;
 
@@ -50,6 +51,11 @@ function getWorker() {
 async function checkImageAttachments(message) {
     try {
         if (message.author.bot || !message.guild) return;
+
+        const excl = getModExcludeList();
+        const isExempt = excl.users.includes(message.author.id) ||
+            excl.roles.some(roleId => message.member?.roles.cache.has(roleId));
+        if (isExempt) return;
 
         const imageAttachments = [...message.attachments.values()]
             .filter(a => a.contentType?.startsWith('image/'));
