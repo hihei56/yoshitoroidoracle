@@ -14,16 +14,31 @@ function isLastDayOfMonthJST() {
     return tomorrow.getMonth() !== now.getMonth();
 }
 
-function buildRankingEmbed(title, board, color) {
+async function fetchTopAvatarUrl(client, userId) {
+    if (!userId) return null;
+    try {
+        const guild  = client.guilds.cache.first();
+        const member = guild ? await guild.members.fetch(userId).catch(() => null) : null;
+        if (member) return member.displayAvatarURL({ size: 128 });
+        const user = await client.users.fetch(userId).catch(() => null);
+        return user?.displayAvatarURL({ size: 128 }) ?? null;
+    } catch {
+        return null;
+    }
+}
+
+function buildRankingEmbed(title, board, color, topAvatarUrl) {
     const lines = board.length
         ? board.map((e, i) => `**#${i + 1}** <@${e.id}> — ${Math.floor(e.periodXp).toLocaleString('en-US')} XP`)
         : ['まだデータがありません。'];
-    return new EmbedBuilder()
+    const embed = new EmbedBuilder()
         .setTitle(title)
         .setColor(color)
         .setDescription(lines.join('\n'))
         .setFooter({ text: '🎁 上位者には特典があるかも……？' })
         .setTimestamp();
+    if (topAvatarUrl) embed.setThumbnail(topAvatarUrl);
+    return embed;
 }
 
 async function announce(client, embed) {
@@ -41,8 +56,9 @@ async function announce(client, embed) {
 
 async function postWeeklyRanking(client) {
     try {
-        const board = getLeaderboardByPeriod('week', TOP_N);
-        await announce(client, buildRankingEmbed('📅 週間XPランキング', board, 0x5865F2));
+        const board     = getLeaderboardByPeriod('week', TOP_N);
+        const avatarUrl = await fetchTopAvatarUrl(client, board[0]?.id);
+        await announce(client, buildRankingEmbed('📅 週間XPランキング', board, 0x5865F2, avatarUrl));
     } catch (e) {
         console.error('[XpAnnounce] 週間ランキングエラー:', e.message);
     }
@@ -50,8 +66,9 @@ async function postWeeklyRanking(client) {
 
 async function postMonthlyRanking(client) {
     try {
-        const board = getLeaderboardByPeriod('month', TOP_N);
-        await announce(client, buildRankingEmbed('🏆 月間XPランキング（今月の結果）', board, 0xf5a623));
+        const board     = getLeaderboardByPeriod('month', TOP_N);
+        const avatarUrl = await fetchTopAvatarUrl(client, board[0]?.id);
+        await announce(client, buildRankingEmbed('🏆 月間XPランキング（今月の結果）', board, 0xf5a623, avatarUrl));
     } catch (e) {
         console.error('[XpAnnounce] 月間ランキングエラー:', e.message);
     }
