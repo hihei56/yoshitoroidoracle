@@ -253,6 +253,29 @@ function resetUser(userId) {
     saveNow();
 }
 
+function transferUser(fromId, toId) {
+    const src = store[fromId];
+    if (!src) return null;
+    const dst = store[toId] ?? { xp: 0, level: 0, levelBase: 0 };
+    // XP・レベルは高い方を採用、historyはマージ
+    const mergedHistory = { ...(src.history ?? {}), ...(dst.history ?? {}) };
+    for (const d of Object.keys(mergedHistory)) {
+        const sv = src.history?.[d] ?? 0;
+        const dv = dst.history?.[d] ?? 0;
+        mergedHistory[d] = parseFloat((sv + dv).toFixed(2));
+    }
+    store[toId] = {
+        xp:        src.xp + dst.xp,
+        level:     src.level + dst.level,
+        levelBase: src.levelBase + dst.levelBase,
+        history:   mergedHistory,
+    };
+    if (src.hideBadge !== undefined) store[toId].hideBadge = src.hideBadge;
+    delete store[fromId];
+    saveNow();
+    return store[toId];
+}
+
 function setHideBadge(userId, hide) {
     entry(userId).hideBadge = hide;
     saveNow();
@@ -328,7 +351,7 @@ module.exports = {
     XP_PER_LEVEL,
     processMessage, getUserData, getRank, getLeaderboard, xpToNextLevel,
     getPeriodXp, getLeaderboardByPeriod,
-    setUserLevel, adjustXP, resetUser,
+    setUserLevel, adjustXP, resetUser, transferUser,
     setHideBadge, isHideBadge,
     addExcludedRole, removeExcludedRole, getExcludedRoles, isExcluded,
     buildNickname, getLevelBadge, getMonthlyRank,
