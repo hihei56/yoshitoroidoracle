@@ -104,6 +104,12 @@ async function handleShiritoriMessage(message) {
             return;
         }
 
+        // 読みにひらがな以外の文字（アルファベット等）が混入している場合は無効
+        if (!/^[ぁ-んー]+$/.test(info.reading)) {
+            await sendViaWebhook(message, buildEmbed(0xED4245, '❌ 日本語の単語を入力してください。'));
+            return;
+        }
+
         const { first, last, full } = getReadingEdges(info.reading);
         if (!full) {
             await sendViaWebhook(message, buildEmbed(0xED4245, '❌ 有効な単語として認識できませんでした。'));
