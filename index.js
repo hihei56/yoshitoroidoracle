@@ -190,7 +190,7 @@ client.on(Events.MessageCreate, async m => {
     }
 
     recordActivity(m.author.id);
-    recordChatterMessage(m.channel.id, m.content, m.author.id);
+    recordChatterMessage(m.channel.id, m.content, m.author.id, m.attachments.size > 0);
     handleInviteFilter(m, client).catch(err => console.error('[InviteFilter Error]:', err));
     handleModerator(m).catch(err => console.error('[Mod Error]:', err));
     handleShiritoriMessage(m).catch(err => console.error('[Shiritori Error]:', err));

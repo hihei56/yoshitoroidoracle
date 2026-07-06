@@ -15,13 +15,13 @@ let lastMessageTime = Date.now(); // 起動時は「今」扱い
 let lastPostedTime  = 0;
 let _lastLurkerId   = null;
 
-function recordMessage(channelId, content, authorId) {
+function recordMessage(channelId, content, authorId, hasMedia = false) {
     const settings  = getSettings();
     const targetId  = settings.chatterChannelId ?? settings.lurkerChannelId;
     if (!targetId || channelId !== targetId) return;
     lastMessageTime = Date.now();
     if (authorId && (settings.markovExcludedUsers ?? []).includes(authorId)) return;
-    recordForCorpus(content).catch(e => console.error('[Chatter] コーパス記録エラー:', e.message));
+    recordForCorpus(content, hasMedia).catch(e => console.error('[Chatter] コーパス記録エラー:', e.message));
 }
 
 async function getWebhook(channel, client) {
