@@ -1,9 +1,8 @@
 // yoshiyoshi.js — 全肯定チャットBot（メンション返信）
-// プライマリ: Gemini API（無料枠） / 429時フォールバック: ローカルOllama(qwen2.5:3b)
+// プライマリ: Groq API（無料枠） / 429時フォールバック: ローカルOllama(qwen2.5:3b)
 const axios = require('axios');
 
-const GEMINI_MODEL   = 'gemini-2.0-flash';
-const GEMINI_URL     = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const GROQ_MODEL     = 'llama-3.3-70b-versatile';
 const OLLAMA_HOST    = process.env.OLLAMA_HOST || 'http://localhost:11434';
 const OLLAMA_MODEL   = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
 const TYPING_INTERVAL_MS = 8000;
@@ -13,17 +12,20 @@ const SYSTEM_PROMPT =
     '共感し、褒め、励ます返信を40〜60文字程度の日本語で1つだけ返してください。絵文字を1つ添えてください。' +
     '前置きや説明は不要で、返信本文だけを出力してください。';
 
-async function askGemini(userText) {
-    const res = await axios.post(GEMINI_URL, {
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ parts: [{ text: userText }] }],
-        generationConfig: { maxOutputTokens: 80 },
+async function askGroq(userText) {
+    const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+        model: GROQ_MODEL,
+        max_tokens: 80,
+        messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: userText },
+        ],
     }, {
-        params:  { key: process.env.GEMINI_API_KEY },
+        headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
         timeout: 8000,
     });
-    const text = res.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error('Gemini応答が空です');
+    const text = res.data?.choices?.[0]?.message?.content;
+    if (!text) throw new Error('Groq応答が空です');
     return text.trim();
 }
 
@@ -45,9 +47,9 @@ async function askOllama(userText) {
 
 async function generateAffirmation(userText) {
     try {
-        return await askGemini(userText);
+        return await askGroq(userText);
     } catch (e) {
-        console.warn('[Yoshiyoshi] Gemini失敗、Ollamaへフォールバック:', e.response?.status ?? e.message);
+        console.warn('[Yoshiyoshi] Groq失敗、Ollamaへフォールバック:', e.response?.status ?? e.message);
         try {
             return await askOllama(userText);
         } catch (e2) {

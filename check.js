@@ -27,7 +27,6 @@ const REQUIRED_ENVS = [
 const OPTIONAL_ENVS = [
     'DATA_DIR',
     'OPENAI_API_KEY',
-    'GEMINI_API_KEY',
     'OLLAMA_HOST',
     'OLLAMA_MODEL',
     'YOUTUBE_API_KEY',
