@@ -106,10 +106,10 @@ async function postTweet(item, client) {
 
     const embed = new EmbedBuilder()
         .setColor('#1DA1F2')
-        .setAuthor({ name: "electlone", url: "https://x.com/electlone" })
+        .setAuthor({ name: "andoroica", url: "https://x.com/andoroica_honor" })
         .setTitle("🔗 Xで見る")
         .setURL(tweetUrl)
-        .setFooter({ text: "不対電子研究所" });
+        .setFooter({ text: "andoroica" });
 
     if (item.isoDate) embed.setTimestamp(new Date(item.isoDate));
 
@@ -122,7 +122,7 @@ async function postTweet(item, client) {
             content:    raw + quoteBlock,
             embeds:     [embed],
             files:      imageFile ? [imageFile] : [],
-            username:   "不対電子",
+            username:   "andoroica",
             fetchReply: true,
         });
     } catch (e) {
