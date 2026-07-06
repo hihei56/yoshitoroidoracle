@@ -14,7 +14,6 @@
     "ffmpeg-static": "^5.2.0",
     "he": "^1.2.0",
     "kuromoji": "^0.1.2",
-    "markov-strings": "^3.0.4",
     "node-cron": "^3.0.3",
     "openai": "^4.104.0",
     "opusscript": "^0.1.1",
