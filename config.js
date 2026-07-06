@@ -18,6 +18,8 @@ function getSettings() {
     if (!data.lurkerChannelId)        data.lurkerChannelId        = null;
     if (data.chatterChannelId === undefined) data.chatterChannelId = null;
     if (data.shiritoriChannelId === undefined) data.shiritoriChannelId = null;
+    if (data.rankingChannelId === undefined) data.rankingChannelId = null;
+    if (!data.markovExcludedUsers) data.markovExcludedUsers = [];
     if (data.chineseThinkerReplace === undefined)     data.chineseThinkerReplace     = true;
     if (!data.chineseThinkerExcludeUsers)             data.chineseThinkerExcludeUsers = [];
     if (!data.cryAllowedUsers)                        data.cryAllowedUsers = [];

@@ -401,6 +401,70 @@ async function handleAdmin(interaction) {
         });
     }
 
+    // ── XPランキング発表チャンネル ──
+    if (sub === 'ranking_channel') {
+        const ch       = interaction.options.getChannel('channel');
+        const settings = getSettings();
+        settings.rankingChannelId = ch?.id ?? null;
+        saveSettings(settings);
+        const verb = ch ? `<#${ch.id}> に設定しました` : '解除しました';
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle('🏆 XPランキング発表チャンネル')
+                    .setColor(ch ? COLOR.add : COLOR.remove)
+                    .setDescription(verb)
+                    .setTimestamp()
+            ],
+            ephemeral: true,
+        });
+    }
+
+    // ── Markov連鎖 検知対象外ユーザー ──
+    if (sub === 'markov_exclude') {
+        const action     = interaction.options.getString('action');
+        const targetUser = interaction.options.getUser('user');
+        const settings   = getSettings();
+        if (!settings.markovExcludedUsers) settings.markovExcludedUsers = [];
+
+        if (action === 'list') {
+            const list = settings.markovExcludedUsers;
+            return interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('🚫 Markov連鎖 検知対象外ユーザー一覧')
+                        .setColor(COLOR.info)
+                        .setDescription(list.length ? list.map(id => `<@${id}>`).join('\n') : 'なし')
+                        .setTimestamp()
+                ],
+                ephemeral: true,
+            });
+        }
+
+        if (!targetUser) {
+            return interaction.reply({ content: 'ユーザーを指定してください。', ephemeral: true });
+        }
+
+        if (action === 'add') {
+            if (!settings.markovExcludedUsers.includes(targetUser.id)) settings.markovExcludedUsers.push(targetUser.id);
+        } else {
+            settings.markovExcludedUsers = settings.markovExcludedUsers.filter(id => id !== targetUser.id);
+        }
+        saveSettings(settings);
+
+        const verb = action === 'add' ? '除外に追加' : '除外から解除';
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle(`🚫 Markov連鎖 検知対象外 — ${verb}`)
+                    .setColor(action === 'add' ? COLOR.add : COLOR.remove)
+                    .setDescription(`<@${targetUser.id}>`)
+                    .setTimestamp()
+            ],
+            ephemeral: true,
+        });
+    }
+
     // ── しりとりチャンネル ──
     if (sub === 'shiritori_channel') {
         const ch       = interaction.options.getChannel('channel');

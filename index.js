@@ -22,6 +22,7 @@ const {
 }                                 = require('./bump');
 const { handleTimeout }           = require('./timeout');
 const { initShiritori, handleShiritoriMessage } = require('./shiritori');
+const { initXpAnnounce }          = require('./xp_announce');
 const { postRanking, handleRanking } = require('./ranking');
 const { handleTimeoutList }      = require('./timeoutlist');
 const { initSecurity, handlePermList } = require('./security');
@@ -128,6 +129,7 @@ client.once(Events.ClientReady, async c => {
     initVoicePanelCleanup(client);
     initBump(client);
     initShiritori();
+    initXpAnnounce(client);
     restorePresence(client).catch(e => console.error('[PRESENCE] 復元エラー:', e));
 
     const guild = client.guilds.cache.first();
@@ -183,7 +185,7 @@ client.on(Events.MessageCreate, async m => {
     }
 
     recordActivity(m.author.id);
-    recordChatterMessage(m.channel.id, m.content);
+    recordChatterMessage(m.channel.id, m.content, m.author.id);
     handleInviteFilter(m, client).catch(err => console.error('[InviteFilter Error]:', err));
     handleModerator(m).catch(err => console.error('[Mod Error]:', err));
     handleShiritoriMessage(m).catch(err => console.error('[Shiritori Error]:', err));
