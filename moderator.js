@@ -998,6 +998,34 @@ async function applyImpersonate(message) {
    リプライ先が /imp Webhook（authorId != displayId）の場合、
    返信者の名前・アイコンそのままでWebhook再送し、lurkerIDにメンションを飛ばす
 ========================= */
+async function handleChatterReply(message) {
+    if (!message.reference?.messageId) return false;
+    const ref = await message.channel.messages.fetch(message.reference.messageId).catch(() => null);
+    if (!ref?.webhookId) return false;
+    // zero-width IDが埋め込まれていない = chatterメッセージ
+    if (extractUserId(ref.content)) return false;
+
+    const files = await downloadFiles(message.attachments);
+    if (message.deletable) await message.delete().catch(() => {});
+
+    const replyPrefix  = await buildReplyPrefix(message);
+    const finalContent = hideUserId(message.author.id)
+        + sanitizeMentions(replyPrefix + (message.content || '​'));
+
+    const opts = {
+        content:         finalContent,
+        files,
+        username:        message.member?.displayName || message.author.username,
+        avatarURL:       message.member?.displayAvatarURL({ dynamic: true }),
+        allowedMentions: { parse: ['users'] },
+    };
+    if (message.channel.isThread()) opts.threadId = message.channel.id;
+
+    await sendWebhook(message.channel, opts);
+    console.info(`[CHATTER_REPLY] ${message.author.tag}(${message.author.id}) → chatterメッセージにリプライ`);
+    return true;
+}
+
 async function handleImpReply(message) {
     if (!message.reference?.messageId) return false;
 
@@ -1114,7 +1142,8 @@ async function handleModerator(message) {
 
     if (await handleForeignerMessage(message)) return;
     if (await handleSensitivePost(message)) return;
-    if (await handleImpReply(message))      return; // ← /imp メッセージへのリプライ判定
+    if (await handleImpReply(message))      return;
+    if (await handleChatterReply(message))  return;
     if (await handlePseudoReply(message))   return;
 }
 
