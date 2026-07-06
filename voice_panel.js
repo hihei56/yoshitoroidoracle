@@ -129,6 +129,38 @@ function isGloballyBanned(member, settings) {
     return settings.bannedRoleIds.some(rid => member.roles.cache.has(rid));
 }
 
+// 参加用チャンネルに出禁対象のオーバーライドを反映する。
+// 「入室→即切断」の事後対応だけだと、遅延中は一瞬入室できてしまったり、
+// Discord側の「参加できません」表示が出ないままキックされる不自然な挙動になるため、
+// 参加用チャンネル自体にConnect/ViewChannel拒否のオーバーライドを明示的に張り、
+// 入室そのものを防ぐ（ルーム単位のBANと同じ考え方をユーザー単位BANにも適用）。
+async function setJoinChannelBanOverwrite(guild, settings, target, deny) {
+    if (!settings.joinChannelId) return;
+    const channel = await guild.channels.fetch(settings.joinChannelId).catch(() => null);
+    if (!channel) return;
+    if (deny) {
+        await channel.permissionOverwrites.edit(target, { Connect: false, ViewChannel: false }).catch(() => {});
+    } else {
+        await channel.permissionOverwrites.delete(target).catch(() => {});
+    }
+}
+
+// 参加用チャンネルを設定/変更した際、既存の出禁ユーザー/ロールのオーバーライドを
+// 新しいチャンネルにも反映する（BAN設定が参加用チャンネルの再設定で抜け落ちないように）
+async function syncJoinChannelBans(guild, settings) {
+    if (!settings.joinChannelId) return;
+    const channel = await guild.channels.fetch(settings.joinChannelId).catch(() => null);
+    if (!channel) return;
+    for (const uid of settings.bannedUserIds) {
+        const member = await guild.members.fetch(uid).catch(() => null);
+        await channel.permissionOverwrites.edit(member ?? uid, { Connect: false, ViewChannel: false }).catch(() => {});
+    }
+    for (const rid of settings.bannedRoleIds) {
+        const role = guild.roles.cache.get(rid);
+        await channel.permissionOverwrites.edit(role ?? rid, { Connect: false, ViewChannel: false }).catch(() => {});
+    }
+}
+
 /* ===== /admin voice_ban コマンド ===== */
 async function handleVoiceBan(interaction) {
     const action = interaction.options.getString('action');
@@ -156,9 +188,13 @@ async function handleVoiceBan(interaction) {
         saveVPSettings(settings);
         if (user) {
             const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+            await setJoinChannelBanOverwrite(interaction.guild, settings, member ?? user.id, true);
             if (member?.voice.channel && (member.voice.channelId === settings.joinChannelId || getTempOwner(member.voice.channelId))) {
                 await member.voice.disconnect().catch(() => {});
             }
+        }
+        if (role) {
+            await setJoinChannelBanOverwrite(interaction.guild, settings, role, true);
         }
         return interaction.reply({
             content: `✅ ${user ?? role} を一時ボイスチャンネル機能から出禁にしました（作成・参加とも不可）。`,
@@ -170,6 +206,8 @@ async function handleVoiceBan(interaction) {
         if (user) settings.bannedUserIds = settings.bannedUserIds.filter(id => id !== user.id);
         if (role) settings.bannedRoleIds = settings.bannedRoleIds.filter(id => id !== role.id);
         saveVPSettings(settings);
+        if (user) await setJoinChannelBanOverwrite(interaction.guild, settings, user.id, false);
+        if (role) await setJoinChannelBanOverwrite(interaction.guild, settings, role.id, false);
         return interaction.reply({ content: `✅ ${user ?? role} の出禁を解除しました。`, ephemeral: true });
     }
 }
@@ -361,6 +399,7 @@ async function handleVoicePanel(interaction) {
         settings.joinChannelId = joinChannel.id;
         settings.categoryId    = category?.id ?? null;
         saveVPSettings(settings);
+        await syncJoinChannelBans(interaction.guild, settings);
         return interaction.reply({
             content: `✅ 参加用チャンネルを ${joinChannel} に設定しました。${category ? `（作成先カテゴリ: ${category}）` : ''}`,
             ephemeral: true,
