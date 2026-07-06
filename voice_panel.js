@@ -117,10 +117,13 @@ function formatMentionList(ids, mentionPrefix = '@') {
 }
 
 // 出禁対象かどうか（オーナー本人は常に除外＝自分のロール出禁で締め出されない）
-function isBanned(member, profile, ownerId) {
+// voice_banで一時ボイスチャンネル機能自体を禁止されているユーザーも、
+// 各部屋のブロックリストと同様の出禁対象として扱う
+function isBanned(member, profile, ownerId, settings) {
     if (member.id === ownerId) return false;
     if (profile.bannedUserIds.includes(member.id)) return true;
-    return profile.bannedRoleIds.some(rid => member.roles.cache.has(rid));
+    if (profile.bannedRoleIds.some(rid => member.roles.cache.has(rid))) return true;
+    return settings ? isGloballyBanned(member, settings) : false;
 }
 
 // 一時ボイスチャンネル機能自体の利用を禁止されているか（サーバー全体・管理者設定）
@@ -154,6 +157,8 @@ async function handleVoiceBan(interaction) {
         if (user && !settings.bannedUserIds.includes(user.id)) settings.bannedUserIds.push(user.id);
         if (role && !settings.bannedRoleIds.includes(role.id)) settings.bannedRoleIds.push(role.id);
         saveVPSettings(settings);
+        // 各部屋のブロックリストと同様、既存の全一時チャンネルにも即座に反映する
+        await applyGlobalBanToActiveChannels(interaction.guild);
         if (user) {
             const member = await interaction.guild.members.fetch(user.id).catch(() => null);
             if (member?.voice.channel && (member.voice.channelId === settings.joinChannelId || getTempOwner(member.voice.channelId))) {
@@ -170,6 +175,7 @@ async function handleVoiceBan(interaction) {
         if (user) settings.bannedUserIds = settings.bannedUserIds.filter(id => id !== user.id);
         if (role) settings.bannedRoleIds = settings.bannedRoleIds.filter(id => id !== role.id);
         saveVPSettings(settings);
+        await applyGlobalBanToActiveChannels(interaction.guild, { unbannedUser: user, unbannedRole: role });
         return interaction.reply({ content: `✅ ${user ?? role} の出禁を解除しました。`, ephemeral: true });
     }
 }
@@ -179,17 +185,22 @@ async function handleVoiceBan(interaction) {
 // ロック/非表示状態など、他のオーバーライドを巻き込んで消すことがない。
 // ロール/メンバーを実オブジェクトで渡し、discord.js側でのID解決の失敗（＝
 // オーナー許可オーバーライドが作成されず締め出される事故）を避ける。
-async function applyBanOverwrites(channel, ownerId, profile) {
+// settingsを渡した場合、voice_banでグローバルに出禁されたユーザー/ロールも
+// 各部屋のブロックリストと同様にConnect/ViewChannelを拒否する
+async function applyBanOverwrites(channel, ownerId, profile, settings) {
     const guild = channel.guild;
     const owner = await guild.members.fetch(ownerId).catch(() => null);
     await channel.permissionOverwrites.edit(owner ?? ownerId, { Connect: true, ViewChannel: true }).catch(() => {});
 
-    for (const uid of profile.bannedUserIds) {
+    const bannedUserIds = settings ? [...new Set([...profile.bannedUserIds, ...settings.bannedUserIds])] : profile.bannedUserIds;
+    const bannedRoleIds = settings ? [...new Set([...profile.bannedRoleIds, ...settings.bannedRoleIds])] : profile.bannedRoleIds;
+
+    for (const uid of bannedUserIds) {
         if (uid === ownerId) continue;
         const member = await guild.members.fetch(uid).catch(() => null);
         await channel.permissionOverwrites.edit(member ?? uid, { Connect: false, ViewChannel: false }).catch(() => {});
     }
-    for (const rid of profile.bannedRoleIds) {
+    for (const rid of bannedRoleIds) {
         const role = guild.roles.cache.get(rid);
         await channel.permissionOverwrites.edit(role ?? rid, { Connect: false, ViewChannel: false }).catch(() => {});
     }
@@ -206,14 +217,37 @@ async function applyProfileToActiveChannel(guild, ownerId, { unbannedUser, unban
     if (unbannedRole) await channel.permissionOverwrites.delete(unbannedRole).catch(() => {});
 
     const profile = getRoomProfile(ownerId);
-    await applyBanOverwrites(channel, ownerId, profile);
+    const settings = getVPSettings();
+    await applyBanOverwrites(channel, ownerId, profile, settings);
 
     // 現在接続中の出禁対象を切断
     for (const member of channel.members.values()) {
-        if (isBanned(member, profile, ownerId)) await member.voice.disconnect().catch(() => {});
+        if (isBanned(member, profile, ownerId, settings)) await member.voice.disconnect().catch(() => {});
     }
 
     await refreshPanelEmbed(channel, ownerId);
+}
+
+// voice_ban（グローバル出禁）の変更を、既に存在する全ての一時チャンネルへ即時反映する
+async function applyGlobalBanToActiveChannels(guild, { unbannedUser, unbannedRole } = {}) {
+    const settings = getVPSettings();
+    const owners = getOwners();
+    for (const [channelId, ownerId] of Object.entries(owners)) {
+        const channel = guild.channels.cache.get(channelId);
+        if (!channel) continue;
+
+        if (unbannedUser) await channel.permissionOverwrites.delete(unbannedUser).catch(() => {});
+        if (unbannedRole) await channel.permissionOverwrites.delete(unbannedRole).catch(() => {});
+
+        const profile = getRoomProfile(ownerId);
+        await applyBanOverwrites(channel, ownerId, profile, settings);
+
+        for (const member of channel.members.values()) {
+            if (isBanned(member, profile, ownerId, settings)) await member.voice.disconnect().catch(() => {});
+        }
+
+        await refreshPanelEmbed(channel, ownerId);
+    }
 }
 
 const USER_LIMIT_CHOICES = [0, 1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 99];
@@ -568,7 +602,7 @@ async function handleVoicePanelVoiceState(oldState, newState) {
             });
             setTempOwner(channel.id, newState.member.id);
 
-            await applyBanOverwrites(channel, newState.member.id, profile);
+            await applyBanOverwrites(channel, newState.member.id, profile, settings);
             if (profile.defaultLocked) {
                 await channel.permissionOverwrites.edit(newState.guild.roles.everyone, { Connect: false }).catch(() => {});
             }
@@ -592,7 +626,7 @@ async function handleVoicePanelVoiceState(oldState, newState) {
         const roomOwnerId = getTempOwner(newState.channelId);
         if (roomOwnerId) {
             const profile = getRoomProfile(roomOwnerId);
-            if (isBanned(newState.member, profile, roomOwnerId)) {
+            if (isBanned(newState.member, profile, roomOwnerId, settings)) {
                 await newState.member.voice.disconnect().catch(() => {});
             }
         }
