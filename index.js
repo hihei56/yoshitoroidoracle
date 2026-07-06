@@ -21,6 +21,7 @@ const {
     handleBumpStatus, handleBumpForceNotify, handleBumpHistory,
 }                                 = require('./bump');
 const { handleTimeout }           = require('./timeout');
+const { handleClean }              = require('./clean');
 const { initShiritori, handleShiritoriMessage } = require('./shiritori');
 const { initXpAnnounce }          = require('./xp_announce');
 const { postRanking, handleRanking } = require('./ranking');
@@ -354,6 +355,7 @@ client.on(Events.InteractionCreate, async i => {
     if (i.commandName === 'bump-force-notify') return handleBumpForceNotify(i);
     if (i.commandName === 'bump-history')      return handleBumpHistory(i);
     if (i.commandName === 'timeout')           return handleTimeout(i);
+    if (i.commandName === 'clean')              return handleClean(i);
 
     // ── 管理者のみ ────────────────────────────────────────────────────
 

@@ -625,7 +625,25 @@ new SlashCommandBuilder()
                 )
         ),
 
-    // 17. タイムアウト付与
+    // 17. 条件付き一括削除
+    new SlashCommandBuilder()
+        .setName('clean')
+        .setDescription('条件を指定してメッセージを一括削除します（メッセージの管理権限が必要）。')
+        .addIntegerOption(opt =>
+            opt.setName('count')
+                .setDescription('走査するメッセージ数（デフォルト: 100、最大1000）')
+                .setMinValue(1)
+                .setMaxValue(1000)
+        )
+        .addUserOption(opt => opt.setName('user').setDescription('このユーザーの発言のみ削除'))
+        .addBooleanOption(opt => opt.setName('bots').setDescription('Botの発言を削除'))
+        .addBooleanOption(opt => opt.setName('embeds').setDescription('Embed付きの発言を削除'))
+        .addBooleanOption(opt => opt.setName('links').setDescription('URLを含む発言を削除'))
+        .addBooleanOption(opt => opt.setName('images').setDescription('画像/動画付きの発言を削除'))
+        .addStringOption(opt => opt.setName('contains').setDescription('指定した文字列を含む発言を削除'))
+        .addStringOption(opt => opt.setName('regex').setDescription('正規表現にマッチする発言を削除（上級者向け）')),
+
+    // 18. タイムアウト付与
     new SlashCommandBuilder()
         .setName('timeout')
         .setDescription('指定したユーザーにタイムアウトを付与します（メンバーをタイムアウトさせる権限が必要）。')
