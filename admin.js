@@ -44,6 +44,7 @@ async function restorePresence(client) {
 const { handleKickInactive } = require('./kick_inactive');
 const { getNgWords, addNgWord, removeNgWord } = require('./ng_word_manager');
 const { resetShiritoriGame } = require('./shiritori');
+const { handleBumpRemindCommand } = require('./bump');
 
 const COLOR = {
     add:    0x57F287, // 緑
@@ -399,6 +400,11 @@ async function handleAdmin(interaction) {
             ],
             ephemeral: true,
         });
+    }
+
+    // ── Bump DMリマインド対象 ──
+    if (sub === 'remind') {
+        return handleBumpRemindCommand(interaction);
     }
 
     // ── XPランキング発表チャンネル ──

@@ -30,6 +30,7 @@ function getGuildState(state, guildId) {
             remindedSent: false,
             availableNotifiedSent: false,
             history: [],
+            remindUsers: [],
         };
     }
     return state[guildId];
@@ -73,6 +74,41 @@ async function sendToChannel(client, channelId, payload) {
     } catch (e) {
         console.error(`[Bump] チャンネル送信エラー (channel:${channelId}):`, e.message);
         return false;
+    }
+}
+
+/* =========================
+   📩 DMリマインド対象ユーザー管理
+========================= */
+function addRemindUser(guildId, userId) {
+    const state = loadState();
+    const g = getGuildState(state, guildId);
+    if (!g.remindUsers) g.remindUsers = [];
+    if (!g.remindUsers.includes(userId)) g.remindUsers.push(userId);
+    saveState(state);
+}
+
+function removeRemindUser(guildId, userId) {
+    const state = loadState();
+    const g = getGuildState(state, guildId);
+    g.remindUsers = (g.remindUsers ?? []).filter(id => id !== userId);
+    saveState(state);
+}
+
+function getRemindUsers(guildId) {
+    const state = loadState();
+    return state[guildId]?.remindUsers ?? [];
+}
+
+async function dmRemindUsers(client, guildId, embed) {
+    const userIds = getRemindUsers(guildId);
+    for (const userId of userIds) {
+        try {
+            const user = await client.users.fetch(userId);
+            await user.send({ embeds: [embed] });
+        } catch (e) {
+            console.error(`[Bump] DM送信失敗 (user:${userId}):`, e.message);
+        }
     }
 }
 
@@ -148,7 +184,11 @@ async function tick(client) {
                     .setColor(0xFEE75C)
                     .setTimestamp();
                 const ok = await sendToChannel(client, g.channelId, { embeds: [embed] });
-                if (ok) { g.remindedSent = true; changed = true; }
+                if (ok) {
+                    g.remindedSent = true;
+                    changed = true;
+                    await dmRemindUsers(client, guildId, embed);
+                }
             }
 
             if (!g.availableNotifiedSent && remainMs <= 0) {
@@ -158,7 +198,11 @@ async function tick(client) {
                     .setColor(0x57F287)
                     .setTimestamp();
                 const ok = await sendToChannel(client, g.channelId, { embeds: [embed] });
-                if (ok) { g.availableNotifiedSent = true; changed = true; }
+                if (ok) {
+                    g.availableNotifiedSent = true;
+                    changed = true;
+                    await dmRemindUsers(client, guildId, embed);
+                }
             }
         }
 
@@ -309,6 +353,7 @@ async function handleBumpForceNotify(interaction) {
         if (!ok) {
             return interaction.reply({ content: '❌ 通知チャンネルへの送信に失敗しました。権限を確認してください。', ephemeral: true });
         }
+        await dmRemindUsers(interaction.client, interaction.guild.id, embed);
 
         return interaction.reply({ content: `✅ <#${g.channelId}> に強制通知を送信しました。`, ephemeral: true });
     } catch (e) {
@@ -353,6 +398,48 @@ async function handleBumpHistory(interaction) {
     }
 }
 
+/* =========================
+   💬 /admin remind（DMリマインド対象の管理）
+========================= */
+async function handleBumpRemindCommand(interaction) {
+    try {
+        if (!interaction.inGuild()) {
+            return interaction.reply({ content: 'このコマンドはサーバー内でのみ使用できます。', ephemeral: true });
+        }
+
+        const action     = interaction.options.getString('action');
+        const targetUser = interaction.options.getUser('user');
+        const guildId    = interaction.guild.id;
+
+        if (action === 'list') {
+            const users = getRemindUsers(guildId);
+            return interaction.reply({
+                content: users.length
+                    ? `📋 Bump DMリマインド登録者:\n${users.map(id => `<@${id}>`).join('\n')}`
+                    : 'ℹ️ 登録者はいません。',
+                ephemeral: true,
+            });
+        }
+
+        if (!targetUser) {
+            return interaction.reply({ content: 'user を指定してください。', ephemeral: true });
+        }
+
+        if (action === 'add') {
+            addRemindUser(guildId, targetUser.id);
+            return interaction.reply({ content: `✅ <@${targetUser.id}> をBumpのDMリマインド対象に追加しました。`, ephemeral: true });
+        }
+
+        if (action === 'remove') {
+            removeRemindUser(guildId, targetUser.id);
+            return interaction.reply({ content: `✅ <@${targetUser.id}> をBumpのDMリマインド対象から解除しました。`, ephemeral: true });
+        }
+    } catch (e) {
+        console.error('[Bump] remind コマンドエラー:', e);
+        return interaction.reply({ content: '❌ 処理中にエラーが発生しました。', ephemeral: true }).catch(() => {});
+    }
+}
+
 module.exports = {
     initBump,
     handleBumpMessage,
@@ -360,4 +447,5 @@ module.exports = {
     handleBumpStatus,
     handleBumpForceNotify,
     handleBumpHistory,
+    handleBumpRemindCommand,
 };

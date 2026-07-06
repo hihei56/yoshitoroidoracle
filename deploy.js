@@ -227,6 +227,25 @@ new SlashCommandBuilder()
         )
         .addSubcommand(subcommand =>
             subcommand
+                .setName('remind')
+                .setDescription('Bumpリマインダーの通知をDMでも受け取るユーザーを管理します。')
+                .addStringOption(option =>
+                    option.setName('action')
+                        .setDescription('操作を選択')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: '追加', value: 'add'    },
+                            { name: '解除', value: 'remove' },
+                            { name: '一覧', value: 'list'   },
+                        )
+                )
+                .addUserOption(option =>
+                    option.setName('user')
+                        .setDescription('対象ユーザー（add/remove時は必須）')
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('ranking_channel')
                 .setDescription('週間/月間XPランキングを自動発表するチャンネルを設定します。未指定で解除。')
                 .addChannelOption(opt =>
