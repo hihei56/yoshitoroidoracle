@@ -8,6 +8,7 @@ const {
 const { resolveDataPath, ensureDir, readJson, writeJson } = require('./dataPath');
 
 const ADMIN_ROLE_ID = '1495971497016164492';
+const DEFAULT_NOTIFY_ROLE_ID = '1477518549198049362';
 
 // 管理者は自分の部屋でなくても、どの一時ボイスチャンネルのパネルも操作できる
 function isRoomAdmin(member) {
@@ -29,7 +30,7 @@ ensureDir(PANEL_MESSAGES_FILE);
 function getVPSettings() {
     return {
         joinChannelId: null, categoryId: null,
-        notifyChannelId: null, notifyRoleId: null, notifyMinutes: 5,
+        notifyChannelId: null, notifyRoleId: DEFAULT_NOTIFY_ROLE_ID, notifyMinutes: 5,
         bannedUserIds: [], bannedRoleIds: [],
         ...readJson(SETTINGS_FILE, {}),
     };
@@ -417,6 +418,7 @@ async function handleVoicePanel(interaction) {
 /* ===== 通話継続通知 ===== */
 const notifyTimers = new Map(); // channelId -> Timeout
 const notifyWebhookCache = new Map(); // textChannelId -> Webhook
+const callStartTimes = new Map(); // channelId -> 通話開始時刻(ms)
 
 async function getNotifyWebhook(textChannel) {
     if (notifyWebhookCache.has(textChannel.id)) return notifyWebhookCache.get(textChannel.id);
@@ -481,22 +483,63 @@ function cancelCallNotify(channelId) {
     }
 }
 
+// 通話が0人になって一時チャンネルが削除されるタイミングで、終了時刻を記録する（メンションなし）
+async function logCallEnd(guild, settings, channelId, channelName, ownerId) {
+    const startedAt = callStartTimes.get(channelId);
+    callStartTimes.delete(channelId);
+    if (!settings.notifyChannelId) return;
+
+    const notifyChannel = await guild.channels.fetch(settings.notifyChannelId).catch(() => null);
+    if (!notifyChannel) return;
+    const webhook = await getNotifyWebhook(notifyChannel).catch(() => null);
+    if (!webhook) return;
+
+    const owner = await guild.members.fetch(ownerId).catch(() => null);
+    const avatarURL = owner?.user.displayAvatarURL({ extension: 'png', size: 128 })
+        ?? guild.client.user.displayAvatarURL({ extension: 'png', size: 128 });
+
+    const embed = new EmbedBuilder()
+        .setTitle('通話終了')
+        .setColor(0x99AAB5)
+        .addFields(
+            { name: 'チャンネル', value: channelName, inline: true },
+            { name: '始めた人',   value: `${owner ? owner.displayName : '不明ユーザー'}さん`, inline: true },
+            ...(startedAt ? [{ name: '開始時間', value: formatDateTimeJST(startedAt), inline: true }] : []),
+            { name: '終了時間',   value: formatDateTimeJST(Date.now()), inline: true },
+        )
+        .setThumbnail(avatarURL);
+
+    await webhook.send({
+        content: '通話終了しました。',
+        username: '通話お知らせくん',
+        avatarURL,
+        embeds: [embed],
+        allowedMentions: { parse: [] },
+    }).catch(() => {});
+}
+
 // voiceStateUpdateの取りこぼしや、管理者による手動削除で所有者情報だけ残った
 // ケースに備えて、定期的に空になった一時チャンネルを掃除する（1回だけ登録）
 function initVoicePanelCleanup(client) {
     setInterval(async () => {
         const owners = getOwners();
+        const settings = getVPSettings();
         for (const channelId of Object.keys(owners)) {
+            const ownerId = owners[channelId];
             const channel = await client.channels.fetch(channelId).catch(() => null);
             if (!channel) {
                 deleteTempOwner(channelId);
                 cancelCallNotify(channelId);
+                callStartTimes.delete(channelId);
                 continue;
             }
             if (channel.members.filter(m => !m.user.bot).size === 0) {
+                const channelName = channel.name;
+                const guild = channel.guild;
                 await channel.delete().catch(() => {});
                 deleteTempOwner(channelId);
                 cancelCallNotify(channelId);
+                await logCallEnd(guild, settings, channelId, channelName, ownerId);
             }
         }
     }, 30 * 1000);
@@ -536,7 +579,9 @@ async function handleVoicePanelVoiceState(oldState, newState) {
                 components: buildPanelComponents(),
             }).catch(() => null);
             if (panelMsg) setPanelMessageId(channel.id, panelMsg.id);
-            scheduleCallNotify(channel, settings, newState.member.id, Date.now());
+            const startedAt = Date.now();
+            callStartTimes.set(channel.id, startedAt);
+            scheduleCallNotify(channel, settings, newState.member.id, startedAt);
         } catch (e) {
             console.error('[VoicePanel] チャンネル作成エラー:', e);
         }
@@ -558,9 +603,11 @@ async function handleVoicePanelVoiceState(oldState, newState) {
         if (ownerId) {
             const channel = oldState.guild.channels.cache.get(oldState.channelId);
             if (channel && channel.members.filter(m => !m.user.bot).size === 0) {
+                const channelName = channel.name;
                 await channel.delete().catch(() => {});
                 deleteTempOwner(oldState.channelId);
                 cancelCallNotify(oldState.channelId);
+                await logCallEnd(oldState.guild, settings, oldState.channelId, channelName, ownerId);
             }
         }
     }

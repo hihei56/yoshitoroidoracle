@@ -4,6 +4,7 @@ const { pickOneLurker } = require('./lurker_picker');
 const { getSettings } = require('./config');
 const { checkNgWords, normalizeForDetection } = require('./moderator');
 const { recordForCorpus, generate: generateMarkovMessage } = require('./markov_chatter');
+const { registerChatterMessage } = require('./chatter_registry');
 
 const SILENCE_MS       = 60 * 60 * 1000;      // 1時間
 const COOLDOWN_MS      = 2  * 60 * 60 * 1000; // 投稿後2時間クールダウン
@@ -122,13 +123,14 @@ async function generateAndPost(client, guild, channel) {
     const targetChannel = channel.isThread?.() ? channel.parent : channel;
     const webhook = await getWebhook(targetChannel, client);
 
-    await webhook.send({
+    const sent = await webhook.send({
         content,
         username:        lurker.displayName || lurker.user.username,
         avatarURL:       lurker.user.displayAvatarURL({ dynamic: true }),
         allowedMentions: { parse: [] },
         ...(channel.isThread?.() && { threadId: channel.id }),
     });
+    registerChatterMessage(sent.id, lurker.id);
 
     console.log(`[Chatter] ✅ "${content}" | 成りすまし: ${lurker.displayName} | source: ${source}`);
     return { ok: true, content, source, lurkerName: lurker.displayName || lurker.user.username };

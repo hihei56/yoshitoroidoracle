@@ -10,6 +10,7 @@ const { isImpersonated } = require('./impersonate_manager');
 const { pickOneLurker } = require('./lurker_picker');
 const { getLastActivity } = require('./activity_tracker');
 const { getNgWords } = require('./ng_word_manager');
+const { getChatterLurkerId } = require('./chatter_registry');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -631,6 +632,10 @@ async function buildReplyPrefix(message) {
                 } else {
                     targetId = authorId;
                 }
+            } else {
+                // 埋め込みIDがない = chatterのなりすまし投稿の可能性 → 実際のlurkerを解決する
+                const chatterLurkerId = getChatterLurkerId(ref.id);
+                if (chatterLurkerId) targetId = chatterLurkerId;
             }
         }
 
