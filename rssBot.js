@@ -3,16 +3,10 @@ const cron = require('node-cron');
 const axios = require('axios');
 const { WebhookClient, EmbedBuilder } = require('discord.js');
 const he = require('he');
-const { OpenAI } = require('openai');
+const { chatCompletion } = require('./ai_client');
 const { resolveDataPath, ensureDir, readJson, writeJson } = require('./dataPath');
 
 const rssParser = new Parser({ timeout: 10000 });
-
-// ===== OpenAI (Groq) =====
-const openai = new OpenAI({
-    apiKey: process.env.GROQ_API_KEY,
-    baseURL: "https://api.groq.com/openai/v1"
-});
 
 // ===== Webhook =====
 const UNTAI_WEBHOOK = new WebhookClient({ url: process.env.UNTAI_WEBHOOK });
@@ -61,15 +55,15 @@ function findImageUrl(item) {
 // ===== AI返信 =====
 async function generateAIReply(text) {
     try {
-        const res = await openai.chat.completions.create({
+        return await chatCompletion({
             model: "llama-3.1-8b-instant",
+            max_tokens: 60,
+            timeout: 15_000,
             messages: [
                 { role: "system", content: "投稿に対して軽い分析や皮肉を1文で返してください。" },
                 { role: "user", content: text }
             ],
-            max_tokens: 60
         });
-        return res.choices[0].message.content.trim();
     } catch (e) {
         console.error("[RSS] AI返信失敗:", e.message);
         return null;

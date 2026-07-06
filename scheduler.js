@@ -2,6 +2,7 @@
 const cron   = require('node-cron');
 const axios  = require('axios');
 const Parser = require('rss-parser');
+const { chatCompletion } = require('./ai_client');
 const parser = new Parser();
 const { EmbedBuilder } = require('discord.js');
 const { resolveDataPath, ensureDir, readJson, writeJson } = require('./dataPath');
@@ -118,22 +119,15 @@ async function sendTomoNews(client) {
         // AI解説
         let aiText = '詳細はリンク先をご確認ください。';
         try {
-            const res = await axios.post(
-                'https://api.groq.com/openai/v1/chat/completions',
-                {
-                    model:      'llama-3.3-70b-versatile',
-                    max_tokens: 200,
-                    messages: [
-                        { role: 'system', content: buildPrompt(targetFeed.genre) },
-                        { role: 'user',   content: `【タイトル】${targetItem.title}\n【内容】${contentSnippet}` },
-                    ],
-                },
-                {
-                    headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
-                    timeout: 15_000,
-                }
-            );
-            aiText = res.data.choices[0].message.content.trim();
+            aiText = await chatCompletion({
+                model:      'llama-3.3-70b-versatile',
+                max_tokens: 200,
+                timeout:    15_000,
+                messages: [
+                    { role: 'system', content: buildPrompt(targetFeed.genre) },
+                    { role: 'user',   content: `【タイトル】${targetItem.title}\n【内容】${contentSnippet}` },
+                ],
+            });
         } catch (e) {
             console.error('[Scheduler] Groq Error:', e.message);
         }

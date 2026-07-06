@@ -1,5 +1,5 @@
 // chatter.js — 1時間無発言時のチャット賑やかし自動投稿
-const axios = require('axios');
+const { chatCompletion } = require('./ai_client');
 const { pickOneLurker } = require('./lurker_picker');
 const { getSettings } = require('./config');
 const { checkNgWords, normalizeForDetection } = require('./moderator');
@@ -61,30 +61,24 @@ async function fetchRecentContext(channel) {
 async function generateChatMessage(context, personaName) {
     if (!process.env.GROQ_API_KEY) return null;
     try {
-        const res = await axios.post(
-            'https://api.groq.com/openai/v1/chat/completions',
-            {
-                model: 'qwen/qwen3-32b',
-                max_tokens: 60,
-                temperature: 0.9,
-                reasoning_effort: 'none', // Qwen3の思考モードを無効化（雑談一言生成に余計なトークンは不要）
-                messages: [
-                    {
-                        role: 'system',
-                        content: `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。友達同士の雑談チャンネルで、しばらく会話が途切れた後にふと一言つぶやくところです。直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、30文字以内目安）を返してください。質問でも独り言でも構いません。絵文字は基本的に付けず、文章の最後に毎回絵文字を付けるような機械的なパターンは絶対に避けてください（普通の人はそんなに毎回絵文字を使いません）。発言内容だけを返し、説明や前置きは付けないでください。`,
-                    },
-                    {
-                        role: 'user',
-                        content: context ? `直近の会話:\n${context}` : '（しばらく誰も発言していません）',
-                    },
-                ],
-            },
-            {
-                headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
-                timeout: 15_000,
-            }
-        );
-        return res.data.choices[0]?.message?.content?.trim() || null;
+        const content = await chatCompletion({
+            model: 'qwen/qwen3-32b',
+            max_tokens: 60,
+            temperature: 0.9,
+            groqOnly: { reasoning_effort: 'none' }, // Qwen3の思考モードを無効化（雑談一言生成に余計なトークンは不要）
+            timeout: 15_000,
+            messages: [
+                {
+                    role: 'system',
+                    content: `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。友達同士の雑談チャンネルで、しばらく会話が途切れた後にふと一言つぶやくところです。直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、30文字以内目安）を返してください。質問でも独り言でも構いません。絵文字は基本的に付けず、文章の最後に毎回絵文字を付けるような機械的なパターンは絶対に避けてください（普通の人はそんなに毎回絵文字を使いません）。発言内容だけを返し、説明や前置きは付けないでください。`,
+                },
+                {
+                    role: 'user',
+                    content: context ? `直近の会話:\n${context}` : '（しばらく誰も発言していません）',
+                },
+            ],
+        });
+        return content || null;
     } catch (e) {
         console.error('[Chatter] AI生成エラー:', e.message);
         return null;

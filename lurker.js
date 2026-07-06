@@ -1,6 +1,6 @@
 // lurker.js — ROM専目覚まし
 const cron = require('node-cron');
-const axios = require('axios');
+const { chatCompletion } = require('./ai_client');
 const { MessageFlags } = require('discord.js');
 const { getLastActivity } = require('./activity_tracker');
 const { getSettings } = require('./config');
@@ -63,9 +63,10 @@ async function generateWakeupMessage(targets) {
     const weeksAway = Math.round(longest / (7 * 24 * 60 * 60 * 1000));
 
     try {
-        const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+        const content = await chatCompletion({
             model: 'llama-3.3-70b-versatile',
             max_tokens: 60,
+            timeout: 8000,
             messages: [
                 {
                     role: 'system',
@@ -78,11 +79,8 @@ async function generateWakeupMessage(targets) {
                     content: `時間帯: ${timeOfDay}　最長${weeksAway}週間ぶり`,
                 },
             ],
-        }, {
-            headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
-            timeout: 8000,
         });
-        return res.data.choices[0].message.content.trim();
+        return content;
     } catch (e) {
         console.warn('[Lurker] AI生成失敗、フォールバック:', e.message);
         return timeOfDay === '昼' ? 'こんにちは〜！最近どうですか？😄' : 'こんばんは！お久しぶりです✨';

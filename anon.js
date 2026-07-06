@@ -2,7 +2,7 @@
 const { MessageFlags } = require('discord.js');
 const { getSettings }  = require('./config');
 const { getSession, createSession, createPermanentSession } = require('./say_sessions');
-const axios = require('axios');
+const { chatCompletion } = require('./ai_client');
 
 const TOKUMEI_USER_ID = '1419689848968581272';
 const MAX_CHARS       = 150;
@@ -17,9 +17,10 @@ function sanitizeMentions(text) {
 // 「匿名の〇〇」の〇〇部分をAIで生成（ユーザー名に依存しない完全ランダム）
 async function generateAnonSuffix() {
     try {
-        const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+        const content = await chatCompletion({
             model: 'llama-3.1-8b-instant',
             max_tokens: 20,
+            timeout: 5000,
             messages: [
                 {
                     role: 'system',
@@ -27,11 +28,8 @@ async function generateAnonSuffix() {
                 },
                 { role: 'user', content: '生成してください' }
             ]
-        }, {
-            headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
-            timeout: 5000,
         });
-        const suffix = res.data.choices[0].message.content.trim().slice(0, 15);
+        const suffix = content.slice(0, 15);
         return `匿名の${suffix}`;
     } catch {
         return '匿名の弱者男性';

@@ -1,6 +1,6 @@
 // ranking.js
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, WebhookClient } = require('discord.js');
-const axios = require('axios');
+const { chatCompletion } = require('./ai_client');
 
 const YOUTUBE_API_KEY      = process.env.YOUTUBE_API_KEY;
 const TWITCH_CLIENT_ID     = process.env.TWITCH_CLIENT_ID;
@@ -199,14 +199,15 @@ async function postRanking(client) {
         aiComment = CUSTOM_REACTIONS[matchedKey];
     } else {
         try {
-            const res = await axios.post("https://api.groq.com/openai/v1/chat/completions", {
+            const content = await chatCompletion({
                 model: "llama-3.3-70b-versatile",
+                timeout: 10000,
                 messages: [
                     { role: "system", content: "あなたは5chの実況スレ住民です。同接5万人超えの配信について、勢いのある1行レス（25文字以内）を生成せよ。語尾はｗ、草、始まったな、等。" },
                     { role: "user", content: `配信者: ${top1.name}\nタイトル: ${top1.title}` }
                 ]
-            }, { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` }, timeout: 10000 });
-            aiComment = res.data.choices[0].message.content.replace(/["'「」]/g, "");
+            });
+            aiComment = content.replace(/["'「」]/g, "");
         } catch {
             aiComment = "覇権確定で草ｗｗｗ";
         }

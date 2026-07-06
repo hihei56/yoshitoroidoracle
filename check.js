@@ -32,6 +32,8 @@ const OPTIONAL_ENVS = [
     'TWITCH_CLIENT_SECRET',
     'RANKING_WEBHOOK_URL',
     'DEBUG_MODE',
+    'OLLAMA_URL',
+    'OLLAMA_MODEL',
 ];
 
 for (const key of REQUIRED_ENVS) {
