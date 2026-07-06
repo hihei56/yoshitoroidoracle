@@ -36,11 +36,35 @@ function recordVoiceStateForRecruit(guild) {
     if (anyoneInVC) lastVCActiveTime = Date.now();
 }
 
+// 参加できるボイスチャンネル一覧（AFKチャンネルは除外、表示しきれない分は件数のみ）
+function listJoinableVoiceChannels(guild) {
+    const MAX = 10;
+    const channels = guild.channels.cache
+        .filter(c =>
+            (c.type === ChannelType.GuildVoice || c.type === ChannelType.GuildStageVoice) &&
+            c.id !== guild.afkChannelId
+        )
+        .sort((a, b) => a.rawPosition - b.rawPosition);
+    if (channels.size === 0) return 'なし';
+    const shown = [...channels.values()].slice(0, MAX).map(c => `<#${c.id}>`).join('\n');
+    return channels.size > MAX ? `${shown}\n他${channels.size - MAX}件` : shown;
+}
+
 function buildRecruitMessage(guild) {
+    const { roleId } = getVCRecruitSettings();
+    const pressCooldownHours = PRESS_COOLDOWN_MS / (60 * 60 * 1000);
+
     const embed = new EmbedBuilder()
-        .setTitle('🔊 VCだれかいる？')
-        .setDescription('最近だれもVCしてないみたい…暇な人いたら来て〜')
+        .setAuthor({ name: '📣 VC募集', iconURL: guild.client.user.displayAvatarURL() })
+        .setTitle('最近だれもVCしてないみたい…！')
+        .setDescription('下の **「VCに誘う」** ボタンを押すと、通知先ロールにメンションが飛んでみんなに知らせられるよ。暇な人はぜひ集まってね〜')
         .setColor(0x5865F2)
+        .addFields(
+            { name: '🎙️ 参加できるVC',   value: listJoinableVoiceChannels(guild),                 inline: false },
+            { name: '📢 通知先ロール',    value: roleId ? `<@&${roleId}>` : '未設定',              inline: true },
+            { name: '⏳ ボタンの連打制限', value: `1人あたり **${pressCooldownHours}時間** に1回まで`, inline: true },
+        )
+        .setThumbnail(guild.iconURL() ?? undefined)
         .setFooter({ text: guild.name, iconURL: guild.iconURL() ?? undefined })
         .setTimestamp();
     const row = new ActionRowBuilder().addComponents(
