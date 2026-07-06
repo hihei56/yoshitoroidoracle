@@ -46,6 +46,7 @@ const { getNgWords, addNgWord, removeNgWord } = require('./ng_word_manager');
 const { resetShiritoriGame } = require('./shiritori');
 const { handleBumpRemindCommand } = require('./bump');
 const { forcePost: forceChatterPost } = require('./chatter');
+const { forceRecruitPost, getVCRecruitSettings } = require('./vc_recruit');
 
 const COLOR = {
     add:    0x57F287, // 緑
@@ -70,6 +71,9 @@ function buildStatusEmbed() {
     const logCh     = settings.anonLogChannelId ? `<#${settings.anonLogChannelId}>` : '未設定';
     const lurkerCh  = settings.lurkerChannelId  ? `<#${settings.lurkerChannelId}>`  : '未設定';
     const chatterCh = settings.chatterChannelId ? `<#${settings.chatterChannelId}>` : '未設定（目覚ましチャンネルと共通）';
+    const vcRecruit = getVCRecruitSettings();
+    const vcRecruitCh   = vcRecruit.channelId ? `<#${vcRecruit.channelId}>` : '未設定';
+    const vcRecruitRole = vcRecruit.roleId    ? `<@&${vcRecruit.roleId}>`   : 'なし';
     const thinkerEnabled = settings.chineseThinkerReplace !== false;
     const thinkerExcl    = (settings.chineseThinkerExcludeUsers ?? []);
     const thinker        = thinkerEnabled
@@ -90,6 +94,8 @@ function buildStatusEmbed() {
             { name: '📋 Anonログチャンネル',  value: logCh,                                           inline: false },
             { name: '😴 目覚ましチャンネル',  value: lurkerCh,  inline: false },
             { name: '💬 賑やかしBot投稿チャンネル', value: chatterCh, inline: false },
+            { name: '📣 VC募集投稿チャンネル', value: vcRecruitCh, inline: true },
+            { name: '📣 VC募集メンションロール', value: vcRecruitRole, inline: true },
             { name: '🀄 中国思想家置き換え',  value: thinker,   inline: false },
             { name: '😿 Webhook化許可ユーザー', value: fmtUsers(settings.cryAllowedUsers), inline: false },
         )
@@ -401,6 +407,51 @@ async function handleAdmin(interaction) {
             ],
             ephemeral: true,
         });
+    }
+
+    // ── VC募集投稿チャンネル ──
+    if (sub === 'vc_recruit_channel') {
+        const ch       = interaction.options.getChannel('channel');
+        const settings = getSettings();
+        settings.vcRecruitChannelId = ch?.id ?? null;
+        saveSettings(settings);
+        const verb = ch ? `<#${ch.id}> に設定` : '解除（賑やかしBot投稿チャンネルと共通）';
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle('📣 VC募集投稿チャンネル')
+                    .setColor(ch ? COLOR.add : COLOR.remove)
+                    .setDescription(verb)
+                    .setTimestamp()
+            ],
+            ephemeral: true,
+        });
+    }
+
+    // ── VC募集メンションロール ──
+    if (sub === 'vc_recruit_role') {
+        const role     = interaction.options.getRole('role');
+        const settings = getSettings();
+        settings.vcRecruitRoleId = role?.id ?? null;
+        saveSettings(settings);
+        const verb = role ? `<@&${role.id}> に設定` : '解除（デフォルトロールに戻す）';
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle('📣 VC募集メンションロール')
+                    .setColor(role ? COLOR.add : COLOR.remove)
+                    .setDescription(verb)
+                    .setTimestamp()
+            ],
+            ephemeral: true,
+        });
+    }
+
+    // ── VC募集の試し打ち ──
+    if (sub === 'vc_recruit') {
+        await interaction.deferReply({ ephemeral: true });
+        await forceRecruitPost(interaction);
+        return interaction.editReply({ content: '✅ このチャンネルにVC募集メッセージを投稿しました。' });
     }
 
     // ── 賑やかしchatterの試し打ち ──

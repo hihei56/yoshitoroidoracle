@@ -19,6 +19,8 @@ function getSettings() {
     if (data.chatterChannelId === undefined) data.chatterChannelId = null;
     if (data.shiritoriChannelId === undefined) data.shiritoriChannelId = null;
     if (data.rankingChannelId === undefined) data.rankingChannelId = null;
+    if (data.vcRecruitChannelId === undefined) data.vcRecruitChannelId = null;
+    if (data.vcRecruitRoleId === undefined) data.vcRecruitRoleId = null;
     if (!data.markovExcludedUsers) data.markovExcludedUsers = [];
     if (!data.ttsUserVoices) data.ttsUserVoices = {};
     if (data.chineseThinkerReplace === undefined)     data.chineseThinkerReplace     = true;

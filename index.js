@@ -9,6 +9,7 @@ const { handleAnon }             = require('./anon');
 const { handleCurse }            = require('./curse');
 const { initLurker, handleLurker } = require('./lurker');
 const { initChatter, recordMessage: recordChatterMessage } = require('./chatter');
+const { initVCRecruit, recordVoiceStateForRecruit, handleVCRecruitButton } = require('./vc_recruit');
 const { recordActivity, backfillActivity } = require('./activity_tracker');
 const { handleDeathmatch }       = require('./deathmatch');
 const { handleModerator, handlePoopReaction, handleCryReaction, handleEmbedModerator, handleCandyReaction, handleEditDM } = require('./moderator');
@@ -131,6 +132,7 @@ client.once(Events.ClientReady, async c => {
     initRSS(client);
     initLurker(client);
     initChatter(client);
+    initVCRecruit(client);
     initVoicePanelCleanup(client);
     initBump(client);
     initShiritori();
@@ -244,6 +246,7 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
 
 client.on(Events.VoiceStateUpdate, (oldState, newState) => {
     handleVoicePanelVoiceState(oldState, newState).catch(e => console.error('[VoicePanel VC]:', e));
+    recordVoiceStateForRecruit(newState.guild);
 });
 
 client.on(Events.InteractionCreate, async i => {
@@ -255,6 +258,9 @@ client.on(Events.InteractionCreate, async i => {
         return handleServersLeaveConfirm(i, i.customId.split(':')[2]).catch(e => console.error('[ServersConfirm]:', e));
     if (i.isButton() && i.customId === 'admin_servers:leave_cancel')
         return handleServersLeaveCancel(i).catch(e => console.error('[ServersCancel]:', e));
+
+    if (i.isButton() && i.customId === 'vcrecruit_press')
+        return handleVCRecruitButton(i).catch(e => console.error('[VCRecruit Btn]:', e));
 
     if (i.isButton() && i.customId.startsWith('vcpanel_'))
         return handleVoicePanelButton(i).catch(e => console.error('[VoicePanel Btn]:', e));

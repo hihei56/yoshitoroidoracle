@@ -168,4 +168,8 @@ function initChatter(client) {
     console.log('[Chatter] ✅ 初期化 | 1時間無発言で自動投稿');
 }
 
-module.exports = { initChatter, recordMessage, forcePost };
+function getLastMessageTime() {
+    return lastMessageTime;
+}
+
+module.exports = { initChatter, recordMessage, forcePost, getLastMessageTime };
