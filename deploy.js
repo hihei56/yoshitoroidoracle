@@ -574,6 +574,12 @@ new SlashCommandBuilder()
             sub.setName('levelnotif')
                 .setDescription('レベルアップ通知のON/OFFを切り替えます。')
                 .addBooleanOption(opt => opt.setName('enable').setDescription('true=ON / false=OFF').setRequired(true))
+        )
+        .addSubcommand(sub =>
+            sub.setName('transfer')
+                .setDescription('BANされたユーザーのXP・レベルを別ユーザーに引き継ぎます。')
+                .addStringOption(opt => opt.setName('from_id').setDescription('引き継ぎ元のユーザーID（BAN済み）').setRequired(true))
+                .addUserOption(opt => opt.setName('to').setDescription('引き継ぎ先のユーザー').setRequired(true))
         ),
 
     // 16. Disboard Bump リマインダー

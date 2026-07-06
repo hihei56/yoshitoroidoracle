@@ -44,7 +44,7 @@ const {
     XP_PER_LEVEL,
     processMessage, getUserData, getRank, getLeaderboard, xpToNextLevel,
     getPeriodXp, getLeaderboardByPeriod,
-    setUserLevel, adjustXP, resetUser,
+    setUserLevel, adjustXP, resetUser, transferUser,
     setHideBadge, isHideBadge,
     addExcludedRole, removeExcludedRole, getExcludedRoles, isExcluded,
     buildNickname, getLevelBadge, getMonthlyRank,
@@ -538,6 +538,32 @@ client.on(Events.InteractionCreate, async i => {
                     else ok++;
                 }
                 return i.editReply({ content: `✅ ニックネーム同期完了: 更新 ${ok}名 / スキップ ${skip}名 / 失敗 ${fail}名` });
+            }
+
+            if (sub === 'transfer') {
+                const fromId = i.options.getString('from_id').trim();
+                const toUser = i.options.getUser('to');
+                if (!/^\d{17,20}$/.test(fromId)) {
+                    return i.reply({ content: '❌ `from_id` に有効なユーザーIDを入力してください（17〜20桁の数字）。', ephemeral: true });
+                }
+                if (fromId === toUser.id) {
+                    return i.reply({ content: '❌ 引き継ぎ元と引き継ぎ先が同じユーザーです。', ephemeral: true });
+                }
+                const src = getUserData(fromId);
+                if (src.xp === 0 && src.level === 0) {
+                    return i.reply({ content: `❌ ID \`${fromId}\` のXPデータが存在しません。`, ephemeral: true });
+                }
+                const result = transferUser(fromId, toUser.id);
+                const member = await i.guild.members.fetch(toUser.id).catch(() => null);
+                if (member?.manageable) {
+                    const base     = getAlias(toUser.id) ?? member.displayName;
+                    const stripped = base.replace(/\s*[🌱🔥⚡💎👑].*$/, '');
+                    await member.setNickname(buildNickname(stripped, result.level, getMonthlyRank(toUser.id), toUser.id)).catch(() => {});
+                }
+                return i.reply({
+                    content: `✅ \`${fromId}\` のデータを <@${toUser.id}> に引き継ぎました。\nLv.**${result.level}** / ${Math.floor(result.xp)} XP`,
+                    ephemeral: true,
+                });
             }
 
             if (sub === 'exclude') {
