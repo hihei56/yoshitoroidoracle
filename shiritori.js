@@ -1,8 +1,7 @@
 // shiritori.js — しりとりゲーム（kuromoji.jsでかな変換・辞書判定）
-const path = require('path');
-const kuromoji = require('kuromoji');
 const { EmbedBuilder } = require('discord.js');
 const { getSettings, saveSettings } = require('./config');
+const { getTokenizer } = require('./japanese_tokenizer');
 
 const HISTORY_LIMIT = 200;
 
@@ -12,20 +11,6 @@ const SMALL_TO_LARGE = {
 };
 
 const gameState = new Map(); // channelId -> { currentWord: {surface, reading, last} | null, history: Set<string> }
-let tokenizerPromise = null;
-
-function getTokenizer() {
-    if (!tokenizerPromise) {
-        const dicPath = path.join(path.dirname(require.resolve('kuromoji/package.json')), 'dict');
-        tokenizerPromise = new Promise((resolve, reject) => {
-            kuromoji.builder({ dicPath }).build((err, tokenizer) => {
-                if (err) reject(err);
-                else resolve(tokenizer);
-            });
-        });
-    }
-    return tokenizerPromise;
-}
 
 function initShiritori() {
     getTokenizer()

@@ -3,6 +3,7 @@ const axios = require('axios');
 const { pickOneLurker } = require('./lurker_picker');
 const { getSettings } = require('./config');
 const { checkNgWords, normalizeForDetection } = require('./moderator');
+const { recordForCorpus, generate: generateMarkovMessage } = require('./markov_chatter');
 
 const SILENCE_MS       = 60 * 60 * 1000;      // 1時間
 const COOLDOWN_MS      = 2  * 60 * 60 * 1000; // 投稿後2時間クールダウン
@@ -14,10 +15,12 @@ let lastMessageTime = Date.now(); // 起動時は「今」扱い
 let lastPostedTime  = 0;
 let _lastLurkerId   = null;
 
-function recordMessage(channelId) {
+function recordMessage(channelId, content) {
     const settings  = getSettings();
     const targetId  = settings.chatterChannelId ?? settings.lurkerChannelId;
-    if (targetId && channelId === targetId) lastMessageTime = Date.now();
+    if (!targetId || channelId !== targetId) return;
+    lastMessageTime = Date.now();
+    recordForCorpus(content).catch(e => console.error('[Chatter] コーパス記録エラー:', e.message));
 }
 
 async function getWebhook(channel, client) {
@@ -106,13 +109,19 @@ async function tryPost(client) {
     if (!lurker) return;
     _lastLurkerId = lurker.id;
 
-    const context = await fetchRecentContext(channel);
-    let content = await generateChatMessage(context, lurker.displayName || lurker.user.username);
+    let content = generateMarkovMessage();
+    let source  = content ? 'Markov' : null;
+
+    if (!content) {
+        const context = await fetchRecentContext(channel);
+        content = await generateChatMessage(context, lurker.displayName || lurker.user.username);
+        if (content) source = 'AI';
+    }
 
     if (content) {
         const { hit } = checkNgWords(normalizeForDetection(content));
         if (hit) {
-            console.warn('[Chatter] AI生成文がNGワードに抵触したため絵文字にフォールバック');
+            console.warn(`[Chatter] ${source}生成文がNGワードに抵触したため絵文字にフォールバック`);
             content = null;
         }
     }
