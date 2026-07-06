@@ -42,6 +42,7 @@ async function restorePresence(client) {
     console.info(`[PRESENCE] 保存済みステータスを復元: ${saved.status}`);
 }
 const { handleKickInactive } = require('./kick_inactive');
+const { getNgWords, addNgWord, removeNgWord } = require('./ng_word_manager');
 
 const COLOR = {
     add:    0x57F287, // 緑
@@ -397,6 +398,62 @@ async function handleAdmin(interaction) {
             ],
             ephemeral: true,
         });
+    }
+
+    // ── 臨時NGワード管理 ──
+    if (sub === 'ng_word') {
+        const action = interaction.options.getString('action');
+        const word   = interaction.options.getString('word');
+        const durationMinutes = interaction.options.getInteger('duration_minutes');
+
+        if (action === 'list') {
+            const words = getNgWords();
+            const desc = words.length
+                ? words.map(w => `\`${w.word}\`${w.expiresAt ? ` — <t:${Math.floor(w.expiresAt / 1000)}:R> まで` : ' — 無期限'}`).join('\n')
+                : 'なし';
+            return interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('🚫 臨時NGワード一覧')
+                        .setColor(COLOR.info)
+                        .setDescription(desc)
+                        .setTimestamp()
+                ],
+                ephemeral: true,
+            });
+        }
+
+        if (!word) {
+            return interaction.reply({ content: 'word を指定してください。', ephemeral: true });
+        }
+
+        if (action === 'add') {
+            addNgWord(word, interaction.user.id, durationMinutes);
+            return interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('🚫 臨時NGワード — 追加')
+                        .setColor(COLOR.add)
+                        .setDescription(`\`${word}\` を追加しました。\n${durationMinutes ? `⏰ ${durationMinutes}分後に自動失効` : '♾️ 無期限（手動削除まで有効）'}`)
+                        .setTimestamp()
+                ],
+                ephemeral: true,
+            });
+        }
+
+        if (action === 'remove') {
+            const removed = removeNgWord(word);
+            return interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('🚫 臨時NGワード — 削除')
+                        .setColor(removed ? COLOR.remove : COLOR.deny)
+                        .setDescription(removed ? `\`${word}\` を削除しました。` : `\`${word}\` は登録されていません。`)
+                        .setTimestamp()
+                ],
+                ephemeral: true,
+            });
+        }
     }
 
     // ── 現在の設定を表示 ──

@@ -227,6 +227,31 @@ new SlashCommandBuilder()
         )
         .addSubcommand(subcommand =>
             subcommand
+                .setName('ng_word')
+                .setDescription('検閲対象の臨時NGワードを追加/削除/一覧表示します。')
+                .addStringOption(option =>
+                    option.setName('action')
+                        .setDescription('操作を選択')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: '追加', value: 'add'    },
+                            { name: '削除', value: 'remove' },
+                            { name: '一覧', value: 'list'   },
+                        )
+                )
+                .addStringOption(option =>
+                    option.setName('word')
+                        .setDescription('対象の単語（add/remove時は必須）')
+                )
+                .addIntegerOption(option =>
+                    option.setName('duration_minutes')
+                        .setDescription('何分間有効にするか（省略で無期限。add時のみ使用）')
+                        .setMinValue(1)
+                        .setMaxValue(10080)
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('ngserver')
                 .setDescription('招待リンクを自動削除するNGサーバーを管理します。')
                 .addStringOption(opt =>
@@ -543,6 +568,19 @@ new SlashCommandBuilder()
                         .addUserOption(opt => opt.setName('owner').setDescription('部屋の持ち主').setRequired(true))
                 )
         ),
+
+    // 17. タイムアウト付与
+    new SlashCommandBuilder()
+        .setName('timeout')
+        .setDescription('指定したユーザーにタイムアウトを付与します（メンバーをタイムアウトさせる権限が必要）。')
+        .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー').setRequired(true))
+        .addIntegerOption(opt =>
+            opt.setName('minutes')
+                .setDescription('タイムアウト時間(分)（デフォルト: 10分）')
+                .setMinValue(1)
+                .setMaxValue(40320)
+        )
+        .addStringOption(opt => opt.setName('reason').setDescription('理由（省略可）')),
 
 ].map(command => command.toJSON());
 

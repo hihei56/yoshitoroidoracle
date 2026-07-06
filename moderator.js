@@ -9,6 +9,7 @@ const { isCursed } = require('./curse_manager');
 const { isImpersonated } = require('./impersonate_manager');
 const { pickOneLurker } = require('./lurker_picker');
 const { getLastActivity } = require('./activity_tracker');
+const { getNgWords } = require('./ng_word_manager');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -379,6 +380,12 @@ function checkNgWords(text) {
     testAndCapture(SELF_HARM_PROMO_REGEX, 'self_harm_promo');
     testAndCapture(HATE_REGEX,           'hate_speech');
     testAndCapture(DISABILITY_HATE_REGEX, 'disability_hate');
+
+    for (const w of getNgWords()) {
+        const normWord = normalizeForDetection(w.word);
+        if (normWord && text.includes(normWord)) matched.push(`custom_ng(${w.word.slice(0, 20)})`);
+    }
+
     return { hit: matched.length > 0, matched };
 }
 

@@ -20,6 +20,7 @@ const {
     initBump, handleBumpMessage, handleBumpSetup,
     handleBumpStatus, handleBumpForceNotify, handleBumpHistory,
 }                                 = require('./bump');
+const { handleTimeout }           = require('./timeout');
 const { postRanking, handleRanking } = require('./ranking');
 const { handleTimeoutList }      = require('./timeoutlist');
 const { initSecurity, handlePermList } = require('./security');
@@ -347,6 +348,7 @@ client.on(Events.InteractionCreate, async i => {
     if (i.commandName === 'bump-status')       return handleBumpStatus(i);
     if (i.commandName === 'bump-force-notify') return handleBumpForceNotify(i);
     if (i.commandName === 'bump-history')      return handleBumpHistory(i);
+    if (i.commandName === 'timeout')           return handleTimeout(i);
 
     // ── 管理者のみ ────────────────────────────────────────────────────
 
