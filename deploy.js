@@ -227,6 +227,15 @@ new SlashCommandBuilder()
         )
         .addSubcommand(subcommand =>
             subcommand
+                .setName('shiritori_channel')
+                .setDescription('しりとりゲームを行うチャンネルを設定します。未指定で解除（ゲームもリセット）。')
+                .addChannelOption(opt =>
+                    opt.setName('channel')
+                        .setDescription('ゲームを行うチャンネル（省略で解除）')
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('ng_word')
                 .setDescription('検閲対象の臨時NGワードを追加/削除/一覧表示します。')
                 .addStringOption(option =>

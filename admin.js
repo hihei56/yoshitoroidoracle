@@ -43,6 +43,7 @@ async function restorePresence(client) {
 }
 const { handleKickInactive } = require('./kick_inactive');
 const { getNgWords, addNgWord, removeNgWord } = require('./ng_word_manager');
+const { resetShiritoriGame } = require('./shiritori');
 
 const COLOR = {
     add:    0x57F287, // 緑
@@ -394,6 +395,26 @@ async function handleAdmin(interaction) {
                     .setTitle(`😿 Webhook化 — ${verb}`)
                     .setColor(action === 'add' ? COLOR.add : COLOR.remove)
                     .setDescription(`<@${targetUser.id}>`)
+                    .setTimestamp()
+            ],
+            ephemeral: true,
+        });
+    }
+
+    // ── しりとりチャンネル ──
+    if (sub === 'shiritori_channel') {
+        const ch       = interaction.options.getChannel('channel');
+        const settings = getSettings();
+        settings.shiritoriChannelId = ch?.id ?? null;
+        saveSettings(settings);
+        resetShiritoriGame(ch?.id);
+        const verb = ch ? `<#${ch.id}> に設定しました（ゲームをリセットしました）` : '解除しました';
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle('🔤 しりとりチャンネル')
+                    .setColor(ch ? COLOR.add : COLOR.remove)
+                    .setDescription(verb)
                     .setTimestamp()
             ],
             ephemeral: true,
