@@ -16,6 +16,10 @@ const { handleImpersonate }      = require('./impersonate');
 const { handleImp }              = require('./imp');
 const { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel, handlePresence, restorePresence } = require('./admin');
 const { initRSS }                = require('./rssBot');
+const {
+    initBump, handleBumpMessage, handleBumpSetup,
+    handleBumpStatus, handleBumpForceNotify, handleBumpHistory,
+}                                 = require('./bump');
 const { postRanking, handleRanking } = require('./ranking');
 const { handleTimeoutList }      = require('./timeoutlist');
 const { initSecurity, handlePermList } = require('./security');
@@ -120,6 +124,7 @@ client.once(Events.ClientReady, async c => {
     initLurker(client);
     initChatter(client);
     initVoicePanelCleanup(client);
+    initBump(client);
     restorePresence(client).catch(e => console.error('[PRESENCE] 復元エラー:', e));
 
     const guild = client.guilds.cache.first();
@@ -165,7 +170,10 @@ client.once(Events.ClientReady, async c => {
 });
 
 client.on(Events.MessageCreate, async m => {
-    if (m.author.bot) return;
+    if (m.author.bot) {
+        handleBumpMessage(m).catch(e => console.error('[Bump Error]:', e));
+        return;
+    }
     if (!m.guild) {
         handleEditDM(m).catch(e => console.error('[EditDM Error]:', e));
         return;
@@ -334,6 +342,11 @@ client.on(Events.InteractionCreate, async i => {
         deleteBg(i.user.id);
         return i.reply({ content: '🗑️ 背景画像をデフォルトに戻しました。', ephemeral: true });
     }
+
+    if (i.commandName === 'bump-setup')        return handleBumpSetup(i);
+    if (i.commandName === 'bump-status')       return handleBumpStatus(i);
+    if (i.commandName === 'bump-force-notify') return handleBumpForceNotify(i);
+    if (i.commandName === 'bump-history')      return handleBumpHistory(i);
 
     // ── 管理者のみ ────────────────────────────────────────────────────
 

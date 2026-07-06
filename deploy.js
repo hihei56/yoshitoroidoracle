@@ -430,6 +430,41 @@ new SlashCommandBuilder()
                 .addBooleanOption(opt => opt.setName('enable').setDescription('true=ON / false=OFF').setRequired(true))
         ),
 
+    // 16. Disboard Bump リマインダー
+    new SlashCommandBuilder()
+        .setName('bump-setup')
+        .setDescription('Disboard /bump のリマインダー通知チャンネルを設定します（サーバー管理権限が必要）。')
+        .addChannelOption(opt =>
+            opt.setName('channel')
+                .setDescription('通知を送信するテキストチャンネル')
+                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+                .setRequired(true)
+        )
+        .addIntegerOption(opt =>
+            opt.setName('remind_minutes')
+                .setDescription('Bump可能になる何分前に通知するか（デフォルト: 10分）')
+                .setMinValue(1)
+                .setMaxValue(120)
+        ),
+
+    new SlashCommandBuilder()
+        .setName('bump-status')
+        .setDescription('現在のBumpクールダウン状況を表示します。'),
+
+    new SlashCommandBuilder()
+        .setName('bump-force-notify')
+        .setDescription('Bump通知チャンネルに強制的に通知を送信します（サーバー管理権限が必要）。'),
+
+    new SlashCommandBuilder()
+        .setName('bump-history')
+        .setDescription('直近のBump実行履歴を表示します。')
+        .addIntegerOption(opt =>
+            opt.setName('count')
+                .setDescription('表示件数（デフォルト: 5件）')
+                .setMinValue(1)
+                .setMaxValue(20)
+        ),
+
     // 15. 一時ボイスチャンネル パネル（管理者のみ）
     new SlashCommandBuilder()
         .setName('voicepanel')
