@@ -1378,4 +1378,6 @@ module.exports = {
     handleEmbedModerator,
     handleCandyReaction,
     handleEditDM,
+    checkNgWords,
+    normalizeForDetection,
 };

@@ -1,10 +1,15 @@
 // chatter.js — 1時間無発言時のチャット賑やかし自動投稿
+const { OpenAI } = require('openai');
 const { pickOneLurker } = require('./lurker_picker');
 const { getSettings } = require('./config');
+const { checkNgWords, normalizeForDetection } = require('./moderator');
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const SILENCE_MS       = 60 * 60 * 1000;      // 1時間
 const COOLDOWN_MS      = 2  * 60 * 60 * 1000; // 投稿後2時間クールダウン
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;      // 5分ごとチェック
+const CONTEXT_FETCH_LIMIT = 10;               // AI生成に渡す直近メッセージ数
 
 const webhookCache = new Map();
 let lastMessageTime = Date.now(); // 起動時は「今」扱い
@@ -37,6 +42,45 @@ function buildEmojiContent(guild) {
     return result.join('');
 }
 
+async function fetchRecentContext(channel) {
+    try {
+        const messages = await channel.messages.fetch({ limit: CONTEXT_FETCH_LIMIT });
+        return [...messages.values()]
+            .filter(m => !m.author.bot && m.content?.trim())
+            .reverse()
+            .map(m => `${m.member?.displayName || m.author.username}: ${m.content.slice(0, 200)}`)
+            .join('\n');
+    } catch (e) {
+        console.error('[Chatter] コンテキスト取得エラー:', e.message);
+        return '';
+    }
+}
+
+async function generateChatMessage(context, personaName) {
+    if (!process.env.OPENAI_API_KEY) return null;
+    try {
+        const completion = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            max_tokens: 60,
+            temperature: 0.9,
+            messages: [
+                {
+                    role: 'system',
+                    content: `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。友達同士の雑談チャンネルで、しばらく会話が途切れた後にふと一言つぶやくところです。直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、絵文字を使っても良い、30文字以内目安）を返してください。質問でも独り言でも構いません。発言内容だけを返し、説明や前置きは付けないでください。`,
+                },
+                {
+                    role: 'user',
+                    content: context ? `直近の会話:\n${context}` : '（しばらく誰も発言していません）',
+                },
+            ],
+        });
+        return completion.choices[0]?.message?.content?.trim() || null;
+    } catch (e) {
+        console.error('[Chatter] AI生成エラー:', e.message);
+        return null;
+    }
+}
+
 async function tryPost(client) {
     const settings  = getSettings();
     const channelId = settings.chatterChannelId ?? settings.lurkerChannelId;
@@ -52,12 +96,22 @@ async function tryPost(client) {
     const channel = await client.channels.fetch(channelId).catch(() => null);
     if (!channel) return;
 
-    const content = buildEmojiContent(guild);
-    if (!content) return;
-
     const { member: lurker } = await pickOneLurker(guild, { lastPickedId: _lastLurkerId });
     if (!lurker) return;
     _lastLurkerId = lurker.id;
+
+    const context = await fetchRecentContext(channel);
+    let content = await generateChatMessage(context, lurker.displayName || lurker.user.username);
+
+    if (content) {
+        const { hit } = checkNgWords(normalizeForDetection(content));
+        if (hit) {
+            console.warn('[Chatter] AI生成文がNGワードに抵触したため絵文字にフォールバック');
+            content = null;
+        }
+    }
+    if (!content) content = buildEmojiContent(guild);
+    if (!content) return;
 
     const targetChannel = channel.isThread?.() ? channel.parent : channel;
     const webhook = await getWebhook(targetChannel, client);
