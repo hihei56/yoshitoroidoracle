@@ -1,5 +1,5 @@
 // yoshiyoshi.js — 全肯定チャットBot（メンション返信）
-// プライマリ: Groq API（無料枠） / 429時フォールバック: ローカルOllama(qwen2.5:3b)
+// プライマリ: ローカルOllama(qwen2.5:3b) / 失敗時フォールバック: Groq API（無料枠）
 const axios = require('axios');
 
 const GROQ_MODEL     = 'llama-3.3-70b-versatile';
@@ -47,13 +47,13 @@ async function askOllama(userText) {
 
 async function generateAffirmation(userText) {
     try {
-        return await askGroq(userText);
+        return await askOllama(userText);
     } catch (e) {
-        console.warn('[Yoshiyoshi] Groq失敗、Ollamaへフォールバック:', e.response?.status ?? e.message);
+        console.warn('[Yoshiyoshi] Ollama失敗、Groqへフォールバック:', e.response?.status ?? e.message);
         try {
-            return await askOllama(userText);
+            return await askGroq(userText);
         } catch (e2) {
-            console.warn('[Yoshiyoshi] Ollamaも失敗、固定文で返信:', e2.message);
+            console.warn('[Yoshiyoshi] Groqも失敗、固定文で返信:', e2.message);
             return 'よしよし、えらいえらい😊';
         }
     }
