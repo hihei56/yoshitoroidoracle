@@ -1,10 +1,8 @@
 // chatter.js — 1時間無発言時のチャット賑やかし自動投稿
-const { OpenAI } = require('openai');
+const axios = require('axios');
 const { pickOneLurker } = require('./lurker_picker');
 const { getSettings } = require('./config');
 const { checkNgWords, normalizeForDetection } = require('./moderator');
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const SILENCE_MS       = 60 * 60 * 1000;      // 1時間
 const COOLDOWN_MS      = 2  * 60 * 60 * 1000; // 投稿後2時間クールダウン
@@ -57,24 +55,32 @@ async function fetchRecentContext(channel) {
 }
 
 async function generateChatMessage(context, personaName) {
-    if (!process.env.OPENAI_API_KEY) return null;
+    if (!process.env.GROQ_API_KEY) return null;
     try {
-        const completion = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            max_tokens: 60,
-            temperature: 0.9,
-            messages: [
-                {
-                    role: 'system',
-                    content: `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。友達同士の雑談チャンネルで、しばらく会話が途切れた後にふと一言つぶやくところです。直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、絵文字を使っても良い、30文字以内目安）を返してください。質問でも独り言でも構いません。発言内容だけを返し、説明や前置きは付けないでください。`,
-                },
-                {
-                    role: 'user',
-                    content: context ? `直近の会話:\n${context}` : '（しばらく誰も発言していません）',
-                },
-            ],
-        });
-        return completion.choices[0]?.message?.content?.trim() || null;
+        const res = await axios.post(
+            'https://api.groq.com/openai/v1/chat/completions',
+            {
+                model: 'qwen/qwen3-32b',
+                max_tokens: 60,
+                temperature: 0.9,
+                reasoning_effort: 'none', // Qwen3の思考モードを無効化（雑談一言生成に余計なトークンは不要）
+                messages: [
+                    {
+                        role: 'system',
+                        content: `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。友達同士の雑談チャンネルで、しばらく会話が途切れた後にふと一言つぶやくところです。直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、絵文字を使っても良い、30文字以内目安）を返してください。質問でも独り言でも構いません。発言内容だけを返し、説明や前置きは付けないでください。`,
+                    },
+                    {
+                        role: 'user',
+                        content: context ? `直近の会話:\n${context}` : '（しばらく誰も発言していません）',
+                    },
+                ],
+            },
+            {
+                headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+                timeout: 15_000,
+            }
+        );
+        return res.data.choices[0]?.message?.content?.trim() || null;
     } catch (e) {
         console.error('[Chatter] AI生成エラー:', e.message);
         return null;
