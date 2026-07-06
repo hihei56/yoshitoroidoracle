@@ -48,13 +48,17 @@ function katakanaToHiragana(str) {
     return str.replace(/[ァ-ヶ]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x60));
 }
 
-// 単一の既知形態素として認識できる場合のみ「辞書に存在する単語」として扱う
-// （複数形態素に分割される＝辞書上の単一語として登録されていない、とみなす簡易判定）
+// 辞書に存在するかは問わず、読みの推定だけ行う（VTuber名や固有名詞なども対象にするため）
 async function analyzeWord(surface) {
+    // ひらがな/カタカナのみで構成される場合は形態素解析を経由せずそのまま読みとして扱う
+    if (/^[ぁ-んァ-ヶー]+$/.test(surface)) {
+        return { reading: katakanaToHiragana(surface) };
+    }
     const tokenizer = await getTokenizer();
     const tokens = tokenizer.tokenize(surface);
-    if (tokens.length !== 1 || tokens[0].word_type !== 'KNOWN') return null;
-    const reading = tokens[0].reading || tokens[0].surface_form;
+    if (tokens.length === 0) return null;
+    const reading = tokens.map(t => t.reading || t.surface_form).join('');
+    if (!reading) return null;
     return { reading: katakanaToHiragana(reading) };
 }
 
@@ -96,7 +100,7 @@ async function handleShiritoriMessage(message) {
         }
 
         if (!info) {
-            await sendViaWebhook(message, buildEmbed(0xED4245, '❌ 辞書に見つかりませんでした。実在する単語（名詞など）を入力してください。'));
+            await sendViaWebhook(message, buildEmbed(0xED4245, '❌ 読みを認識できませんでした。'));
             return;
         }
 
