@@ -24,7 +24,6 @@ function getSettings() {
     if (!data.editMonitorExcludedUsers) data.editMonitorExcludedUsers = [];
     if (!data.editMonitorExcludedRoles) data.editMonitorExcludedRoles = [];
     if (data.rssChannelId === undefined) data.rssChannelId = null;
-    if (!data.markovExcludedUsers) data.markovExcludedUsers = [];
     if (!data.ttsUserVoices) data.ttsUserVoices = {};
     if (data.chineseThinkerReplace === undefined)     data.chineseThinkerReplace     = true;
     if (!data.chineseThinkerExcludeUsers)             data.chineseThinkerExcludeUsers = [];

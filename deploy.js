@@ -320,25 +320,6 @@ new SlashCommandBuilder()
         )
         .addSubcommand(subcommand =>
             subcommand
-                .setName('markov_exclude')
-                .setDescription('Markov連鎖の学習対象からユーザーを除外/復帰/一覧表示します。')
-                .addStringOption(option =>
-                    option.setName('action')
-                        .setDescription('操作を選択')
-                        .setRequired(true)
-                        .addChoices(
-                            { name: '除外に追加', value: 'add'    },
-                            { name: '除外から解除', value: 'remove' },
-                            { name: '一覧', value: 'list'   },
-                        )
-                )
-                .addUserOption(option =>
-                    option.setName('user')
-                        .setDescription('対象ユーザー（add/remove時は必須）')
-                )
-        )
-        .addSubcommand(subcommand =>
-            subcommand
                 .setName('shiritori_channel')
                 .setDescription('しりとりゲームを行うチャンネルを設定します。未指定で解除（ゲームもリセット）。')
                 .addChannelOption(opt =>

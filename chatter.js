@@ -3,7 +3,6 @@ const axios = require('axios');
 const { pickOneLurker } = require('./lurker_picker');
 const { getSettings } = require('./config');
 const { checkNgWords, normalizeForDetection } = require('./moderator');
-const { recordForCorpus, generate: generateMarkovMessage } = require('./markov_chatter');
 const { registerChatterMessage } = require('./chatter_registry');
 
 const SILENCE_MS       = 60 * 60 * 1000;      // 1時間
@@ -16,13 +15,11 @@ let lastMessageTime = Date.now(); // 起動時は「今」扱い
 let lastPostedTime  = 0;
 let _lastLurkerId   = null;
 
-function recordMessage(channelId, content, authorId, hasMedia = false) {
+function recordMessage(channelId) {
     const settings  = getSettings();
     const targetId  = settings.chatterChannelId ?? settings.lurkerChannelId;
     if (!targetId || channelId !== targetId) return;
     lastMessageTime = Date.now();
-    if (authorId && (settings.markovExcludedUsers ?? []).includes(authorId)) return;
-    recordForCorpus(content, hasMedia).catch(e => console.error('[Chatter] コーパス記録エラー:', e.message));
 }
 
 async function getWebhook(channel, client) {
@@ -97,14 +94,9 @@ async function generateAndPost(client, guild, channel) {
     if (!lurker) return { ok: false, reason: 'なりすまし対象のlurkerが見つかりませんでした。' };
     _lastLurkerId = lurker.id;
 
-    let content = generateMarkovMessage();
-    let source  = content ? 'Markov' : null;
-
-    if (!content) {
-        const context = await fetchRecentContext(channel);
-        content = await generateChatMessage(context, lurker.displayName || lurker.user.username);
-        if (content) source = 'AI';
-    }
+    const context = await fetchRecentContext(channel);
+    let content = await generateChatMessage(context, lurker.displayName || lurker.user.username);
+    let source  = content ? 'AI' : null;
 
     if (content) {
         const { hit } = checkNgWords(normalizeForDetection(content));

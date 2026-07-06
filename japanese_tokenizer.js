@@ -1,4 +1,4 @@
-// japanese_tokenizer.js — kuromoji形態素解析器のシングルトン管理（shiritori.js / markov_chatter.js で共用）
+// japanese_tokenizer.js — kuromoji形態素解析器のシングルトン管理（shiritori.js で使用）
 const path = require('path');
 const kuromoji = require('kuromoji');
 
