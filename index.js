@@ -22,6 +22,9 @@ const {
 }                                 = require('./bump');
 const { handleTimeout }           = require('./timeout');
 const { handleClean }              = require('./clean');
+const {
+    handleYomiageMessage, handleYomiageJoin, handleYomiageLeave, handleYomiageVoice,
+}                                   = require('./yomiage');
 const { checkImageAttachments }    = require('./image_spam_filter');
 const { initShiritori, handleShiritoriMessage } = require('./shiritori');
 const { initXpAnnounce }          = require('./xp_announce');
@@ -192,6 +195,7 @@ client.on(Events.MessageCreate, async m => {
     handleModerator(m).catch(err => console.error('[Mod Error]:', err));
     handleShiritoriMessage(m).catch(err => console.error('[Shiritori Error]:', err));
     checkImageAttachments(m).catch(err => console.error('[ImageSpam Error]:', err));
+    handleYomiageMessage(m).catch(err => console.error('[Yomiage Error]:', err));
 
     // !xp プレフィックスコマンド
     if (m.content.startsWith('!xp')) {
@@ -358,6 +362,9 @@ client.on(Events.InteractionCreate, async i => {
     if (i.commandName === 'bump-history')      return handleBumpHistory(i);
     if (i.commandName === 'timeout')           return handleTimeout(i);
     if (i.commandName === 'clean')              return handleClean(i);
+    if (i.commandName === 'yomiage-join')       return handleYomiageJoin(i);
+    if (i.commandName === 'yomiage-leave')      return handleYomiageLeave(i);
+    if (i.commandName === 'yomiage-voice')      return handleYomiageVoice(i);
 
     // ── 管理者のみ ────────────────────────────────────────────────────
 

@@ -656,6 +656,28 @@ new SlashCommandBuilder()
         )
         .addStringOption(opt => opt.setName('reason').setDescription('理由（省略可）')),
 
+    // 19. 読み上げBot
+    new SlashCommandBuilder()
+        .setName('yomiage-join')
+        .setDescription('あなたのいるボイスチャンネルに参加し、このチャンネルのメッセージを読み上げます。'),
+
+    new SlashCommandBuilder()
+        .setName('yomiage-leave')
+        .setDescription('ボイスチャンネルから退出します。'),
+
+    new SlashCommandBuilder()
+        .setName('yomiage-voice')
+        .setDescription('あなたの読み上げボイスを選択します。')
+        .addStringOption(opt =>
+            opt.setName('voice')
+                .setDescription('声を選択')
+                .setRequired(true)
+                .addChoices(
+                    { name: 'ひろゆき',     value: 'hiroyuki' },
+                    { name: '岡田斗司夫',   value: 'toshio'   },
+                )
+        ),
+
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
