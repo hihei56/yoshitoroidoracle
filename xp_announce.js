@@ -4,7 +4,7 @@ const { EmbedBuilder } = require('discord.js');
 const { getLeaderboardByPeriod } = require('./xp');
 const { getSettings } = require('./config');
 
-const TOP_N = 10;
+const TOP_N = 5;
 
 // 月末23:55に実行することで、日付が翌月に切り替わる前に「終わる月」のデータを取得する
 function isLastDayOfMonthJST() {
