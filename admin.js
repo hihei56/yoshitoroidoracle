@@ -71,6 +71,7 @@ function buildStatusEmbed() {
     const logCh     = settings.anonLogChannelId ? `<#${settings.anonLogChannelId}>` : '未設定';
     const lurkerCh  = settings.lurkerChannelId  ? `<#${settings.lurkerChannelId}>`  : '未設定';
     const chatterCh = settings.chatterChannelId ? `<#${settings.chatterChannelId}>` : '未設定（目覚ましチャンネルと共通）';
+    const rssCh = settings.rssChannelId ? `<#${settings.rssChannelId}>` : '未設定';
     const vcRecruit = getVCRecruitSettings();
     const vcRecruitCh   = vcRecruit.channelId ? `<#${vcRecruit.channelId}>` : '未設定';
     const vcRecruitRole = vcRecruit.roleId    ? `<@&${vcRecruit.roleId}>`   : 'なし';
@@ -94,6 +95,7 @@ function buildStatusEmbed() {
             { name: '📋 Anonログチャンネル',  value: logCh,                                           inline: false },
             { name: '😴 目覚ましチャンネル',  value: lurkerCh,  inline: false },
             { name: '💬 賑やかしBot投稿チャンネル', value: chatterCh, inline: false },
+            { name: '📰 RSS投稿チャンネル', value: rssCh, inline: false },
             { name: '📣 VC募集投稿チャンネル', value: vcRecruitCh, inline: true },
             { name: '📣 VC募集メンションロール', value: vcRecruitRole, inline: true },
             { name: '🀄 中国思想家置き換え',  value: thinker,   inline: false },
@@ -403,6 +405,25 @@ async function handleAdmin(interaction) {
                     .setTitle(`😿 Webhook化 — ${verb}`)
                     .setColor(action === 'add' ? COLOR.add : COLOR.remove)
                     .setDescription(`<@${targetUser.id}>`)
+                    .setTimestamp()
+            ],
+            ephemeral: true,
+        });
+    }
+
+    // ── RSS投稿チャンネル ──
+    if (sub === 'rss_channel') {
+        const ch       = interaction.options.getChannel('channel');
+        const settings = getSettings();
+        settings.rssChannelId = ch?.id ?? null;
+        saveSettings(settings);
+        const verb = ch ? `<#${ch.id}> に設定` : '解除';
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle('📰 RSS投稿チャンネル')
+                    .setColor(ch ? COLOR.add : COLOR.remove)
+                    .setDescription(verb)
                     .setTimestamp()
             ],
             ephemeral: true,

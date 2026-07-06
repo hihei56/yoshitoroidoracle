@@ -5,6 +5,7 @@ const { WebhookClient, EmbedBuilder } = require('discord.js');
 const he = require('he');
 const { OpenAI } = require('openai');
 const { resolveDataPath, ensureDir, readJson, writeJson } = require('./dataPath');
+const { getSettings } = require('./config');
 
 const rssParser = new Parser({ timeout: 10000 });
 
@@ -15,7 +16,26 @@ const openai = new OpenAI({
 });
 
 // ===== Webhook =====
-const UNTAI_WEBHOOK = new WebhookClient({ url: process.env.UNTAI_WEBHOOK });
+// 固定Webhook URLをハードコードすると漏洩時に任意投稿されるリスクがあるため、
+// /admin rss_channel で指定したチャンネルにBot自身がWebhookを作成・再利用する
+const rssWebhookCache = new Map();
+async function getRSSWebhook(client) {
+    const channelId = getSettings().rssChannelId;
+    if (!channelId) return null;
+    if (rssWebhookCache.has(channelId)) return rssWebhookCache.get(channelId);
+
+    const channel = await client.channels.fetch(channelId).catch(() => null);
+    if (!channel) return null;
+
+    const hooks = await channel.fetchWebhooks().catch(() => null);
+    let webhook = hooks?.find(h => h.owner?.id === client.user.id && h.token);
+    if (!webhook) webhook = await channel.createWebhook({ name: 'RSSBot' }).catch(() => null);
+    if (!webhook) return null;
+
+    rssWebhookCache.set(channelId, webhook);
+    return webhook;
+}
+
 const AI_WEBHOOKS = [
     new WebhookClient({ url: process.env.AI_WEBHOOK1 }),
     new WebhookClient({ url: process.env.AI_WEBHOOK2 }),
@@ -116,9 +136,15 @@ async function postTweet(item, client) {
     // 画像を事前DL（NitterのURLをOracleからURLのまま渡すとfetch failedになるため）
     const imageFile = await downloadImage(imageUrl);
 
+    const webhook = await getRSSWebhook(client);
+    if (!webhook) {
+        console.error("[RSS] ❌ 投稿先チャンネル未設定です。/admin rss_channel で設定してください。");
+        return;
+    }
+
     let msg;
     try {
-        msg = await UNTAI_WEBHOOK.send({
+        msg = await webhook.send({
             content:    raw + quoteBlock,
             embeds:     [embed],
             files:      imageFile ? [imageFile] : [],
@@ -181,9 +207,8 @@ async function checkRSS(client) {
 
 // ===== cron初期化（index.jsから呼ぶ）=====
 function initRSS(client) {
-    if (!process.env.UNTAI_WEBHOOK) {
-        console.error("[RSS] ❌ UNTAI_WEBHOOK が未設定です。投稿できません。");
-        return;
+    if (!getSettings().rssChannelId) {
+        console.warn("[RSS] ⚠️ 投稿先チャンネル未設定です。/admin rss_channel で設定してください。");
     }
     console.log("[RSS] ✅ 初期化 | 30分毎にチェック");
     // 毎時0分・30分

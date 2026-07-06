@@ -145,6 +145,15 @@ new SlashCommandBuilder()
         )
         .addSubcommand(subcommand =>
             subcommand
+                .setName('rss_channel')
+                .setDescription('RSS自動投稿の送信先チャンネルを設定します。未指定で解除。')
+                .addChannelOption(option =>
+                    option.setName('channel')
+                        .setDescription('投稿先チャンネル（省略で解除）')
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('edit_monitor_exclude')
                 .setDescription('メッセージ編集アラート（edit-logging）の監視対象外にするユーザー/ロールを管理します。')
                 .addStringOption(option =>

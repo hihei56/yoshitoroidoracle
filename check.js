@@ -19,7 +19,6 @@ require('dotenv').config();
 const REQUIRED_ENVS = [
     'DISCORD_TOKEN',
     'GROQ_API_KEY',
-    'UNTAI_WEBHOOK',
     'AI_WEBHOOK1',
     'AI_WEBHOOK2',
     'AI_WEBHOOK3',
