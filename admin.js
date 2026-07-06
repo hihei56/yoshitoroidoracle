@@ -45,6 +45,7 @@ const { handleKickInactive } = require('./kick_inactive');
 const { getNgWords, addNgWord, removeNgWord } = require('./ng_word_manager');
 const { resetShiritoriGame } = require('./shiritori');
 const { handleBumpRemindCommand } = require('./bump');
+const { forcePost: forceChatterPost } = require('./chatter');
 
 const COLOR = {
     add:    0x57F287, // 緑
@@ -399,6 +400,18 @@ async function handleAdmin(interaction) {
                     .setTimestamp()
             ],
             ephemeral: true,
+        });
+    }
+
+    // ── 賑やかしchatterの試し打ち ──
+    if (sub === 'chatter') {
+        await interaction.deferReply({ ephemeral: true });
+        const result = await forceChatterPost(interaction);
+        if (!result.ok) {
+            return interaction.editReply({ content: `❌ ${result.reason}` });
+        }
+        return interaction.editReply({
+            content: `✅ このチャンネルに投稿しました。\n生成方法: **${result.source}** / なりすまし: **${result.lurkerName}**\n> ${result.content}`,
         });
     }
 

@@ -91,23 +91,9 @@ async function generateChatMessage(context, personaName) {
     }
 }
 
-async function tryPost(client) {
-    const settings  = getSettings();
-    const channelId = settings.chatterChannelId ?? settings.lurkerChannelId;
-    if (!channelId) return;
-
-    const now = Date.now();
-    if (now - lastMessageTime < SILENCE_MS) return;
-    if (now - lastPostedTime  < COOLDOWN_MS) return;
-
-    const guild = client.guilds.cache.first();
-    if (!guild) return;
-
-    const channel = await client.channels.fetch(channelId).catch(() => null);
-    if (!channel) return;
-
+async function generateAndPost(client, guild, channel) {
     const { member: lurker } = await pickOneLurker(guild, { lastPickedId: _lastLurkerId });
-    if (!lurker) return;
+    if (!lurker) return { ok: false, reason: 'なりすまし対象のlurkerが見つかりませんでした。' };
     _lastLurkerId = lurker.id;
 
     let content = generateMarkovMessage();
@@ -124,10 +110,14 @@ async function tryPost(client) {
         if (hit) {
             console.warn(`[Chatter] ${source}生成文がNGワードに抵触したため絵文字にフォールバック`);
             content = null;
+            source = null;
         }
     }
-    if (!content) content = buildEmojiContent(guild);
-    if (!content) return;
+    if (!content) {
+        content = buildEmojiContent(guild);
+        source  = content ? '絵文字' : null;
+    }
+    if (!content) return { ok: false, reason: '生成できる内容がありませんでした（サーバーに絵文字がない等）。' };
 
     const targetChannel = channel.isThread?.() ? channel.parent : channel;
     const webhook = await getWebhook(targetChannel, client);
@@ -140,9 +130,35 @@ async function tryPost(client) {
         ...(channel.isThread?.() && { threadId: channel.id }),
     });
 
-    lastPostedTime  = Date.now();
-    lastMessageTime = Date.now(); // 自分の投稿でリセット（連投防止）
-    console.log(`[Chatter] ✅ "${content}" | 成りすまし: ${lurker.displayName}`);
+    console.log(`[Chatter] ✅ "${content}" | 成りすまし: ${lurker.displayName} | source: ${source}`);
+    return { ok: true, content, source, lurkerName: lurker.displayName || lurker.user.username };
+}
+
+async function tryPost(client) {
+    const settings  = getSettings();
+    const channelId = settings.chatterChannelId ?? settings.lurkerChannelId;
+    if (!channelId) return;
+
+    const now = Date.now();
+    if (now - lastMessageTime < SILENCE_MS) return;
+    if (now - lastPostedTime  < COOLDOWN_MS) return;
+
+    const guild = client.guilds.cache.first();
+    if (!guild) return;
+
+    const channel = await client.channels.fetch(channelId).catch(() => null);
+    if (!channel) return;
+
+    const result = await generateAndPost(client, guild, channel);
+    if (result.ok) {
+        lastPostedTime  = Date.now();
+        lastMessageTime = Date.now(); // 自分の投稿でリセット（連投防止）
+    }
+}
+
+// /admin chatter からの試し打ち用。沈黙・クールダウン判定を無視し、コマンド実行チャンネルに即投稿する
+async function forcePost(interaction) {
+    return generateAndPost(interaction.client, interaction.guild, interaction.channel);
 }
 
 function initChatter(client) {
@@ -152,4 +168,4 @@ function initChatter(client) {
     console.log('[Chatter] ✅ 初期化 | 1時間無発言で自動投稿');
 }
 
-module.exports = { initChatter, recordMessage };
+module.exports = { initChatter, recordMessage, forcePost };
