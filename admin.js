@@ -409,6 +409,65 @@ async function handleAdmin(interaction) {
         });
     }
 
+    // ── メッセージ編集アラート除外 ──
+    if (sub === 'edit_monitor_exclude') {
+        const action     = interaction.options.getString('action');
+        const targetUser = interaction.options.getUser('user');
+        const targetRole = interaction.options.getRole('role');
+        const settings   = getSettings();
+
+        if (action === 'list') {
+            return interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('📝 メッセージ編集アラート — 除外一覧')
+                        .setColor(COLOR.info)
+                        .addFields(
+                            { name: '👤 ユーザー', value: settings.editMonitorExcludedUsers.length ? settings.editMonitorExcludedUsers.map(id => `<@${id}>`).join(' ') : 'なし', inline: false },
+                            { name: '👥 ロール',   value: settings.editMonitorExcludedRoles.length ? settings.editMonitorExcludedRoles.map(id => `<@&${id}>`).join(' ') : 'なし', inline: false },
+                        )
+                        .setTimestamp()
+                ],
+                ephemeral: true,
+            });
+        }
+
+        if (!targetUser && !targetRole) {
+            return interaction.reply({ content: 'ユーザーかロールを指定してください。', ephemeral: true });
+        }
+
+        const verb  = action === 'add' ? '追加' : '解除';
+        const lines = [];
+        if (targetUser) {
+            if (action === 'add') {
+                if (!settings.editMonitorExcludedUsers.includes(targetUser.id)) settings.editMonitorExcludedUsers.push(targetUser.id);
+            } else {
+                settings.editMonitorExcludedUsers = settings.editMonitorExcludedUsers.filter(id => id !== targetUser.id);
+            }
+            lines.push(`👤 <@${targetUser.id}>`);
+        }
+        if (targetRole) {
+            if (action === 'add') {
+                if (!settings.editMonitorExcludedRoles.includes(targetRole.id)) settings.editMonitorExcludedRoles.push(targetRole.id);
+            } else {
+                settings.editMonitorExcludedRoles = settings.editMonitorExcludedRoles.filter(id => id !== targetRole.id);
+            }
+            lines.push(`👥 <@&${targetRole.id}>`);
+        }
+        saveSettings(settings);
+
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle(`📝 メッセージ編集アラート除外 — ${verb}`)
+                    .setColor(action === 'add' ? COLOR.add : COLOR.remove)
+                    .setDescription(lines.join('\n'))
+                    .setTimestamp()
+            ],
+            ephemeral: true,
+        });
+    }
+
     // ── VC募集投稿チャンネル ──
     if (sub === 'vc_recruit_channel') {
         const ch       = interaction.options.getChannel('channel');

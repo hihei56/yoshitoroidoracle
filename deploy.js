@@ -145,6 +145,29 @@ new SlashCommandBuilder()
         )
         .addSubcommand(subcommand =>
             subcommand
+                .setName('edit_monitor_exclude')
+                .setDescription('メッセージ編集アラート（edit-logging）の監視対象外にするユーザー/ロールを管理します。')
+                .addStringOption(option =>
+                    option.setName('action')
+                        .setDescription('操作を選択')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: '追加', value: 'add'    },
+                            { name: '解除', value: 'remove' },
+                            { name: '一覧', value: 'list'   },
+                        )
+                )
+                .addUserOption(option =>
+                    option.setName('user')
+                        .setDescription('対象のユーザー（ロールと併用可、add/remove時に指定）')
+                )
+                .addRoleOption(option =>
+                    option.setName('role')
+                        .setDescription('対象のロール（ユーザーと併用可、add/remove時に指定）')
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('vc_recruit_channel')
                 .setDescription('VC募集メッセージの自動投稿チャンネルを設定します。未指定で解除（賑やかしBotと共通）。')
                 .addChannelOption(option =>

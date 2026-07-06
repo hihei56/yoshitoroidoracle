@@ -21,6 +21,8 @@ function getSettings() {
     if (data.rankingChannelId === undefined) data.rankingChannelId = null;
     if (data.vcRecruitChannelId === undefined) data.vcRecruitChannelId = null;
     if (data.vcRecruitRoleId === undefined) data.vcRecruitRoleId = null;
+    if (!data.editMonitorExcludedUsers) data.editMonitorExcludedUsers = [];
+    if (!data.editMonitorExcludedRoles) data.editMonitorExcludedRoles = [];
     if (!data.markovExcludedUsers) data.markovExcludedUsers = [];
     if (!data.ttsUserVoices) data.ttsUserVoices = {};
     if (data.chineseThinkerReplace === undefined)     data.chineseThinkerReplace     = true;

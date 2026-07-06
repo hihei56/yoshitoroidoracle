@@ -1,6 +1,7 @@
 // edit_monitor.js — メッセージ編集監視
 const { EmbedBuilder } = require('discord.js');
 const OpenAI = require('openai');
+const { getSettings } = require('./config');
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI() : null;
 
@@ -70,6 +71,13 @@ async function checkMinorsScore(text) {
     }
 }
 
+// 編集監視の対象外（ユーザー/ロール）かどうか
+function isExcluded(message) {
+    const settings = getSettings();
+    if (settings.editMonitorExcludedUsers.includes(message.author?.id)) return true;
+    return settings.editMonitorExcludedRoles.some(roleId => message.member?.roles.cache.has(roleId));
+}
+
 async function sendEditLog(client, embed) {
     if (!EDIT_LOG_CHANNEL_ID) return;
     try {
@@ -86,6 +94,8 @@ async function handleEditMonitor(oldMessage, newMessage) {
 
     // 通常botは除外。ただしwebhook（Tupperboxなど）は監視対象のため通す
     if (newMessage.author?.bot && !newMessage.webhookId) return;
+
+    if (isExcluded(newMessage)) return;
 
     // partial解決
     if (newMessage.partial) {
