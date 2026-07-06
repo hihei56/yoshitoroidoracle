@@ -4,9 +4,7 @@ const fs = require('fs');
 const { createWorker } = require('tesseract.js');
 const { resolveDataPath } = require('./dataPath');
 
-const SCORE_THRESHOLD      = 200;
-const TIMEOUT_TRIGGER_COUNT = 3;
-const TIMEOUT_DURATION_MS   = 10 * 60 * 1000; // 10分
+const SCORE_THRESHOLD = 200;
 
 const CACHE_PATH = resolveDataPath('tesseract-cache');
 fs.mkdirSync(CACHE_PATH, { recursive: true });
@@ -49,8 +47,6 @@ function getWorker() {
     return workerPromise;
 }
 
-const spamCounter = new Map(); // userId -> 連続検知数
-
 async function checkImageAttachments(message) {
     try {
         if (message.author.bot || !message.guild) return;
@@ -75,20 +71,7 @@ async function checkImageAttachments(message) {
 
         console.warn(`[ImageSpam] 検知: ${message.author.tag} score=${totalScore}`);
 
-        const userId = message.author.id;
-        const count  = (spamCounter.get(userId) ?? 0) + 1;
-        spamCounter.set(userId, count);
-
         if (message.deletable) await message.delete().catch(() => {});
-
-        if (count >= TIMEOUT_TRIGGER_COUNT) {
-            spamCounter.delete(userId);
-            const member = message.member ?? await message.guild.members.fetch(userId).catch(() => null);
-            if (member?.moderatable) {
-                await member.timeout(TIMEOUT_DURATION_MS, '画像スパム(詐欺画像)を繰り返し投稿')
-                    .catch(e => console.error('[ImageSpam] タイムアウト失敗:', e.message));
-            }
-        }
     } catch (e) {
         console.error('[ImageSpam] 処理エラー:', e);
     }
