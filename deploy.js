@@ -175,28 +175,33 @@ new SlashCommandBuilder()
                         .setDescription('対象のロール（ユーザーと併用可、add/remove時に指定）')
                 )
         )
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('vc_recruit_channel')
-                .setDescription('VC募集メッセージの自動投稿チャンネルを設定します。未指定で解除（賑やかしBotと共通）。')
-                .addChannelOption(option =>
-                    option.setName('channel')
-                        .setDescription('投稿先チャンネル（省略で解除）')
-                )
-        )
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('vc_recruit_role')
-                .setDescription('VC募集ボタンを押したときにメンションするロールを設定します。未指定で解除（デフォルトロール）。')
-                .addRoleOption(option =>
-                    option.setName('role')
-                        .setDescription('メンション対象ロール（省略で解除）')
-                )
-        )
-        .addSubcommand(subcommand =>
-            subcommand
+        .addSubcommandGroup(group =>
+            group
                 .setName('vc_recruit')
-                .setDescription('VC募集メッセージをこのチャンネルに試し打ちします。')
+                .setDescription('VC募集機能の設定・試し打ちを行います。')
+                .addSubcommand(subcommand =>
+                    subcommand
+                        .setName('channel')
+                        .setDescription('VC募集メッセージの自動投稿チャンネルを設定します。未指定で解除（賑やかしBotと共通）。')
+                        .addChannelOption(option =>
+                            option.setName('channel')
+                                .setDescription('投稿先チャンネル（省略で解除）')
+                        )
+                )
+                .addSubcommand(subcommand =>
+                    subcommand
+                        .setName('role')
+                        .setDescription('VC募集ボタンを押したときにメンションするロールを設定します。未指定で解除（デフォルトロール）。')
+                        .addRoleOption(option =>
+                            option.setName('role')
+                                .setDescription('メンション対象ロール（省略で解除）')
+                        )
+                )
+                .addSubcommand(subcommand =>
+                    subcommand
+                        .setName('test')
+                        .setDescription('VC募集メッセージをこのチャンネルに試し打ちします。')
+                )
         )
         .addSubcommand(subcommand =>
             subcommand

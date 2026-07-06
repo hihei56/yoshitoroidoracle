@@ -129,7 +129,54 @@ async function handleAdmin(interaction) {
         return interaction.reply({ content: '管理者のみ実行できます。', ephemeral: true });
     }
 
-    const sub = interaction.options.getSubcommand();
+    const group = interaction.options.getSubcommandGroup(false);
+    const sub   = interaction.options.getSubcommand();
+
+    // ── VC募集機能（サブコマンドグループ） ──
+    if (group === 'vc_recruit') {
+        if (sub === 'channel') {
+            const ch       = interaction.options.getChannel('channel');
+            const settings = getSettings();
+            settings.vcRecruitChannelId = ch?.id ?? null;
+            saveSettings(settings);
+            const verb = ch ? `<#${ch.id}> に設定` : '解除（賑やかしBot投稿チャンネルと共通）';
+            return interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('📣 VC募集投稿チャンネル')
+                        .setColor(ch ? COLOR.add : COLOR.remove)
+                        .setDescription(verb)
+                        .setTimestamp()
+                ],
+                ephemeral: true,
+            });
+        }
+
+        if (sub === 'role') {
+            const role     = interaction.options.getRole('role');
+            const settings = getSettings();
+            settings.vcRecruitRoleId = role?.id ?? null;
+            saveSettings(settings);
+            const verb = role ? `<@&${role.id}> に設定` : '解除（デフォルトロールに戻す）';
+            return interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('📣 VC募集メンションロール')
+                        .setColor(role ? COLOR.add : COLOR.remove)
+                        .setDescription(verb)
+                        .setTimestamp()
+                ],
+                ephemeral: true,
+            });
+        }
+
+        if (sub === 'test') {
+            await interaction.deferReply({ ephemeral: true });
+            await forceRecruitPost(interaction);
+            return interaction.editReply({ content: '✅ このチャンネルにVC募集メッセージを投稿しました。' });
+        }
+        return;
+    }
 
     // ── 検閲除外 ──
     if (sub === 'mod_skip') {
@@ -487,51 +534,6 @@ async function handleAdmin(interaction) {
             ],
             ephemeral: true,
         });
-    }
-
-    // ── VC募集投稿チャンネル ──
-    if (sub === 'vc_recruit_channel') {
-        const ch       = interaction.options.getChannel('channel');
-        const settings = getSettings();
-        settings.vcRecruitChannelId = ch?.id ?? null;
-        saveSettings(settings);
-        const verb = ch ? `<#${ch.id}> に設定` : '解除（賑やかしBot投稿チャンネルと共通）';
-        return interaction.reply({
-            embeds: [
-                new EmbedBuilder()
-                    .setTitle('📣 VC募集投稿チャンネル')
-                    .setColor(ch ? COLOR.add : COLOR.remove)
-                    .setDescription(verb)
-                    .setTimestamp()
-            ],
-            ephemeral: true,
-        });
-    }
-
-    // ── VC募集メンションロール ──
-    if (sub === 'vc_recruit_role') {
-        const role     = interaction.options.getRole('role');
-        const settings = getSettings();
-        settings.vcRecruitRoleId = role?.id ?? null;
-        saveSettings(settings);
-        const verb = role ? `<@&${role.id}> に設定` : '解除（デフォルトロールに戻す）';
-        return interaction.reply({
-            embeds: [
-                new EmbedBuilder()
-                    .setTitle('📣 VC募集メンションロール')
-                    .setColor(role ? COLOR.add : COLOR.remove)
-                    .setDescription(verb)
-                    .setTimestamp()
-            ],
-            ephemeral: true,
-        });
-    }
-
-    // ── VC募集の試し打ち ──
-    if (sub === 'vc_recruit') {
-        await interaction.deferReply({ ephemeral: true });
-        await forceRecruitPost(interaction);
-        return interaction.editReply({ content: '✅ このチャンネルにVC募集メッセージを投稿しました。' });
     }
 
     // ── 賑やかしchatterの試し打ち ──
