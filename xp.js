@@ -192,10 +192,10 @@ function getLeaderboard(n = 10) {
         .slice(0, n);
 }
 
-function getPeriodXp(userId, period) {
+function getPeriodXp(userId, period, dateStr) {
     const history = store[userId]?.history ?? {};
     if (period === 'day') {
-        return history[jstDateStr()] ?? 0;
+        return history[dateStr ?? jstDateStr()] ?? 0;
     }
     if (period === 'week') {
         return jstWeekDates().reduce((s, d) => s + (history[d] ?? 0), 0);
@@ -209,10 +209,10 @@ function getPeriodXp(userId, period) {
     return store[userId]?.xp ?? 0;
 }
 
-function getLeaderboardByPeriod(period, n = 10) {
+function getLeaderboardByPeriod(period, n = 10, dateStr) {
     return Object.keys(store)
         .filter(k => !k.startsWith('_'))
-        .map(id => ({ id, periodXp: getPeriodXp(id, period), ...store[id] }))
+        .map(id => ({ id, periodXp: getPeriodXp(id, period, dateStr), ...store[id] }))
         .filter(e => e.periodXp > 0)
         .sort((a, b) => b.periodXp - a.periodXp)
         .slice(0, n);
@@ -350,7 +350,7 @@ function buildNickname(baseNick, level, monthRank = null, userId = null) {
 module.exports = {
     XP_PER_LEVEL,
     processMessage, getUserData, getRank, getLeaderboard, xpToNextLevel,
-    getPeriodXp, getLeaderboardByPeriod,
+    getPeriodXp, getLeaderboardByPeriod, jstDateStr,
     setUserLevel, adjustXP, resetUser, transferUser,
     setHideBadge, isHideBadge,
     addExcludedRole, removeExcludedRole, getExcludedRoles, isExcluded,
