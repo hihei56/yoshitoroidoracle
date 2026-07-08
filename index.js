@@ -29,6 +29,7 @@ const {
 const { checkImageAttachments }    = require('./image_spam_filter');
 const { initShiritori, handleShiritoriMessage } = require('./shiritori');
 const { initXpAnnounce }          = require('./xp_announce');
+const { recordMarkovMessage, handleMarkov } = require('./markov_bot');
 const { postRanking, handleRanking } = require('./ranking');
 const { handleTimeoutList }      = require('./timeoutlist');
 const { initSecurity, handlePermList } = require('./security');
@@ -193,6 +194,7 @@ client.on(Events.MessageCreate, async m => {
 
     recordActivity(m.author.id);
     recordChatterMessage(m.channel.id);
+    recordMarkovMessage(m).catch(e => console.error('[MarkovBot Record]:', e.message));
     handleInviteFilter(m, client).catch(err => console.error('[InviteFilter Error]:', err));
     handleModerator(m).catch(err => console.error('[Mod Error]:', err));
     handleShiritoriMessage(m).catch(err => console.error('[Shiritori Error]:', err));
@@ -393,6 +395,7 @@ client.on(Events.InteractionCreate, async i => {
         if (i.commandName === 'permlist')    await handlePermList(i);
         if (i.commandName === 'impersonate') await handleImpersonate(i);
         if (i.commandName === 'voicepanel')  await handleVoicePanel(i);
+        if (i.commandName === 'markov')      await handleMarkov(i);
         if (i.commandName === 'ranking') {
             if (!DEBUG_MODE) return i.reply({ content: '⚠️ DEBUG_MODE=true が必要です。', ephemeral: true });
             await handleRanking(i);

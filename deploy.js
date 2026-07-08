@@ -389,6 +389,11 @@ new SlashCommandBuilder()
                 .addRoleOption(opt => opt.setName('role').setDescription('対象のロール（ユーザーと併用可）'))
         ),
 
+    // 5.5 ネタbot（特定ロールの発言をMarkov連鎖で学習した出まかせ文を生成）
+    new SlashCommandBuilder()
+        .setName('markov')
+        .setDescription('特定ロールの発言をMarkov連鎖で学習した、それっぽい出まかせ文を生成します（ネタ用）。'),
+
     // 6. ROM専目覚まし（管理者のみ）
     new SlashCommandBuilder()
         .setName('lurker')
