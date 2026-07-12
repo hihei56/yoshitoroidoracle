@@ -1,12 +1,14 @@
 // spam_enforcer.js — 頻発スパムユーザーへの累進処罰（削除→タイムアウト延長→キック）
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { resolveDataPath, ensureDir, readJson, writeJson } = require('./dataPath');
 const { getModExcludeList } = require('./exclude_manager');
+const whStore = require('./webhook_store');
 
 const STRIKES_PATH = resolveDataPath('spam_strikes.json');
 ensureDir(STRIKES_PATH);
 
 const LOG_CHANNEL_ID = process.env.SPAM_LOG_CHANNEL_ID || '1476943641242239056';
+const ALERT_WEBHOOK_NAME = 'アンチスパム';
 
 // この期間内の違反のみ「頻発」として積み上げる。期間を過ぎたら初犯扱いにリセット
 const STRIKE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000; // 3日
@@ -86,6 +88,132 @@ async function postLog(message, count, action, category) {
     }
 }
 
+/* =========================
+   🚨 対応ボタン付きアラート（Webhook表示）
+========================= */
+let alertWebhookPromise = null;
+
+async function getAlertWebhook(client) {
+    const cached = whStore.get(LOG_CHANNEL_ID);
+    if (cached) return cached;
+    if (alertWebhookPromise) return alertWebhookPromise;
+
+    alertWebhookPromise = (async () => {
+        try {
+            const ch = await client.channels.fetch(LOG_CHANNEL_ID);
+            if (!ch) return null;
+            const hooks = await ch.fetchWebhooks();
+            let wh = hooks.find(h => h.token);
+            if (!wh) wh = await ch.createWebhook({ name: ALERT_WEBHOOK_NAME });
+            whStore.set(LOG_CHANNEL_ID, wh);
+            return whStore.get(LOG_CHANNEL_ID);
+        } catch (e) {
+            console.error('[SpamEnforcer] Webhook取得失敗:', e.message);
+            return null;
+        } finally {
+            alertWebhookPromise = null;
+        }
+    })();
+    return alertWebhookPromise;
+}
+
+async function postInteractiveAlert(message, minutes) {
+    if (!LOG_CHANNEL_ID || !message.client) return;
+    try {
+        const wh = await getAlertWebhook(message.client);
+        if (!wh) return;
+
+        const embed = new EmbedBuilder()
+            .setColor(0xEB459E)
+            .setTitle('アンチスパム')
+            .setDescription(`<@${message.author.id}> はスパムの可能性があるためタイムアウトされました（${formatMinutes(minutes)}）\nどうしますか？`)
+            .setTimestamp();
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`spamenf_ban_${message.author.id}`).setLabel('BAN').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId(`spamenf_release_${message.author.id}`).setLabel('解除').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId(`spamenf_delban_${message.channelId}_${message.author.id}`).setLabel('メッセージ削除&BAN').setStyle(ButtonStyle.Danger),
+        );
+
+        await wh.send({
+            username:        ALERT_WEBHOOK_NAME,
+            avatarURL:       message.client.user.displayAvatarURL(),
+            embeds:          [embed],
+            components:      [row],
+            allowedMentions: { parse: ['users'] },
+        });
+    } catch (e) {
+        console.error('[SpamEnforcer] アラート送信失敗:', e.message);
+    }
+}
+
+async function finalizeAlert(interaction, resultText) {
+    const original    = interaction.message;
+    const sourceEmbed = original.embeds[0];
+    const embed = sourceEmbed
+        ? EmbedBuilder.from(sourceEmbed).addFields({ name: '対応結果', value: resultText })
+        : new EmbedBuilder().setDescription(resultText);
+
+    const disabledRows = original.components.map(row =>
+        new ActionRowBuilder().addComponents(row.components.map(c => ButtonBuilder.from(c).setDisabled(true)))
+    );
+
+    await interaction.editReply({ embeds: [embed], components: disabledRows });
+}
+
+async function handleSpamEnforcerButton(interaction) {
+    if (!interaction.customId.startsWith('spamenf_')) return false;
+    if (!interaction.inGuild()) return true;
+
+    if (!interaction.member?.permissions?.has('Administrator')) {
+        await interaction.reply({ content: '❌ このボタンはサーバー管理者権限を持つ人のみ使用できます。', ephemeral: true });
+        return true;
+    }
+
+    const [, action, ...rest] = interaction.customId.split('_');
+
+    try {
+        if (action === 'ban') {
+            const [userId] = rest;
+            await interaction.deferUpdate();
+            await interaction.guild.members.ban(userId, { reason: `スパム対応・BAN（実行者: ${interaction.user.tag}）` });
+            await finalizeAlert(interaction, `🔨 <@${userId}> をBANしました（実行者: <@${interaction.user.id}>）`);
+            return true;
+        }
+
+        if (action === 'release') {
+            const [userId] = rest;
+            await interaction.deferUpdate();
+            const member = await interaction.guild.members.fetch(userId).catch(() => null);
+            if (member?.moderatable) {
+                await member.timeout(null, `タイムアウト解除（実行者: ${interaction.user.tag}）`);
+            }
+            await finalizeAlert(interaction, `✅ <@${userId}> のタイムアウトを解除しました（実行者: <@${interaction.user.id}>）`);
+            return true;
+        }
+
+        if (action === 'delban') {
+            const [channelId, userId] = rest;
+            await interaction.deferUpdate();
+            const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
+            if (channel?.isTextBased()) {
+                const recent = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+                const targets = recent?.filter(m => m.author.id === userId);
+                if (targets?.size) await channel.bulkDelete(targets, true).catch(() => {});
+            }
+            await interaction.guild.members.ban(userId, { reason: `スパム対応・メッセージ削除&BAN（実行者: ${interaction.user.tag}）` });
+            await finalizeAlert(interaction, `🗑️🔨 <@${userId}> のメッセージを削除しBANしました（実行者: <@${interaction.user.id}>）`);
+            return true;
+        }
+    } catch (e) {
+        console.error('[SpamEnforcer] ボタン処理エラー:', e.message);
+        const fail = { content: `❌ 処理に失敗しました: ${e.message}`, ephemeral: true };
+        if (interaction.deferred || interaction.replied) await interaction.followUp(fail).catch(() => {});
+        else await interaction.reply(fail).catch(() => {});
+    }
+    return true;
+}
+
 // メッセージ送信者のスパム違反を1件記録し、頻度に応じて処罰する
 async function enforce(message, category) {
     try {
@@ -108,6 +236,7 @@ async function enforce(message, category) {
                 }
             } else if (member.moderatable) {
                 await member.timeout(action * 60 * 1000, reason).catch(e => console.error('[SpamEnforcer] タイムアウト失敗:', e.message));
+                postInteractiveAlert(message, action).catch(e => console.error('[SpamEnforcer] アラートエラー:', e));
             }
         }
 
@@ -117,4 +246,4 @@ async function enforce(message, category) {
     }
 }
 
-module.exports = { enforce, getStrikeCount, resetStrikes };
+module.exports = { enforce, getStrikeCount, resetStrikes, handleSpamEnforcerButton };

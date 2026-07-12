@@ -13,6 +13,7 @@ const { initVCRecruit, recordVoiceStateForRecruit, handleVCRecruitButton } = req
 const { recordActivity, backfillActivity } = require('./activity_tracker');
 const { handleDeathmatch }       = require('./deathmatch');
 const { handleModerator, handlePoopReaction, handleCryReaction, handleEmbedModerator, handleCandyReaction, handleEditDM } = require('./moderator');
+const { handleSpamEnforcerButton } = require('./spam_enforcer');
 const { handleImpersonate }      = require('./impersonate');
 const { handleImp }              = require('./imp');
 const { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel, handlePresence, restorePresence } = require('./admin');
@@ -252,6 +253,8 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
 client.on(Events.InteractionCreate, async i => {
     if (i.isButton() && i.customId.startsWith('admin_reset:'))
         return handleAdminButton(i).catch(e => console.error('[AdminBtn]:', e));
+    if (i.isButton() && i.customId.startsWith('spamenf_'))
+        return handleSpamEnforcerButton(i).catch(e => console.error('[SpamEnforcerBtn]:', e));
     if (i.isStringSelectMenu() && i.customId === 'admin_servers:leave_select')
         return handleServersLeaveSelect(i).catch(e => console.error('[ServersSelect]:', e));
     if (i.isButton() && i.customId.startsWith('admin_servers:leave_confirm:'))
