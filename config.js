@@ -30,6 +30,8 @@ function getSettings() {
     if (!data.cryAllowedUsers)                        data.cryAllowedUsers = [];
     if (data.rtaChannelId === undefined) data.rtaChannelId = null;
     if (!data.spamTargetRoles) data.spamTargetRoles = [];
+    if (!data.chatterAiProvider) data.chatterAiProvider = 'groq';
+    if (data.chatterAiModel === undefined) data.chatterAiModel = null;
     return data;
 }
 

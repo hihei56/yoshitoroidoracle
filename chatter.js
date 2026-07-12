@@ -56,7 +56,22 @@ async function fetchRecentContext(channel) {
     }
 }
 
-async function generateChatMessage(context, personaName) {
+const DEFAULT_CF_MODEL = '@cf/meta/llama-3.1-8b-instruct-fast';
+
+function buildChatterMessages(context, personaName) {
+    return [
+        {
+            role: 'system',
+            content: `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。友達同士の雑談チャンネルで、しばらく会話が途切れた後にふと一言つぶやくところです。直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、30文字以内目安）を返してください。質問でも独り言でも構いません。絵文字は基本的に付けず、文章の最後に毎回絵文字を付けるような機械的なパターンは絶対に避けてください（普通の人はそんなに毎回絵文字を使いません）。発言内容だけを返し、説明や前置きは付けないでください。`,
+        },
+        {
+            role: 'user',
+            content: context ? `直近の会話:\n${context}` : '（しばらく誰も発言していません）',
+        },
+    ];
+}
+
+async function generateViaGroq(context, personaName) {
     if (!process.env.GROQ_API_KEY) return null;
     try {
         const res = await axios.post(
@@ -66,16 +81,7 @@ async function generateChatMessage(context, personaName) {
                 max_tokens: 60,
                 temperature: 0.9,
                 reasoning_effort: 'none', // Qwen3の思考モードを無効化（雑談一言生成に余計なトークンは不要）
-                messages: [
-                    {
-                        role: 'system',
-                        content: `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。友達同士の雑談チャンネルで、しばらく会話が途切れた後にふと一言つぶやくところです。直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、30文字以内目安）を返してください。質問でも独り言でも構いません。絵文字は基本的に付けず、文章の最後に毎回絵文字を付けるような機械的なパターンは絶対に避けてください（普通の人はそんなに毎回絵文字を使いません）。発言内容だけを返し、説明や前置きは付けないでください。`,
-                    },
-                    {
-                        role: 'user',
-                        content: context ? `直近の会話:\n${context}` : '（しばらく誰も発言していません）',
-                    },
-                ],
+                messages: buildChatterMessages(context, personaName),
             },
             {
                 headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
@@ -84,9 +90,44 @@ async function generateChatMessage(context, personaName) {
         );
         return res.data.choices[0]?.message?.content?.trim() || null;
     } catch (e) {
-        console.error('[Chatter] AI生成エラー:', e.message);
+        console.error('[Chatter] Groq生成エラー:', e.message);
         return null;
     }
+}
+
+async function generateViaCloudflare(context, personaName, model) {
+    const accountId = process.env.CF_ACCOUNT_ID;
+    const apiToken  = process.env.CF_API_TOKEN;
+    if (!accountId || !apiToken) {
+        console.error('[Chatter] Cloudflare AI: CF_ACCOUNT_ID/CF_API_TOKENが未設定です');
+        return null;
+    }
+    try {
+        const res = await axios.post(
+            `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`,
+            {
+                max_tokens: 60,
+                temperature: 0.9,
+                messages: buildChatterMessages(context, personaName),
+            },
+            {
+                headers: { Authorization: `Bearer ${apiToken}` },
+                timeout: 15_000,
+            }
+        );
+        return res.data?.result?.response?.trim() || null;
+    } catch (e) {
+        console.error(`[Chatter] Cloudflare AI生成エラー(model=${model}):`, e.message);
+        return null;
+    }
+}
+
+async function generateChatMessage(context, personaName) {
+    const settings = getSettings();
+    if (settings.chatterAiProvider === 'cloudflare') {
+        return generateViaCloudflare(context, personaName, settings.chatterAiModel || DEFAULT_CF_MODEL);
+    }
+    return generateViaGroq(context, personaName);
 }
 
 async function generateAndPost(client, guild, channel) {

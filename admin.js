@@ -967,4 +967,39 @@ async function handlePresence(interaction) {
     });
 }
 
-module.exports = { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel, handlePresence, restorePresence };
+/* =========================
+   🔥 コマンドハンドラ その2（/adminのサブコマンド上限対策）
+========================= */
+async function handleAdmin2(interaction) {
+    if (!hasAdminPermission(interaction.member)) {
+        return interaction.reply({ content: '管理者のみ実行できます。', ephemeral: true });
+    }
+
+    const sub = interaction.options.getSubcommand();
+
+    if (sub === 'chatter_ai') {
+        const provider = interaction.options.getString('provider');
+        const model    = interaction.options.getString('model');
+        const settings = getSettings();
+
+        if (provider) settings.chatterAiProvider = provider;
+        if (model)    settings.chatterAiModel    = model;
+        if (provider || model) saveSettings(settings);
+
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle('💬 雑談chatter — AI設定')
+                    .setColor(COLOR.info)
+                    .setDescription(
+                        `プロバイダー: **${settings.chatterAiProvider}**\n` +
+                        `モデル: **${settings.chatterAiModel || '(プロバイダーのデフォルト)'}**`
+                    )
+                    .setTimestamp()
+            ],
+            ephemeral: true,
+        });
+    }
+}
+
+module.exports = { handleAdmin, handleAdmin2, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel, handlePresence, restorePresence };

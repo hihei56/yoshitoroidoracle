@@ -17,7 +17,7 @@ const { handleModerator, handlePoopReaction, handleCryReaction, handleEmbedModer
 const { handleSpamEnforcerButton, checkFloodSpam } = require('./spam_enforcer');
 const { handleImpersonate }      = require('./impersonate');
 const { handleImp }              = require('./imp');
-const { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel, handlePresence, restorePresence } = require('./admin');
+const { handleAdmin, handleAdmin2, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel, handlePresence, restorePresence } = require('./admin');
 const { initRSS }                = require('./rssBot');
 const {
     initBump, handleBumpMessage, handleBumpSetup,
@@ -391,6 +391,7 @@ client.on(Events.InteractionCreate, async i => {
         if (i.commandName === 'anon')        await handleAnon(i);
         if (i.commandName === 'curse')       await handleCurse(i);
         if (i.commandName === 'lurker')      await handleLurker(i);
+        if (i.commandName === 'admin2') await handleAdmin2(i);
         if (i.commandName === 'admin') {
             const sub = i.options.getSubcommand();
             if (sub === 'ngserver')        await handleNGServer(i);

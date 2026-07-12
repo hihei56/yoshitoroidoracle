@@ -441,6 +441,28 @@ new SlashCommandBuilder()
                 )
         ),
 
+    // 5.5 管理設定その2（/adminがサブコマンド25個の上限に達したため新設）
+    new SlashCommandBuilder()
+        .setName('admin2')
+        .setDescription('管理設定その2。サブコマンドを選択してください。')
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('chatter_ai')
+                .setDescription('雑談chatterのAIプロバイダー/モデルを設定します。')
+                .addStringOption(opt =>
+                    opt.setName('provider')
+                        .setDescription('雑談生成に使うAIプロバイダーを切り替えます')
+                        .addChoices(
+                            { name: 'Groq',       value: 'groq' },
+                            { name: 'Cloudflare', value: 'cloudflare' },
+                        )
+                )
+                .addStringOption(opt =>
+                    opt.setName('model')
+                        .setDescription('Cloudflare AIのモデル名（例: @cf/meta/llama-3.1-8b-instruct-fast）。省略でデフォルト')
+                )
+        ),
+
     // 6. ROM専目覚まし（管理者のみ）
     new SlashCommandBuilder()
         .setName('lurker')
