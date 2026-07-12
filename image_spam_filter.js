@@ -4,6 +4,7 @@ const fs = require('fs');
 const { createWorker } = require('tesseract.js');
 const { resolveDataPath } = require('./dataPath');
 const { getModExcludeList } = require('./exclude_manager');
+const { enforce: enforceSpam } = require('./spam_enforcer');
 
 const SCORE_THRESHOLD = 200;
 
@@ -78,6 +79,7 @@ async function checkImageAttachments(message) {
         console.warn(`[ImageSpam] 検知: ${message.author.tag} score=${totalScore}`);
 
         if (message.deletable) await message.delete().catch(() => {});
+        enforceSpam(message, 'image_scam').catch(e => console.error('[SpamEnforcer Error]:', e));
     } catch (e) {
         console.error('[ImageSpam] 処理エラー:', e);
     }

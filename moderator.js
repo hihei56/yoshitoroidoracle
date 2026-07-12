@@ -11,6 +11,7 @@ const { pickOneLurker } = require('./lurker_picker');
 const { getLastActivity } = require('./activity_tracker');
 const { getNgWords } = require('./ng_word_manager');
 const { getChatterLurkerId } = require('./chatter_registry');
+const { enforce: enforceSpam } = require('./spam_enforcer');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -1088,6 +1089,7 @@ async function handleModerator(message) {
     if (checkSpam(message.author.id)) {
         console.warn(`[MOD SPAM] ${message.author.tag}`);
         await message.delete().catch(() => {});
+        enforceSpam(message, 'flood').catch(e => console.error('[SpamEnforcer Error]:', e));
         return;
     }
 

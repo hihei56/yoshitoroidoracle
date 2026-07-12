@@ -47,6 +47,7 @@ const { resetShiritoriGame } = require('./shiritori');
 const { handleBumpRemindCommand } = require('./bump');
 const { forcePost: forceChatterPost } = require('./chatter');
 const { forceRecruitPost, getVCRecruitSettings } = require('./vc_recruit');
+const { getStrikeCount, resetStrikes } = require('./spam_enforcer');
 
 const COLOR = {
     add:    0x57F287, // 緑
@@ -641,6 +642,40 @@ async function handleAdmin(interaction) {
                         .setTitle('🚫 臨時NGワード — 削除')
                         .setColor(removed ? COLOR.remove : COLOR.deny)
                         .setDescription(removed ? `\`${word}\` を削除しました。` : `\`${word}\` は登録されていません。`)
+                        .setTimestamp()
+                ],
+                ephemeral: true,
+            });
+        }
+    }
+
+    // ── スパム取り締まり違反カウント ──
+    if (sub === 'spam_strikes') {
+        const action = interaction.options.getString('action');
+        const target = interaction.options.getUser('user');
+
+        if (action === 'get') {
+            const count = getStrikeCount(target.id);
+            return interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('🚨 スパム違反カウント')
+                        .setColor(count > 0 ? COLOR.deny : COLOR.info)
+                        .setDescription(`<@${target.id}> の直近3日以内の違反回数: **${count}回**`)
+                        .setTimestamp()
+                ],
+                ephemeral: true,
+            });
+        }
+
+        if (action === 'reset') {
+            const existed = resetStrikes(target.id);
+            return interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('🚨 スパム違反カウント — リセット')
+                        .setColor(COLOR.remove)
+                        .setDescription(existed ? `<@${target.id}> の違反カウントをリセットしました。` : `<@${target.id}> に違反履歴はありません。`)
                         .setTimestamp()
                 ],
                 ephemeral: true,

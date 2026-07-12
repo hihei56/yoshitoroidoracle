@@ -1,6 +1,7 @@
 // invite_filter.js — NGサーバー招待リンク自動削除
 const { EmbedBuilder } = require('discord.js');
 const { resolveDataPath, ensureDir, readJson, writeJson } = require('./dataPath');
+const { enforce: enforceSpam } = require('./spam_enforcer');
 
 const NG_SERVERS_PATH = resolveDataPath('ng_servers.json');
 ensureDir(NG_SERVERS_PATH);
@@ -57,6 +58,7 @@ async function handleInviteFilter(message, client) {
         }
 
         console.warn(`[InviteFilter] NGサーバー招待を削除: guild=${guildId} code=${code} user=${message.author.tag}`);
+        enforceSpam(message, 'invite_spam').catch(e => console.error('[SpamEnforcer Error]:', e));
 
         // ログ通知
         try {

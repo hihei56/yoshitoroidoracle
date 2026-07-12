@@ -387,6 +387,25 @@ new SlashCommandBuilder()
                 )
                 .addUserOption(opt => opt.setName('user').setDescription('対象のユーザー（ロールと併用可）'))
                 .addRoleOption(opt => opt.setName('role').setDescription('対象のロール（ユーザーと併用可）'))
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('spam_strikes')
+                .setDescription('頻発スパム取り締まりの違反カウントを確認/リセットします。')
+                .addStringOption(opt =>
+                    opt.setName('action')
+                        .setDescription('操作を選択')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: '確認',   value: 'get'   },
+                            { name: 'リセット', value: 'reset' },
+                        )
+                )
+                .addUserOption(opt =>
+                    opt.setName('user')
+                        .setDescription('対象のユーザー')
+                        .setRequired(true)
+                )
         ),
 
     // 6. ROM専目覚まし（管理者のみ）
