@@ -3,13 +3,11 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('
 const { resolveDataPath, ensureDir, readJson, writeJson } = require('./dataPath');
 const { getModExcludeList } = require('./exclude_manager');
 const { getSettings } = require('./config');
-const whStore = require('./webhook_store');
 
 const STRIKES_PATH = resolveDataPath('spam_strikes.json');
 ensureDir(STRIKES_PATH);
 
 const LOG_CHANNEL_ID = process.env.SPAM_LOG_CHANNEL_ID || '1476943641242239056';
-const ALERT_WEBHOOK_NAME = 'アンチスパム';
 
 // 適用対象ロール保持者は「既に悪質」と判断された相手のため、通常のモデレーションより
 // 遥かに長く違反を記憶し、猶予なく処罰する
@@ -137,42 +135,16 @@ async function checkFloodSpam(message) {
 }
 
 /* =========================
-   🚨 対応ボタン付きアラート（Webhook表示）
+   🚨 対応ボタン付きアラート
+   Webhook経由での送信はWebhookのライフサイクル問題（削除・権限不足）で
+   不安定なため使わず、postLog と同じくBot自身のメッセージとして送る
 ========================= */
-let alertWebhookPromise = null;
-
-async function getAlertWebhook(client, { forceRefresh = false } = {}) {
-    if (forceRefresh) whStore.remove(LOG_CHANNEL_ID);
-
-    const cached = whStore.get(LOG_CHANNEL_ID);
-    if (cached) return cached;
-    if (alertWebhookPromise) return alertWebhookPromise;
-
-    alertWebhookPromise = (async () => {
-        try {
-            const ch = await client.channels.fetch(LOG_CHANNEL_ID);
-            if (!ch) return null;
-            const hooks = await ch.fetchWebhooks();
-            let wh = hooks.find(h => h.token);
-            if (!wh) wh = await ch.createWebhook({ name: ALERT_WEBHOOK_NAME });
-            whStore.set(LOG_CHANNEL_ID, wh);
-            return whStore.get(LOG_CHANNEL_ID);
-        } catch (e) {
-            console.error('[SpamEnforcer] Webhook取得失敗:', e.message);
-            return null;
-        } finally {
-            alertWebhookPromise = null;
-        }
-    })();
-    return alertWebhookPromise;
-}
-
 async function postInteractiveAlert(message, minutes) {
     if (!LOG_CHANNEL_ID || !message.client) return;
 
     const embed = new EmbedBuilder()
         .setColor(0xEB459E)
-        .setTitle('アンチスパム')
+        .setTitle('🚨 アンチスパム')
         .setDescription(`<@${message.author.id}> はスパムの可能性があるためタイムアウトされました（${formatMinutes(minutes)}）\nどうしますか？`)
         .setTimestamp();
 
@@ -182,38 +154,11 @@ async function postInteractiveAlert(message, minutes) {
         new ButtonBuilder().setCustomId(`spamenf_delban_${message.channelId}_${message.author.id}`).setLabel('メッセージ削除&BAN').setStyle(ButtonStyle.Danger),
     );
 
-    const payload = {
-        username:        ALERT_WEBHOOK_NAME,
-        avatarURL:       message.client.user.displayAvatarURL(),
-        embeds:          [embed],
-        components:      [row],
-        allowedMentions: { parse: ['users'] },
-    };
-
     try {
-        const wh = await getAlertWebhook(message.client);
-        if (!wh) throw new Error('Webhook取得失敗（権限不足の可能性）');
-
-        try {
-            await wh.send(payload);
-            return;
-        } catch (e) {
-            const isWebhookGone = e.status === 404 || e.code === 10015;
-            if (!isWebhookGone) throw e;
-            // Webhookが削除済み → 再作成して1回だけ再送
-            console.warn('[SpamEnforcer] Webhook消失検知 → 再作成して再送:', e.message);
-            const freshWh = await getAlertWebhook(message.client, { forceRefresh: true });
-            if (!freshWh) throw e;
-            await freshWh.send(payload);
-        }
+        const ch = await message.client.channels.fetch(LOG_CHANNEL_ID);
+        await ch?.send({ embeds: [embed], components: [row], allowedMentions: { parse: ['users'] } });
     } catch (e) {
-        console.error('[SpamEnforcer] Webhookでのアラート送信失敗、通常送信にフォールバック:', e.message);
-        try {
-            const ch = await message.client.channels.fetch(LOG_CHANNEL_ID);
-            await ch?.send({ embeds: [embed], components: [row], allowedMentions: { parse: ['users'] } });
-        } catch (e2) {
-            console.error('[SpamEnforcer] フォールバック送信も失敗:', e2.message);
-        }
+        console.error('[SpamEnforcer] アラート送信失敗:', e.message);
     }
 }
 
