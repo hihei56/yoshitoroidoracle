@@ -1,7 +1,8 @@
-// xp_announce.js — XPランキングの定期発表（毎日0時: 前日分デイリー / 月末: 月間）
+// xp_announce.js — XPランキングの定期発表（毎日0時: 前日分デイリー / 月末: 月間+コイン配布）
 const cron = require('node-cron');
 const { EmbedBuilder } = require('discord.js');
 const { getLeaderboardByPeriod } = require('./xp');
+const { distributeMonthlyCoins, COIN_NAME } = require('./currency');
 const { getSettings } = require('./config');
 
 const TOP_N = 5;
@@ -27,15 +28,18 @@ async function fetchTopAvatarUrl(client, userId) {
     }
 }
 
-function buildRankingEmbed(title, board, color, topAvatarUrl) {
+function buildRankingEmbed(title, board, color, topAvatarUrl, coinMap = null) {
     const lines = board.length
-        ? board.map((e, i) => `**#${i + 1}** <@${e.id}> — ${Math.floor(e.periodXp).toLocaleString('en-US')} XP`)
+        ? board.map((e, i) => {
+            const base = `**#${i + 1}** <@${e.id}> — ${Math.floor(e.periodXp).toLocaleString('en-US')} XP`;
+            return coinMap ? `${base}（+${(coinMap.get(e.id) ?? 0).toLocaleString('en-US')}${COIN_NAME}）` : base;
+        })
         : ['まだデータがありません。'];
     const embed = new EmbedBuilder()
         .setTitle(title)
         .setColor(color)
         .setDescription(lines.join('\n'))
-        .setFooter({ text: '🎁 上位者には特典があるかも……？' })
+        .setFooter({ text: coinMap ? `🎁 今月の活動に応じて${COIN_NAME}を配布しました！` : '🎁 上位者には特典があるかも……？' })
         .setTimestamp();
     if (topAvatarUrl) embed.setThumbnail(topAvatarUrl);
     return embed;
@@ -66,9 +70,14 @@ async function postDailyRanking(client) {
 
 async function postMonthlyRanking(client) {
     try {
-        const board     = getLeaderboardByPeriod('month', TOP_N);
+        const fullBoard = getLeaderboardByPeriod('month', 9999);
+        const distributed = distributeMonthlyCoins(fullBoard);
+        const coinMap    = new Map(distributed.map(d => [d.id, d.coins]));
+
+        const board     = fullBoard.slice(0, TOP_N);
         const avatarUrl = await fetchTopAvatarUrl(client, board[0]?.id);
-        await announce(client, buildRankingEmbed('🏆 月間XPランキング（今月の結果）', board, 0xf5a623, avatarUrl));
+        await announce(client, buildRankingEmbed('🏆 月間XPランキング（今月の結果）', board, 0xf5a623, avatarUrl, coinMap));
+        console.log(`[XpAnnounce] コイン配布完了: ${distributed.length}名`);
     } catch (e) {
         console.error('[XpAnnounce] 月間ランキングエラー:', e.message);
     }
