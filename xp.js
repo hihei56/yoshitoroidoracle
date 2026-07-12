@@ -197,6 +197,9 @@ function getPeriodXp(userId, period) {
     if (period === 'day') {
         return history[jstDateStr()] ?? 0;
     }
+    if (period === 'yesterday') {
+        return history[jstDateStr(-1)] ?? 0;
+    }
     if (period === 'week') {
         return jstWeekDates().reduce((s, d) => s + (history[d] ?? 0), 0);
     }
