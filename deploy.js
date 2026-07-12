@@ -292,6 +292,11 @@ new SlashCommandBuilder()
         )
         .addSubcommand(subcommand =>
             subcommand
+                .setName('chatter_exchange')
+                .setDescription('賑やかしchatterの複数人会話をこのチャンネルに試し打ちします。')
+        )
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('remind')
                 .setDescription('Bumpリマインダーの通知をDMでも受け取るユーザーを管理します。')
                 .addStringOption(option =>

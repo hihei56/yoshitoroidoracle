@@ -45,7 +45,7 @@ const { handleKickInactive } = require('./kick_inactive');
 const { getNgWords, addNgWord, removeNgWord } = require('./ng_word_manager');
 const { resetShiritoriGame } = require('./shiritori');
 const { handleBumpRemindCommand } = require('./bump');
-const { forcePost: forceChatterPost } = require('./chatter');
+const { forcePost: forceChatterPost, forceExchangePost: forceChatterExchange } = require('./chatter');
 const { forceRecruitPost, getVCRecruitSettings } = require('./vc_recruit');
 
 const COLOR = {
@@ -545,6 +545,18 @@ async function handleAdmin(interaction) {
         }
         return interaction.editReply({
             content: `✅ このチャンネルに投稿しました。\n生成方法: **${result.source}** / なりすまし: **${result.lurkerName}**\n> ${result.content}`,
+        });
+    }
+
+    // ── 賑やかしchatter（複数人会話）の試し打ち ──
+    if (sub === 'chatter_exchange') {
+        await interaction.deferReply({ ephemeral: true });
+        const result = await forceChatterExchange(interaction);
+        if (!result.ok) {
+            return interaction.editReply({ content: `❌ ${result.reason}` });
+        }
+        return interaction.editReply({
+            content: `✅ このチャンネルに複数人会話を投稿しました。\n参加者: **${result.participants.join('、')}** / 発言数: ${result.posted}`,
         });
     }
 

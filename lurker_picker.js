@@ -98,6 +98,30 @@ async function pickOneLurker(guild, { lastPickedId = null } = {}) {
     return { member: picked, fromFallback: false };
 }
 
+// ── 複数人選出（chatterの複数人会話用・重複なし） ──
+async function pickMultipleLurkers(guild, count) {
+    const members = await fetchMembers(guild);
+    const lurkers = [...members.filter(isLurker).values()].sort(() => Math.random() - 0.5);
+
+    const picked = lurkers.slice(0, count);
+
+    if (picked.length < count) {
+        const usedIds      = new Set(picked.map(m => m.id));
+        const fallbackPool = FALLBACK_IDS.filter(id => !usedIds.has(id)).sort(() => Math.random() - 0.5);
+        for (const id of fallbackPool) {
+            if (picked.length >= count) break;
+            const m = await guild.members.fetch(id).catch(() => null);
+            if (m && !usedIds.has(m.id)) {
+                picked.push(m);
+                usedIds.add(m.id);
+            }
+        }
+    }
+
+    console.log(`[LurkerPicker] 複数人選出: ${picked.map(m => m.user.tag).join(', ')} (${picked.length}/${count})`);
+    return picked;
+}
+
 // ── sticky管理（/imp 用・実行者単位で24時間固定） ──
 const STICKY_FILE = resolveDataPath('imp_sticky.json');
 ensureDir(STICKY_FILE);
@@ -135,6 +159,7 @@ function clearSticky(executorUserId) {
 
 module.exports = {
     pickOneLurker,
+    pickMultipleLurkers,
     fetchMembers,
     getSticky,
     setSticky,
