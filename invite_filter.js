@@ -2,6 +2,7 @@
 const { EmbedBuilder } = require('discord.js');
 const { resolveDataPath, ensureDir, readJson, writeJson } = require('./dataPath');
 const { enforce: enforceSpam } = require('./spam_enforcer');
+const { getSettings } = require('./config');
 
 const NG_SERVERS_PATH = resolveDataPath('ng_servers.json');
 ensureDir(NG_SERVERS_PATH);
@@ -36,6 +37,10 @@ async function handleInviteFilter(message, client) {
     // 除外ロール
     const member = message.member;
     if (member && EXEMPT_ROLES.some(id => member.roles.cache.has(id))) return;
+
+    // 適用対象ロールが設定されている場合、そのロールを持たないメンバーには適用しない
+    const targetRoles = getSettings().spamTargetRoles ?? [];
+    if (targetRoles.length > 0 && !(member && targetRoles.some(id => member.roles.cache.has(id)))) return;
 
     const content = message.content;
     const codes = [...content.matchAll(INVITE_REGEX)].map(m => m[1]);

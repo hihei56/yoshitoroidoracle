@@ -419,7 +419,7 @@ new SlashCommandBuilder()
         .addSubcommand(subcommand =>
             subcommand
                 .setName('spam_target_role')
-                .setDescription('スパム自動処罰（累進処罰・BANアラート）の適用対象ロールを管理します。未設定時は誰にも適用されません。')
+                .setDescription('スパム自動処罰（累進処罰・BANアラート）の適用対象ロールを管理します。NGサーバー招待削除にも適用（未設定時は全員対象）。未設定時は処罰は誰にも適用されません。')
                 .addStringOption(opt =>
                     opt.setName('action')
                         .setDescription('操作を選択')
