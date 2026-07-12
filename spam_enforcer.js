@@ -11,11 +11,12 @@ ensureDir(STRIKES_PATH);
 const LOG_CHANNEL_ID = process.env.SPAM_LOG_CHANNEL_ID || '1476943641242239056';
 const ALERT_WEBHOOK_NAME = 'アンチスパム';
 
-// この期間内の違反のみ「頻発」として積み上げる。期間を過ぎたら初犯扱いにリセット
-const STRIKE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000; // 3日
+// 適用対象ロール保持者は「既に悪質」と判断された相手のため、通常のモデレーションより
+// 遥かに長く違反を記憶し、猶予なく処罰する
+const STRIKE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000; // 14日
 
-// 累積違反回数 → 処罰（分単位のタイムアウト、または 'kick'）。1回目は削除のみ
-const ESCALATION = [null, 10, 60, 360, 1440, 40320, 'kick'];
+// 累積違反回数 → 処罰（分単位のタイムアウト、または 'kick'）。1回目から即タイムアウト（猶予なし）
+const ESCALATION = [10, 60, 360, 1440, 40320, 'kick'];
 
 let strikes = readJson(STRIKES_PATH, {});
 
@@ -91,6 +92,47 @@ async function postLog(message, count, action, category) {
         await ch.send({ embeds: [embed] });
     } catch (e) {
         console.error('[SpamEnforcer] ログ送信失敗:', e.message);
+    }
+}
+
+/* =========================
+   ⚡ 連投スパム検知（適用対象ロール保持者のみ・極めて厳格な基準）
+   moderator.js の checkSpam は全メンバー向けの一般的な閾値のため、
+   「既に悪質」と判定された対象ロール保持者にはここで独立かつ大幅に厳しい基準を適用する
+========================= */
+const FLOOD_WINDOW_MS = 4_000;
+const FLOOD_THRESHOLD = 2; // 4秒以内に2通で即スパム判定
+
+const floodTracker = new Map();
+
+function isFlooding(userId) {
+    const now   = Date.now();
+    const times = (floodTracker.get(userId) || []).filter(t => now - t < FLOOD_WINDOW_MS);
+    times.push(now);
+    floodTracker.set(userId, times);
+    return times.length >= FLOOD_THRESHOLD;
+}
+
+setInterval(() => {
+    const now = Date.now();
+    for (const [id, times] of floodTracker) {
+        if (times.every(t => now - t >= FLOOD_WINDOW_MS)) floodTracker.delete(id);
+    }
+}, 60_000);
+
+async function checkFloodSpam(message) {
+    try {
+        if (!message.guild || message.author.bot) return;
+
+        const member = message.member ?? await message.guild.members.fetch(message.author.id).catch(() => null);
+        if (isExempt(member)) return; // 対象ロール外・除外設定なら何もしない
+
+        if (!isFlooding(message.author.id)) return;
+
+        if (message.deletable) await message.delete().catch(() => {});
+        await enforce(message, 'flood');
+    } catch (e) {
+        console.error('[SpamEnforcer] 連投検知エラー:', e);
     }
 }
 
@@ -252,4 +294,4 @@ async function enforce(message, category) {
     }
 }
 
-module.exports = { enforce, getStrikeCount, resetStrikes, handleSpamEnforcerButton };
+module.exports = { enforce, checkFloodSpam, getStrikeCount, resetStrikes, handleSpamEnforcerButton };

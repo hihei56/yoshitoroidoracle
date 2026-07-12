@@ -13,7 +13,7 @@ const { initVCRecruit, recordVoiceStateForRecruit, handleVCRecruitButton } = req
 const { recordActivity, backfillActivity } = require('./activity_tracker');
 const { handleDeathmatch }       = require('./deathmatch');
 const { handleModerator, handlePoopReaction, handleCryReaction, handleEmbedModerator, handleCandyReaction, handleEditDM } = require('./moderator');
-const { handleSpamEnforcerButton } = require('./spam_enforcer');
+const { handleSpamEnforcerButton, checkFloodSpam } = require('./spam_enforcer');
 const { handleImpersonate }      = require('./impersonate');
 const { handleImp }              = require('./imp');
 const { handleAdmin, handleAdminButton, handleServersLeaveSelect, handleServersLeaveConfirm, handleServersLeaveCancel, handlePresence, restorePresence } = require('./admin');
@@ -200,6 +200,7 @@ client.on(Events.MessageCreate, async m => {
     handleShiritoriMessage(m).catch(err => console.error('[Shiritori Error]:', err));
     handleRtaMessage(m).catch(err => console.error('[RTA Error]:', err));
     checkImageAttachments(m).catch(err => console.error('[ImageSpam Error]:', err));
+    checkFloodSpam(m).catch(err => console.error('[SpamEnforcer Flood Error]:', err));
     handleYomiageMessage(m).catch(err => console.error('[Yomiage Error]:', err));
 
     // !xp プレフィックスコマンド
