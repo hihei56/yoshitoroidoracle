@@ -1,15 +1,17 @@
-// yomiage.js — ボイスチャンネル読み上げBot（ひろゆき/岡田斗司夫ボイス）
+// yomiage.js — ボイスチャンネル読み上げBot（ひろゆき/岡田斗司夫ボイス + 声優ボイス）
 const { Readable } = require('stream');
 const { ChannelType, PermissionsBitField } = require('discord.js');
 const {
     joinVoiceChannel, createAudioPlayer, createAudioResource,
     entersState, VoiceConnectionStatus, AudioPlayerStatus, StreamType,
 } = require('@discordjs/voice');
-const { synthesize } = require('./coefont_tts');
+const { synthesize: synthesizeCoefont } = require('./coefont_tts');
+const { synthesize: synthesizeEngine, listSpeakers } = require('./engine_tts');
 const { getSettings, saveSettings } = require('./config');
 
 const DEFAULT_VOICE  = 'hiroyuki';
 const MAX_READ_LENGTH = 100;
+const ENGINE_VOICE_PREFIX = 'engine:';
 
 const guildStates = new Map(); // guildId -> { connection, player, textChannelId, queue, playing }
 
@@ -51,7 +53,9 @@ async function processQueue(guildId) {
     const { text, voice } = state.queue.shift();
 
     try {
-        const wavBuffer = await synthesize(text, voice);
+        const wavBuffer = voice.startsWith(ENGINE_VOICE_PREFIX)
+            ? await synthesizeEngine(text, voice.slice(ENGINE_VOICE_PREFIX.length))
+            : await synthesizeCoefont(text, voice);
         if (wavBuffer) {
             const resource = createAudioResource(Readable.from(wavBuffer), { inputType: StreamType.Arbitrary });
             state.player.play(resource);
@@ -153,11 +157,26 @@ async function handleYomiageLeave(interaction) {
     }
 }
 
+const BUILTIN_VOICE_LABELS = {
+    hiroyuki: 'ひろゆき',
+    toshio:   '岡田斗司夫',
+};
+
 async function handleYomiageVoice(interaction) {
     try {
         const voice = interaction.options.getString('voice');
+
+        let label = BUILTIN_VOICE_LABELS[voice];
+        if (!label && voice.startsWith(ENGINE_VOICE_PREFIX)) {
+            const styleId = Number(voice.slice(ENGINE_VOICE_PREFIX.length));
+            const speakers = await listSpeakers().catch(() => []);
+            label = speakers.find(s => s.styleId === styleId)?.label;
+        }
+        if (!label) {
+            return interaction.reply({ content: '❌ 候補一覧から声を選択してください。', ephemeral: true });
+        }
+
         setUserVoice(interaction.user.id, voice);
-        const label = voice === 'toshio' ? '岡田斗司夫' : 'ひろゆき';
         return interaction.reply({ content: `✅ あなたの読み上げボイスを **${label}** に設定しました。`, ephemeral: true });
     } catch (e) {
         console.error('[Yomiage] voice エラー:', e);
@@ -165,4 +184,34 @@ async function handleYomiageVoice(interaction) {
     }
 }
 
-module.exports = { handleYomiageMessage, handleYomiageJoin, handleYomiageLeave, handleYomiageVoice };
+async function handleYomiageVoiceAutocomplete(interaction) {
+    try {
+        const focused = interaction.options.getFocused().toLowerCase();
+
+        const choices = Object.entries(BUILTIN_VOICE_LABELS)
+            .map(([value, name]) => ({ name, value }));
+
+        try {
+            const speakers = await listSpeakers();
+            for (const s of speakers) {
+                choices.push({ name: s.label, value: `${ENGINE_VOICE_PREFIX}${s.styleId}` });
+            }
+        } catch (e) {
+            // エンジン未起動時は組み込みボイスのみ表示
+        }
+
+        const filtered = choices
+            .filter(c => c.name.toLowerCase().includes(focused))
+            .slice(0, 25);
+
+        return interaction.respond(filtered);
+    } catch (e) {
+        console.error('[Yomiage] voice autocomplete エラー:', e);
+        return interaction.respond([]).catch(() => {});
+    }
+}
+
+module.exports = {
+    handleYomiageMessage, handleYomiageJoin, handleYomiageLeave,
+    handleYomiageVoice, handleYomiageVoiceAutocomplete,
+};

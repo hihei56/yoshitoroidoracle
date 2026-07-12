@@ -722,12 +722,9 @@ new SlashCommandBuilder()
         .setDescription('あなたの読み上げボイスを選択します。')
         .addStringOption(opt =>
             opt.setName('voice')
-                .setDescription('声を選択')
+                .setDescription('声を選択（入力すると候補が絞り込まれます）')
                 .setRequired(true)
-                .addChoices(
-                    { name: 'ひろゆき',     value: 'hiroyuki' },
-                    { name: '岡田斗司夫',   value: 'toshio'   },
-                )
+                .setAutocomplete(true)
         ),
 
 ].map(command => command.toJSON());

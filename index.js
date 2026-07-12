@@ -25,6 +25,7 @@ const { handleTimeout }           = require('./timeout');
 const { handleClean }              = require('./clean');
 const {
     handleYomiageMessage, handleYomiageJoin, handleYomiageLeave, handleYomiageVoice,
+    handleYomiageVoiceAutocomplete,
 }                                   = require('./yomiage');
 const { checkImageAttachments }    = require('./image_spam_filter');
 const { initShiritori, handleShiritoriMessage } = require('./shiritori');
@@ -270,6 +271,9 @@ client.on(Events.InteractionCreate, async i => {
         return handleVoicePanelUserSelect(i).catch(e => console.error('[VoicePanel UserSelect]:', e));
     if (i.isModalSubmit() && i.customId.startsWith('vcpanel_modal_'))
         return handleVoicePanelModal(i).catch(e => console.error('[VoicePanel Modal]:', e));
+
+    if (i.isAutocomplete() && i.commandName === 'yomiage-voice')
+        return handleYomiageVoiceAutocomplete(i).catch(e => console.error('[Yomiage Autocomplete]:', e));
 
     if (!i.isChatInputCommand()) return;
 
