@@ -51,10 +51,13 @@ async function getWebhook(channel, client) {
 }
 
 async function postResult(message) {
+    const winnerAvatar = message.member?.displayAvatarURL({ dynamic: true })
+        ?? message.author.displayAvatarURL({ dynamic: true });
+
     const embed = new EmbedBuilder()
         .setTitle('1day-RTA')
         .setColor(EMBED_COLOR)
-        .setThumbnail(message.client.user.displayAvatarURL())
+        .setThumbnail(winnerAvatar)
         .addFields(
             { name: '本日の記録',   value: formatSeconds(record.todayTimeMs), inline: true },
             { name: '歴代最速記録', value: record.bestTimeMs !== null ? formatSeconds(record.bestTimeMs) : '記録なし', inline: true },
