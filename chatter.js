@@ -57,7 +57,7 @@ async function fetchRecentContext(channel) {
 }
 
 const DEFAULT_CF_MODEL   = '@cf/meta/llama-3.1-8b-instruct-fast';
-const DEFAULT_GROQ_MODEL = 'moonshotai/kimi-k2-instruct';
+const DEFAULT_GROQ_MODEL = 'qwen/qwen3-32b';
 
 function buildChatterMessages(context, personaName) {
     return [
