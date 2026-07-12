@@ -1,4 +1,4 @@
-// xp_announce.js — XPランキングの定期発表（毎日0時: 週間 / 月末: 月間）
+// xp_announce.js — XPランキングの定期発表（毎日0時: 前日分デイリー / 月末: 月間）
 const cron = require('node-cron');
 const { EmbedBuilder } = require('discord.js');
 const { getLeaderboardByPeriod } = require('./xp');
@@ -64,16 +64,6 @@ async function postDailyRanking(client) {
     }
 }
 
-async function postWeeklyRanking(client) {
-    try {
-        const board     = getLeaderboardByPeriod('week', TOP_N);
-        const avatarUrl = await fetchTopAvatarUrl(client, board[0]?.id);
-        await announce(client, buildRankingEmbed('📅 週間XPランキング', board, 0x5865F2, avatarUrl));
-    } catch (e) {
-        console.error('[XpAnnounce] 週間ランキングエラー:', e.message);
-    }
-}
-
 async function postMonthlyRanking(client) {
     try {
         const board     = getLeaderboardByPeriod('month', TOP_N);
@@ -85,14 +75,11 @@ async function postMonthlyRanking(client) {
 }
 
 function initXpAnnounce(client) {
-    cron.schedule('0 0 * * *', () => {
-        postDailyRanking(client);
-        postWeeklyRanking(client);
-    }, { timezone: 'Asia/Tokyo' });
+    cron.schedule('0 0 * * *', () => postDailyRanking(client), { timezone: 'Asia/Tokyo' });
     cron.schedule('55 23 * * *', () => {
         if (isLastDayOfMonthJST()) postMonthlyRanking(client);
     }, { timezone: 'Asia/Tokyo' });
-    console.log('[XpAnnounce] ✅ 初期化 | 毎日0時: デイリー(前日分)/週間ランキング / 月末23:55: 月間ランキング');
+    console.log('[XpAnnounce] ✅ 初期化 | 毎日0時: デイリー(前日分)ランキング / 月末23:55: 月間ランキング');
 }
 
 module.exports = { initXpAnnounce };
