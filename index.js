@@ -9,6 +9,7 @@ const { handleAnon }             = require('./anon');
 const { handleCurse }            = require('./curse');
 const { initLurker, handleLurker } = require('./lurker');
 const { initChatter, recordMessage: recordChatterMessage } = require('./chatter');
+const { initTopicStarter } = require('./topic_starter');
 const { initVCRecruit, recordVoiceStateForRecruit, handleVCRecruitButton } = require('./vc_recruit');
 const { recordActivity, backfillActivity } = require('./activity_tracker');
 const { handleDeathmatch }       = require('./deathmatch');
@@ -134,6 +135,7 @@ client.once(Events.ClientReady, async c => {
     initRSS(client);
     initLurker(client);
     initChatter(client);
+    initTopicStarter(client);
     initVCRecruit(client);
     initVoicePanelCleanup(client);
     initBump(client);
