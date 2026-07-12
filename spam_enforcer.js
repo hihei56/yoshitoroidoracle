@@ -167,21 +167,22 @@ async function getAlertWebhook(client) {
 
 async function postInteractiveAlert(message, minutes) {
     if (!LOG_CHANNEL_ID || !message.client) return;
+
+    const embed = new EmbedBuilder()
+        .setColor(0xEB459E)
+        .setTitle('アンチスパム')
+        .setDescription(`<@${message.author.id}> はスパムの可能性があるためタイムアウトされました（${formatMinutes(minutes)}）\nどうしますか？`)
+        .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`spamenf_ban_${message.author.id}`).setLabel('BAN').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(`spamenf_release_${message.author.id}`).setLabel('解除').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`spamenf_delban_${message.channelId}_${message.author.id}`).setLabel('メッセージ削除&BAN').setStyle(ButtonStyle.Danger),
+    );
+
     try {
         const wh = await getAlertWebhook(message.client);
-        if (!wh) return;
-
-        const embed = new EmbedBuilder()
-            .setColor(0xEB459E)
-            .setTitle('アンチスパム')
-            .setDescription(`<@${message.author.id}> はスパムの可能性があるためタイムアウトされました（${formatMinutes(minutes)}）\nどうしますか？`)
-            .setTimestamp();
-
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`spamenf_ban_${message.author.id}`).setLabel('BAN').setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId(`spamenf_release_${message.author.id}`).setLabel('解除').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId(`spamenf_delban_${message.channelId}_${message.author.id}`).setLabel('メッセージ削除&BAN').setStyle(ButtonStyle.Danger),
-        );
+        if (!wh) throw new Error('Webhook取得失敗（権限不足の可能性）');
 
         await wh.send({
             username:        ALERT_WEBHOOK_NAME,
@@ -191,7 +192,13 @@ async function postInteractiveAlert(message, minutes) {
             allowedMentions: { parse: ['users'] },
         });
     } catch (e) {
-        console.error('[SpamEnforcer] アラート送信失敗:', e.message);
+        console.error('[SpamEnforcer] Webhookでのアラート送信失敗、通常送信にフォールバック:', e.message);
+        try {
+            const ch = await message.client.channels.fetch(LOG_CHANNEL_ID);
+            await ch?.send({ embeds: [embed], components: [row], allowedMentions: { parse: ['users'] } });
+        } catch (e2) {
+            console.error('[SpamEnforcer] フォールバック送信も失敗:', e2.message);
+        }
     }
 }
 
