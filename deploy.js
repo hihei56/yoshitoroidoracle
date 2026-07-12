@@ -397,42 +397,47 @@ new SlashCommandBuilder()
                 .addUserOption(opt => opt.setName('user').setDescription('対象のユーザー（ロールと併用可）'))
                 .addRoleOption(opt => opt.setName('role').setDescription('対象のロール（ユーザーと併用可）'))
         )
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('spam_strikes')
-                .setDescription('頻発スパム取り締まりの違反カウントを確認/リセットします。')
-                .addStringOption(opt =>
-                    opt.setName('action')
-                        .setDescription('操作を選択')
-                        .setRequired(true)
-                        .addChoices(
-                            { name: '確認',   value: 'get'   },
-                            { name: 'リセット', value: 'reset' },
+        .addSubcommandGroup(group =>
+            group
+                .setName('spam')
+                .setDescription('スパム自動処罰（累進処罰・BANアラート）の管理をします。')
+                .addSubcommand(subcommand =>
+                    subcommand
+                        .setName('strikes')
+                        .setDescription('頻発スパム取り締まりの違反カウントを確認/リセットします。')
+                        .addStringOption(opt =>
+                            opt.setName('action')
+                                .setDescription('操作を選択')
+                                .setRequired(true)
+                                .addChoices(
+                                    { name: '確認',   value: 'get'   },
+                                    { name: 'リセット', value: 'reset' },
+                                )
+                        )
+                        .addUserOption(opt =>
+                            opt.setName('user')
+                                .setDescription('対象のユーザー')
+                                .setRequired(true)
                         )
                 )
-                .addUserOption(opt =>
-                    opt.setName('user')
-                        .setDescription('対象のユーザー')
-                        .setRequired(true)
-                )
-        )
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('spam_target_role')
-                .setDescription('スパム自動処罰（累進処罰・BANアラート）の適用対象ロールを管理します。NGサーバー招待削除にも適用（未設定時は全員対象）。未設定時は処罰は誰にも適用されません。')
-                .addStringOption(opt =>
-                    opt.setName('action')
-                        .setDescription('操作を選択')
-                        .setRequired(true)
-                        .addChoices(
-                            { name: '追加', value: 'add'    },
-                            { name: '削除', value: 'remove' },
-                            { name: '一覧', value: 'list'   },
+                .addSubcommand(subcommand =>
+                    subcommand
+                        .setName('target_role')
+                        .setDescription('適用対象ロールを管理します。NGサーバー招待削除にも適用（未設定時は全員対象）。未設定時は処罰は誰にも適用されません。')
+                        .addStringOption(opt =>
+                            opt.setName('action')
+                                .setDescription('操作を選択')
+                                .setRequired(true)
+                                .addChoices(
+                                    { name: '追加', value: 'add'    },
+                                    { name: '削除', value: 'remove' },
+                                    { name: '一覧', value: 'list'   },
+                                )
                         )
-                )
-                .addRoleOption(opt =>
-                    opt.setName('role')
-                        .setDescription('対象のロール（add/remove時は必須）')
+                        .addRoleOption(opt =>
+                            opt.setName('role')
+                                .setDescription('対象のロール（add/remove時は必須）')
+                        )
                 )
         ),
 
