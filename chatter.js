@@ -4,6 +4,7 @@ const { pickOneLurker, pickMultipleLurkers } = require('./lurker_picker');
 const { getSettings } = require('./config');
 const { checkNgWords, normalizeForDetection } = require('./moderator');
 const { registerChatterMessage } = require('./chatter_registry');
+const { getPersonaFor } = require('./chatter_personas');
 
 const SILENCE_MS       = 60 * 60 * 1000;      // 1時間
 const COOLDOWN_MS      = 2  * 60 * 60 * 1000; // 投稿後2時間クールダウン
@@ -105,20 +106,20 @@ async function callGroq(systemPrompt, userContent) {
     }
 }
 
-async function generateChatMessage(context, personaName) {
-    const systemPrompt = `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。友達同士の雑談チャンネルで、しばらく会話が途切れた後にふと一言つぶやくところです。直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、30文字以内目安）を返してください。質問でも独り言でも構いません。絵文字は基本的に付けず、文章の最後に毎回絵文字を付けるような機械的なパターンは絶対に避けてください（普通の人はそんなに毎回絵文字を使いません）。発言内容だけを返し、説明や前置きは付けないでください。`;
+async function generateChatMessage(context, personaName, archetype) {
+    const systemPrompt = `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。あなたの性格は次の通りです: ${archetype}。友達同士の雑談チャンネルで、しばらく会話が途切れた後にふと一言つぶやくところです。直近の会話の流れを踏まえて、この性格が伝わるようなくだけた自然な日本語で短い一言（1文、30文字以内目安）を返してください。質問でも独り言でも構いません。絵文字は基本的に付けず、文章の最後に毎回絵文字を付けるような機械的なパターンは絶対に避けてください（普通の人はそんなに毎回絵文字を使いません）。発言内容だけを返し、説明や前置きは付けないでください。`;
     return callGroq(systemPrompt, context ? `直近の会話:\n${context}` : '（しばらく誰も発言していません）');
 }
 
 // ── 複数人会話（exchange）用の一言生成 ──
-// 同じ生成ロジック・同じ「一般メンバーの雑談」人格を使い回し、話者の名前だけ差し替える
-function buildExchangeSystemPrompt(personaName, otherNames) {
+// 同じ生成ロジックを使い回し、話者の名前と固定のキャラ性格（archetype）だけ差し替える
+function buildExchangeSystemPrompt(personaName, archetype, otherNames) {
     const othersText = otherNames.length ? otherNames.join('、') : '他のメンバー';
-    return `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。今、${othersText}と一緒に雑談チャンネルで軽い世間話をしています。チャンネルの直近の流れと、これまでのやりとりを踏まえて、あなたの発言として自然な一言（1文、30文字以内目安）だけを返してください。相槌・ツッコミ・話題への反応・ふとした話題転換など何でも構いません。絵文字は基本的に付けず、毎回絵文字を付けるような機械的なパターンは避けてください。同じ言い回しの繰り返しも避けてください。発言内容だけを返し、話者名や説明、前置きは付けないでください。`;
+    return `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。あなたの性格は次の通りです: ${archetype}。今、${othersText}と一緒に雑談チャンネルで軽い世間話をしています。チャンネルの直近の流れと、これまでのやりとりを踏まえて、この性格が伝わるようなあなたの発言として自然な一言（1文、30文字以内目安）だけを返してください。相槌・ツッコミ・話題への反応・ふとした話題転換など何でも構いません。絵文字は基本的に付けず、毎回絵文字を付けるような機械的なパターンは避けてください。同じ言い回しの繰り返しも避けてください。発言内容だけを返し、話者名や説明、前置きは付けないでください。`;
 }
 
-async function generateExchangeLine(channelContext, exchangeSoFar, personaName, otherNames) {
-    const systemPrompt = buildExchangeSystemPrompt(personaName, otherNames);
+async function generateExchangeLine(channelContext, exchangeSoFar, personaName, archetype, otherNames) {
+    const systemPrompt = buildExchangeSystemPrompt(personaName, archetype, otherNames);
     const parts = [];
     if (channelContext) parts.push(`チャンネルの直近の会話:\n${channelContext}`);
     parts.push(exchangeSoFar
@@ -132,8 +133,9 @@ async function generateAndPost(client, guild, channel) {
     if (!lurker) return { ok: false, reason: 'なりすまし対象のlurkerが見つかりませんでした。' };
     _lastLurkerId = lurker.id;
 
-    const context = await fetchRecentContext(channel);
-    let content = await generateChatMessage(context, lurker.displayName || lurker.user.username);
+    const context  = await fetchRecentContext(channel);
+    const archetype = getPersonaFor(lurker.id);
+    let content = await generateChatMessage(context, lurker.displayName || lurker.user.username, archetype);
     let source  = content ? 'AI' : null;
 
     if (content) {
@@ -211,6 +213,9 @@ async function generateExchangeAndPost(client, guild, channel) {
     const targetChannel  = channel.isThread?.() ? channel.parent : channel;
     const webhook        = await getWebhook(targetChannel, client);
 
+    // 参加者ごとのキャラ性格を先に確定（同じ人は毎回同じ性格で喋る）
+    const archetypes = new Map(participants.map(m => [m.id, getPersonaFor(m.id)]));
+
     const turns = [];
     let lastSpeakerIdx = -1;
 
@@ -223,12 +228,13 @@ async function generateExchangeAndPost(client, guild, channel) {
 
         const speaker      = participants[idx];
         const speakerName  = speaker.displayName || speaker.user.username;
+        const speakerArchetype = archetypes.get(speaker.id);
         const otherNames   = participants
             .filter((_, j) => j !== idx)
             .map(m => m.displayName || m.user.username);
         const exchangeSoFar = turns.map(t => `${t.name}: ${t.content}`).join('\n');
 
-        let content = await generateExchangeLine(channelContext, exchangeSoFar, speakerName, otherNames);
+        let content = await generateExchangeLine(channelContext, exchangeSoFar, speakerName, speakerArchetype, otherNames);
         if (content) {
             const { hit } = checkNgWords(normalizeForDetection(content));
             if (hit) {
