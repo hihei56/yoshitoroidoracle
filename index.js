@@ -29,6 +29,7 @@ const {
 }                                   = require('./yomiage');
 const { checkImageAttachments }    = require('./image_spam_filter');
 const { initShiritori, handleShiritoriMessage } = require('./shiritori');
+const { handleRtaMessage } = require('./rta');
 const { initXpAnnounce }          = require('./xp_announce');
 const { postRanking, handleRanking } = require('./ranking');
 const { handleTimeoutList }      = require('./timeoutlist');
@@ -197,6 +198,7 @@ client.on(Events.MessageCreate, async m => {
     handleInviteFilter(m, client).catch(err => console.error('[InviteFilter Error]:', err));
     handleModerator(m).catch(err => console.error('[Mod Error]:', err));
     handleShiritoriMessage(m).catch(err => console.error('[Shiritori Error]:', err));
+    handleRtaMessage(m).catch(err => console.error('[RTA Error]:', err));
     checkImageAttachments(m).catch(err => console.error('[ImageSpam Error]:', err));
     handleYomiageMessage(m).catch(err => console.error('[Yomiage Error]:', err));
 

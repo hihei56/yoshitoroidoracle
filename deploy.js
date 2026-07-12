@@ -329,6 +329,15 @@ new SlashCommandBuilder()
         )
         .addSubcommand(subcommand =>
             subcommand
+                .setName('rta_channel')
+                .setDescription('1day-RTA（日付変更後の最速投稿を表彰）を行うチャンネルを設定します。未指定で解除。')
+                .addChannelOption(opt =>
+                    opt.setName('channel')
+                        .setDescription('対象のメインチャット（省略で解除）')
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('ng_word')
                 .setDescription('検閲対象の臨時NGワードを追加/削除/一覧表示します。')
                 .addStringOption(option =>

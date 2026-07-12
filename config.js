@@ -28,6 +28,7 @@ function getSettings() {
     if (data.chineseThinkerReplace === undefined)     data.chineseThinkerReplace     = true;
     if (!data.chineseThinkerExcludeUsers)             data.chineseThinkerExcludeUsers = [];
     if (!data.cryAllowedUsers)                        data.cryAllowedUsers = [];
+    if (data.rtaChannelId === undefined) data.rtaChannelId = null;
     return data;
 }
 

@@ -48,6 +48,7 @@ const { handleBumpRemindCommand } = require('./bump');
 const { forcePost: forceChatterPost } = require('./chatter');
 const { forceRecruitPost, getVCRecruitSettings } = require('./vc_recruit');
 const { getStrikeCount, resetStrikes } = require('./spam_enforcer');
+const { resetRtaRace } = require('./rta');
 
 const COLOR = {
     add:    0x57F287, // 緑
@@ -647,6 +648,26 @@ async function handleAdmin(interaction) {
                 ephemeral: true,
             });
         }
+    }
+
+    // ── 1day-RTAチャンネル ──
+    if (sub === 'rta_channel') {
+        const ch       = interaction.options.getChannel('channel');
+        const settings = getSettings();
+        settings.rtaChannelId = ch?.id ?? null;
+        saveSettings(settings);
+        resetRtaRace();
+        const verb = ch ? `<#${ch.id}> に設定しました（本日分をリセットしました）` : '解除しました';
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle('🏁 1day-RTAチャンネル')
+                    .setColor(ch ? COLOR.add : COLOR.remove)
+                    .setDescription(verb)
+                    .setTimestamp()
+            ],
+            ephemeral: true,
+        });
     }
 
     // ── スパム取り締まり違反カウント ──
