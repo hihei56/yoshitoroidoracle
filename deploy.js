@@ -415,6 +415,25 @@ new SlashCommandBuilder()
                         .setDescription('対象のユーザー')
                         .setRequired(true)
                 )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('spam_target_role')
+                .setDescription('スパム自動処罰（累進処罰・BANアラート）の適用対象ロールを管理します。未設定時は誰にも適用されません。')
+                .addStringOption(opt =>
+                    opt.setName('action')
+                        .setDescription('操作を選択')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: '追加', value: 'add'    },
+                            { name: '削除', value: 'remove' },
+                            { name: '一覧', value: 'list'   },
+                        )
+                )
+                .addRoleOption(opt =>
+                    opt.setName('role')
+                        .setDescription('対象のロール（add/remove時は必須）')
+                )
         ),
 
     // 6. ROM専目覚まし（管理者のみ）

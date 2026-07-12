@@ -704,6 +704,50 @@ async function handleAdmin(interaction) {
         }
     }
 
+    // ── スパム自動処罰の適用対象ロール ──
+    if (sub === 'spam_target_role') {
+        const action     = interaction.options.getString('action');
+        const targetRole = interaction.options.getRole('role');
+        const settings   = getSettings();
+
+        if (action === 'list') {
+            const list = settings.spamTargetRoles ?? [];
+            return interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('🚨 スパム自動処罰 — 適用対象ロール')
+                        .setColor(COLOR.info)
+                        .setDescription(list.length ? list.map(id => `<@&${id}>`).join(' ') : '未設定（誰にも適用されません）')
+                        .setTimestamp()
+                ],
+                ephemeral: true,
+            });
+        }
+
+        if (!targetRole) {
+            return interaction.reply({ content: 'role を指定してください。', ephemeral: true });
+        }
+
+        const verb = action === 'add' ? '追加' : '解除';
+        if (action === 'add') {
+            if (!settings.spamTargetRoles.includes(targetRole.id)) settings.spamTargetRoles.push(targetRole.id);
+        } else {
+            settings.spamTargetRoles = settings.spamTargetRoles.filter(id => id !== targetRole.id);
+        }
+        saveSettings(settings);
+
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle(`🚨 スパム自動処罰 適用対象ロール — ${verb}`)
+                    .setColor(action === 'add' ? COLOR.add : COLOR.remove)
+                    .setDescription(`<@&${targetRole.id}>`)
+                    .setTimestamp()
+            ],
+            ephemeral: true,
+        });
+    }
+
     // ── 現在の設定を表示 ──
     if (sub === 'status') {
         return interaction.reply({

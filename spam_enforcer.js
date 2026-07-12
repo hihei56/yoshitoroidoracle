@@ -2,6 +2,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { resolveDataPath, ensureDir, readJson, writeJson } = require('./dataPath');
 const { getModExcludeList } = require('./exclude_manager');
+const { getSettings } = require('./config');
 const whStore = require('./webhook_store');
 
 const STRIKES_PATH = resolveDataPath('spam_strikes.json');
@@ -28,6 +29,11 @@ function isExempt(member) {
     const excl = getModExcludeList();
     if (excl.users.includes(member.id)) return true;
     if (excl.roles.some(id => member.roles.cache.has(id))) return true;
+
+    // 適用対象ロールを持つメンバーにのみ適用する（未設定 = 誰にも適用しない）
+    const targetRoles = getSettings().spamTargetRoles ?? [];
+    if (!targetRoles.some(id => member.roles.cache.has(id))) return true;
+
     return false;
 }
 

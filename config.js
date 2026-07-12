@@ -29,6 +29,7 @@ function getSettings() {
     if (!data.chineseThinkerExcludeUsers)             data.chineseThinkerExcludeUsers = [];
     if (!data.cryAllowedUsers)                        data.cryAllowedUsers = [];
     if (data.rtaChannelId === undefined) data.rtaChannelId = null;
+    if (!data.spamTargetRoles) data.spamTargetRoles = [];
     return data;
 }
 
