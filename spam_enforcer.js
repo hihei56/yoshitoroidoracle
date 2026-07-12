@@ -141,7 +141,9 @@ async function checkFloodSpam(message) {
 ========================= */
 let alertWebhookPromise = null;
 
-async function getAlertWebhook(client) {
+async function getAlertWebhook(client, { forceRefresh = false } = {}) {
+    if (forceRefresh) whStore.remove(LOG_CHANNEL_ID);
+
     const cached = whStore.get(LOG_CHANNEL_ID);
     if (cached) return cached;
     if (alertWebhookPromise) return alertWebhookPromise;
@@ -180,17 +182,30 @@ async function postInteractiveAlert(message, minutes) {
         new ButtonBuilder().setCustomId(`spamenf_delban_${message.channelId}_${message.author.id}`).setLabel('メッセージ削除&BAN').setStyle(ButtonStyle.Danger),
     );
 
+    const payload = {
+        username:        ALERT_WEBHOOK_NAME,
+        avatarURL:       message.client.user.displayAvatarURL(),
+        embeds:          [embed],
+        components:      [row],
+        allowedMentions: { parse: ['users'] },
+    };
+
     try {
         const wh = await getAlertWebhook(message.client);
         if (!wh) throw new Error('Webhook取得失敗（権限不足の可能性）');
 
-        await wh.send({
-            username:        ALERT_WEBHOOK_NAME,
-            avatarURL:       message.client.user.displayAvatarURL(),
-            embeds:          [embed],
-            components:      [row],
-            allowedMentions: { parse: ['users'] },
-        });
+        try {
+            await wh.send(payload);
+            return;
+        } catch (e) {
+            const isWebhookGone = e.status === 404 || e.code === 10015;
+            if (!isWebhookGone) throw e;
+            // Webhookが削除済み → 再作成して1回だけ再送
+            console.warn('[SpamEnforcer] Webhook消失検知 → 再作成して再送:', e.message);
+            const freshWh = await getAlertWebhook(message.client, { forceRefresh: true });
+            if (!freshWh) throw e;
+            await freshWh.send(payload);
+        }
     } catch (e) {
         console.error('[SpamEnforcer] Webhookでのアラート送信失敗、通常送信にフォールバック:', e.message);
         try {
