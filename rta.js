@@ -56,10 +56,10 @@ async function postResult(message) {
         .setColor(EMBED_COLOR)
         .setThumbnail(message.client.user.displayAvatarURL())
         .addFields(
-            { name: '今日のタイム', value: formatSeconds(record.todayTimeMs), inline: true },
-            { name: '過去最高速度', value: record.bestTimeMs !== null ? formatSeconds(record.bestTimeMs) : '記録なし', inline: true },
+            { name: '本日の記録',   value: formatSeconds(record.todayTimeMs), inline: true },
+            { name: '歴代最速記録', value: record.bestTimeMs !== null ? formatSeconds(record.bestTimeMs) : '記録なし', inline: true },
         )
-        .setDescription(`最速だった <@${record.todayWinnerId}> さん、\nおめでとうございます！\n次回は1日後に開催されます！`)
+        .setDescription(`本日一番乗りは <@${record.todayWinnerId}> さんでした🎉\nまた明日、日付が変わったら挑戦してください！`)
         .setTimestamp();
 
     try {
