@@ -79,23 +79,25 @@ async function fetchRecentContext(channel) {
     }
 }
 
-async function callGroq(systemPrompt, userContent) {
-    if (!process.env.GROQ_API_KEY) return null;
+// Cloudflare Workers AI（Kimi-k2.6）— 無料枠・日本語能力重視で選定
+async function callLLM(systemPrompt, userContent) {
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+    const apiToken   = process.env.CLOUDFLARE_API_TOKEN;
+    if (!accountId || !apiToken) return null;
     try {
         const res = await axios.post(
-            'https://api.groq.com/openai/v1/chat/completions',
+            `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`,
             {
-                model: 'qwen/qwen3-32b',
+                model: '@cf/moonshotai/kimi-k2.6',
                 max_tokens: 60,
                 temperature: 0.9,
-                reasoning_effort: 'none', // Qwen3の思考モードを無効化（雑談一言生成に余計なトークンは不要）
                 messages: [
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: userContent },
                 ],
             },
             {
-                headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+                headers: { Authorization: `Bearer ${apiToken}` },
                 timeout: 15_000,
             }
         );
@@ -108,7 +110,7 @@ async function callGroq(systemPrompt, userContent) {
 
 async function generateChatMessage(context, personaName, archetype) {
     const systemPrompt = `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。あなたの性格は次の通りです: ${archetype}。友達同士の雑談チャンネルで、しばらく会話が途切れた後にふと一言つぶやくところです。直近の会話の流れを踏まえて、この性格が伝わるようなくだけた自然な日本語で短い一言（1文、30文字以内目安）を返してください。質問でも独り言でも構いません。絵文字は基本的に付けず、文章の最後に毎回絵文字を付けるような機械的なパターンは絶対に避けてください（普通の人はそんなに毎回絵文字を使いません）。発言内容だけを返し、説明や前置きは付けないでください。`;
-    return callGroq(systemPrompt, context ? `直近の会話:\n${context}` : '（しばらく誰も発言していません）');
+    return callLLM(systemPrompt, context ? `直近の会話:\n${context}` : '（しばらく誰も発言していません）');
 }
 
 // ── 複数人会話（exchange）用の一言生成 ──
@@ -125,7 +127,7 @@ async function generateExchangeLine(channelContext, exchangeSoFar, personaName, 
     parts.push(exchangeSoFar
         ? `これまでのやりとり:\n${exchangeSoFar}`
         : '（まだ誰も話し始めていません。あなたが最初の一言を切り出してください）');
-    return callGroq(systemPrompt, parts.join('\n\n'));
+    return callLLM(systemPrompt, parts.join('\n\n'));
 }
 
 async function generateAndPost(client, guild, channel) {
