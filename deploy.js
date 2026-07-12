@@ -555,6 +555,14 @@ new SlashCommandBuilder()
             opt.setName('user').setDescription('確認するユーザー（省略時は自分）')
         ),
 
+    // 13. コイン残高確認（全員）
+    new SlashCommandBuilder()
+        .setName('wallet')
+        .setDescription('自分または指定ユーザーの所持コインを表示します。')
+        .addUserOption(opt =>
+            opt.setName('user').setDescription('確認するユーザー（省略時は自分）')
+        ),
+
     // 13. XPランキング（全員）
     new SlashCommandBuilder()
         .setName('top')
@@ -590,6 +598,12 @@ new SlashCommandBuilder()
             sub.setName('reset')
                 .setDescription('ユーザーのXP・レベルをリセットします。')
                 .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー').setRequired(true))
+        )
+        .addSubcommand(sub =>
+            sub.setName('currency')
+                .setDescription('ユーザーのコイン残高を加算・減算します。')
+                .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー').setRequired(true))
+                .addIntegerOption(opt => opt.setName('amount').setDescription('コイン量（マイナスで減算）').setRequired(true))
         )
         .addSubcommand(sub =>
             sub.setName('exclude')

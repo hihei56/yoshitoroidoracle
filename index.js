@@ -56,6 +56,7 @@ const {
     toggleMonthShift, getMonthShift, getSeasonStart,
     setLevelNotif, getLevelNotif,
 } = require('./xp');
+const { COIN_NAME, getBalance, addBalance } = require('./currency');
 
 const DEBUG_MODE = process.env.DEBUG_MODE === 'true';
 if (DEBUG_MODE) console.log('🐛 [Debug] デバッグモード有効');
@@ -339,6 +340,17 @@ client.on(Events.InteractionCreate, async i => {
         return;
     }
 
+    if (i.commandName === 'wallet') {
+        try {
+            const target  = i.options.getUser('user') ?? i.user;
+            const balance = getBalance(target.id);
+            return i.reply({
+                content: `💰 <@${target.id}> の所持${COIN_NAME}: **${balance.toLocaleString('en-US')}${COIN_NAME}**`,
+            });
+        } catch (e) { console.error('[Wallet Error]:', e); }
+        return;
+    }
+
     if (i.commandName === 'top') {
         try {
             await i.deferReply();
@@ -573,6 +585,13 @@ client.on(Events.InteractionCreate, async i => {
                     content: `✅ \`${fromId}\` のデータを <@${toUser.id}> に引き継ぎました。\nLv.**${result.level}** / ${Math.floor(result.xp)} XP`,
                     ephemeral: true,
                 });
+            }
+
+            if (sub === 'currency') {
+                const amount  = i.options.getInteger('amount');
+                const balance = addBalance(user.id, amount, true);
+                const sign    = amount >= 0 ? '+' : '';
+                return i.reply({ content: `✅ <@${user.id}> の${COIN_NAME}を ${sign}${amount} 調整 → 残高 **${balance.toLocaleString('en-US')}${COIN_NAME}**`, ephemeral: true });
             }
 
             if (sub === 'exclude') {
