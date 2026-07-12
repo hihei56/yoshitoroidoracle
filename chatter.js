@@ -56,7 +56,8 @@ async function fetchRecentContext(channel) {
     }
 }
 
-const DEFAULT_CF_MODEL = '@cf/meta/llama-3.1-8b-instruct-fast';
+const DEFAULT_CF_MODEL   = '@cf/meta/llama-3.1-8b-instruct-fast';
+const DEFAULT_GROQ_MODEL = 'moonshotai/kimi-k2-instruct';
 
 function buildChatterMessages(context, personaName) {
     return [
@@ -71,18 +72,21 @@ function buildChatterMessages(context, personaName) {
     ];
 }
 
-async function generateViaGroq(context, personaName) {
+async function generateViaGroq(context, personaName, model) {
     if (!process.env.GROQ_API_KEY) return null;
     try {
+        const body = {
+            model,
+            max_tokens: 60,
+            temperature: 0.9,
+            messages: buildChatterMessages(context, personaName),
+        };
+        // Qwen3系のみ：思考モードを無効化（雑談一言生成に余計なトークンは不要）
+        if (model.startsWith('qwen/')) body.reasoning_effort = 'none';
+
         const res = await axios.post(
             'https://api.groq.com/openai/v1/chat/completions',
-            {
-                model: 'qwen/qwen3-32b',
-                max_tokens: 60,
-                temperature: 0.9,
-                reasoning_effort: 'none', // Qwen3の思考モードを無効化（雑談一言生成に余計なトークンは不要）
-                messages: buildChatterMessages(context, personaName),
-            },
+            body,
             {
                 headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
                 timeout: 15_000,
@@ -90,7 +94,7 @@ async function generateViaGroq(context, personaName) {
         );
         return res.data.choices[0]?.message?.content?.trim() || null;
     } catch (e) {
-        console.error('[Chatter] Groq生成エラー:', e.message);
+        console.error(`[Chatter] Groq生成エラー(model=${model}):`, e.message);
         return null;
     }
 }
@@ -127,7 +131,7 @@ async function generateChatMessage(context, personaName) {
     if (settings.chatterAiProvider === 'cloudflare') {
         return generateViaCloudflare(context, personaName, settings.chatterAiModel || DEFAULT_CF_MODEL);
     }
-    return generateViaGroq(context, personaName);
+    return generateViaGroq(context, personaName, settings.chatterAiModel || DEFAULT_GROQ_MODEL);
 }
 
 async function generateAndPost(client, guild, channel) {
