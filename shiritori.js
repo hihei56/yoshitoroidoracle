@@ -83,13 +83,6 @@ function buildEmbed(color, description) {
     return new EmbedBuilder().setColor(color).setDescription(description);
 }
 
-// 長文スパム対策の適用対象ロール保持者かどうか（spam_enforcerとは独立した判定）
-function isSpamTarget(member) {
-    if (!member) return false;
-    const targetRoles = getSettings().spamTargetRoles ?? [];
-    return targetRoles.some(id => member.roles.cache.has(id));
-}
-
 async function handleShiritoriMessage(message) {
     try {
         if (message.author.bot || !message.guild) return;
@@ -101,7 +94,7 @@ async function handleShiritoriMessage(message) {
         const surface = message.content?.trim();
         if (!surface) return;
 
-        if ([...surface].length > MAX_WORD_LENGTH && isSpamTarget(message.member)) {
+        if ([...surface].length > MAX_WORD_LENGTH) {
             if (message.deletable) await message.delete().catch(() => {});
             await sendViaWebhook(message, buildEmbed(0xED4245, `❌ 単語は${MAX_WORD_LENGTH}文字以内で入力してください。`));
             return;
