@@ -1,7 +1,7 @@
 // chatter.js — 1時間無発言時のチャット賑やかし自動投稿
 const axios = require('axios');
 const { pickOneLurker } = require('./lurker_picker');
-const { getPersona, setPersona } = require('./chatter_persona');
+const { getPersona, setPersona, pickPersonality, pickCriticPersonality } = require('./chatter_persona');
 const { getSettings } = require('./config');
 const { checkNgWords, normalizeForDetection } = require('./moderator');
 const { registerChatterMessage } = require('./chatter_registry');
@@ -74,17 +74,20 @@ async function fetchRecentContext(channel) {
 const DEFAULT_CF_MODEL   = '@cf/meta/llama-3.1-8b-instruct-fast';
 const DEFAULT_GROQ_MODEL = 'qwen/qwen3-32b';
 
-function buildChatterMessages(context, personaName, { personality, isReply = false } = {}) {
+function buildChatterMessages(context, personaName, { personality, isReply = false, contrarian = false } = {}) {
     const personaLine = personality
         ? `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。性格: ${personality}`
         : `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。`;
     const situation = isReply
         ? '友達同士の雑談チャンネルで、直前の発言にふと相槌や反応を返すところです。'
         : '友達同士の雑談チャンネルで、しばらく会話が途切れた後にふと一言つぶやくところです。';
+    const tone = contrarian
+        ? 'みんなが同じ空気で盛り上がっていても、素直に全肯定はせず、ちょっと斜めから一言ツッコミや冷めた視点を入れてください。ただし人を傷つける攻撃的な言い方や暴言は避け、あくまで軽い皮肉・茶化し程度に留めてください。'
+        : '角が立つ言い方や煽り・否定的な言葉は避け、あたたかく居心地の良い空気になるようにしてください。';
     return [
         {
             role: 'system',
-            content: `${personaLine} ${situation}直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、30文字以内目安）を返してください。質問でも独り言でも構いません。角が立つ言い方や煽り・否定的な言葉は避け、あたたかく居心地の良い空気になるようにしてください。絵文字は基本的に付けず、文章の最後に毎回絵文字を付けるような機械的なパターンは絶対に避けてください（普通の人はそんなに毎回絵文字を使いません）。発言内容だけを返し、説明や前置きは付けないでください。`,
+            content: `${personaLine} ${situation}直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、30文字以内目安）を返してください。質問でも独り言でも構いません。${tone}絵文字は基本的に付けず、文章の最後に毎回絵文字を付けるような機械的なパターンは絶対に避けてください（普通の人はそんなに毎回絵文字を使いません）。発言内容だけを返し、説明や前置きは付けないでください。`,
         },
         {
             role: 'user',
@@ -156,12 +159,25 @@ async function generateChatMessage(context, personaName, opts) {
 }
 
 async function ensurePersona(guild) {
-    let persona = await getPersona(guild);
+    let persona = await getPersona(guild, 'main');
     if (persona) return persona;
 
     const { member } = await pickOneLurker(guild, {});
     if (!member) return null;
-    const { personality } = setPersona(member.id);
+    const personality = pickPersonality();
+    setPersona(member.id, personality, 'main');
+    return { lurkerId: member.id, personality, member };
+}
+
+// 全肯定ムードに水を差す「批評家」役。メイン人格とは別のlurkerを1人固定して使い回す
+async function ensureCriticPersona(guild, excludeId) {
+    let persona = await getPersona(guild, 'critic');
+    if (persona) return persona;
+
+    const { member } = await pickOneLurker(guild, { lastPickedId: excludeId });
+    if (!member) return null;
+    const personality = pickCriticPersonality();
+    setPersona(member.id, personality, 'critic');
     return { lurkerId: member.id, personality, member };
 }
 
@@ -178,30 +194,36 @@ async function sendChatterLine(client, channel, name, avatarURL, content) {
 }
 
 // 固定人格の投稿をきっかけに、ほかのlurkerがランダムな回数だけ連鎖して反応する「ラリー」
+// 全肯定だけで終わらないよう、必ず1回は批評家役が交ざって水を差す
 async function runRally(client, guild, channel, baseContext, history, excludeId) {
-    const turns = RALLY_MIN_TURNS + Math.floor(Math.random() * (RALLY_MAX_TURNS - RALLY_MIN_TURNS + 1));
+    const turns  = RALLY_MIN_TURNS + Math.floor(Math.random() * (RALLY_MAX_TURNS - RALLY_MIN_TURNS + 1));
+    const critic = await ensureCriticPersona(guild, excludeId);
+    const criticTurn = critic ? Math.floor(Math.random() * turns) : -1;
     let lastSpeakerId = excludeId;
 
     for (let i = 0; i < turns; i++) {
         await wait(randomRallyDelay());
 
-        const { member } = await pickOneLurker(guild, { lastPickedId: lastSpeakerId });
-        if (!member) return;
+        const useCritic = i === criticTurn && critic.member.id !== lastSpeakerId;
+        const picked    = useCritic ? critic.member : (await pickOneLurker(guild, { lastPickedId: lastSpeakerId })).member;
+        if (!picked) return;
 
         const rallyContext = `${baseContext ? baseContext + '\n' : ''}${history.map(h => `${h.name}: ${h.content}`).join('\n')}`;
-        const name = member.displayName || member.user.username;
-        const content = await generateChatMessage(rallyContext, name, { isReply: true });
+        const name = picked.displayName || picked.user.username;
+        const content = await generateChatMessage(rallyContext, name, useCritic
+            ? { isReply: true, personality: critic.personality, contrarian: true }
+            : { isReply: true });
         if (!content) return; // 生成できなければラリーを打ち切る
 
         const { hit } = checkNgWords(normalizeForDetection(content));
         if (hit) return;
 
-        const sent = await sendChatterLine(client, channel, name, member.user.displayAvatarURL({ dynamic: true }), content);
-        registerChatterMessage(sent.id, member.id);
-        console.log(`[Chatter] 🔁 ラリー "${content}" | なりすまし: ${name}`);
+        const sent = await sendChatterLine(client, channel, name, picked.user.displayAvatarURL({ dynamic: true }), content);
+        registerChatterMessage(sent.id, picked.id);
+        console.log(`[Chatter] 🔁 ラリー "${content}" | なりすまし: ${name}${useCritic ? '（批評家役）' : ''}`);
 
         history.push({ name, content });
-        lastSpeakerId = member.id;
+        lastSpeakerId = picked.id;
         lastMessageTime = Date.now(); // ラリー継続中も無発言タイマーをリセット
     }
 }

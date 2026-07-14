@@ -4,7 +4,7 @@ const { resolveDataPath, ensureDir, readJson, writeJson } = require('./dataPath'
 const PERSONA_PATH = resolveDataPath('chatter_persona.json');
 ensureDir(PERSONA_PATH);
 
-// キャラ付け候補。一度選ばれたら固定人格として使い回す
+// メイン人格のキャラ付け候補。一度選ばれたら固定人格として使い回す
 const PERSONALITIES = [
     'いつもテンション高めの元気っ子。ノリがよく、話題に食いつきやすい。',
     '毒舌気味だけど根は優しいツッコミ役。ちょっとひねくれた言い方をする。',
@@ -16,31 +16,55 @@ const PERSONALITIES = [
     '素直で前向き、いつも楽しそうにしているタイプ。',
 ];
 
-let cache; // undefined = 未読込, null = 未設定, object = 設定済み
+// 批評家・冷笑ポジションのキャラ付け候補（全肯定ムードに一人だけ水を差す役）
+const CRITIC_PERSONALITIES = [
+    '斜に構えた批評家肌。みんなが同じ空気で盛り上がっているときほど、あえて一歩引いた冷静なツッコミを入れたくなる。',
+    '冷笑気味の皮肉屋。素直に同調せず、ちょっと斜めから茶化すような一言を挟む。',
+    '妙に評論家ぶった物言いをするタイプ。「まあそれもわかるけど」的なワンクッション置いた反応をしがち。',
+];
+
+let cache; // undefined = 未読込
+
+// 旧形式（フラットにmain相当のデータのみ保持）からの移行
+function migrate(raw) {
+    if (!raw) return { main: null, critic: null };
+    if ('main' in raw || 'critic' in raw) return { main: raw.main ?? null, critic: raw.critic ?? null };
+    return { main: raw, critic: null };
+}
 
 function load() {
-    if (cache === undefined) cache = readJson(PERSONA_PATH, null);
+    if (cache === undefined) cache = migrate(readJson(PERSONA_PATH, null));
     return cache;
+}
+
+function save() {
+    writeJson(PERSONA_PATH, cache);
 }
 
 function pickPersonality() {
     return PERSONALITIES[Math.floor(Math.random() * PERSONALITIES.length)];
 }
 
+function pickCriticPersonality() {
+    return CRITIC_PERSONALITIES[Math.floor(Math.random() * CRITIC_PERSONALITIES.length)];
+}
+
 // 固定人格を返す。未設定 or 対象がサーバーから居なくなっている場合はnull（呼び出し側で再選出してsetPersonaする）
-async function getPersona(guild) {
-    const persona = load();
+async function getPersona(guild, slot = 'main') {
+    const store   = load();
+    const persona = store[slot];
     if (!persona) return null;
     const member = await guild.members.fetch(persona.lurkerId).catch(() => null);
     if (!member) return null;
     return { lurkerId: persona.lurkerId, personality: persona.personality, member };
 }
 
-function setPersona(lurkerId, personality = pickPersonality()) {
+function setPersona(lurkerId, personality, slot = 'main') {
+    const store = load();
     const persona = { lurkerId, personality, createdAt: Date.now() };
-    cache = persona;
-    writeJson(PERSONA_PATH, persona);
+    store[slot] = persona;
+    save();
     return persona;
 }
 
-module.exports = { getPersona, setPersona, pickPersonality };
+module.exports = { getPersona, setPersona, pickPersonality, pickCriticPersonality };
