@@ -820,6 +820,16 @@ new SlashCommandBuilder()
             opt.setName('enabled')
                 .setDescription('true: 自動参加をオン / false: オフ')
                 .setRequired(true)
+        )
+        .addChannelOption(opt =>
+            opt.setName('channel')
+                .setDescription('文字起こし本文の投稿先チャンネル（省略時はこのコマンドを実行したチャンネル）')
+                .addChannelTypes(ChannelType.GuildText)
+        )
+        .addChannelOption(opt =>
+            opt.setName('announce_channel')
+                .setDescription('開始/終了のお知らせの投稿先チャンネル（省略時はchannelと同じ）')
+                .addChannelTypes(ChannelType.GuildText)
         ),
 
 ].map(command => command.toJSON());

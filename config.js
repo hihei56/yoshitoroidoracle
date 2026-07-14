@@ -34,6 +34,7 @@ function getSettings() {
     if (data.chatterAiModel === undefined) data.chatterAiModel = null;
     if (data.transcribeAutoJoin === undefined) data.transcribeAutoJoin = false;
     if (data.transcribeChannelId === undefined) data.transcribeChannelId = null;
+    if (data.transcribeAnnounceChannelId === undefined) data.transcribeAnnounceChannelId = null;
     return data;
 }
 

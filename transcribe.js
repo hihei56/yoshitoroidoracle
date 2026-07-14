@@ -26,7 +26,11 @@ const guildStates = new Map(); // guildId -> { connection, receiver, textChannel
 
 function getTranscribeSettings() {
     const s = getSettings();
-    return { autoJoin: !!s.transcribeAutoJoin, channelId: s.transcribeChannelId ?? null };
+    return {
+        autoJoin: !!s.transcribeAutoJoin,
+        channelId: s.transcribeChannelId ?? null,
+        announceChannelId: s.transcribeAnnounceChannelId ?? s.transcribeChannelId ?? null,
+    };
 }
 
 function buildWavBuffer(pcmBuffer) {
@@ -112,7 +116,8 @@ function subscribeToUser(state, userId, displayName) {
 }
 
 // VCへの参加と文字起こし開始処理（手動 /transcribe-join と自動参加の両方から使う共通処理）
-async function startTranscribing(guild, voiceChannel, textChannel, { announcePrefix = '🎙️ **文字起こしを開始しました**' } = {}) {
+// textChannel: 文字起こし本文の投稿先 / announceChannel: 開始・終了のお知らせの投稿先（省略時はtextChannelと同じ）
+async function startTranscribing(guild, voiceChannel, { textChannel, announceChannel, announcePrefix = '🎙️ **文字起こしを開始しました**' }) {
     if (!process.env.OPENAI_API_KEY) return { ok: false, reason: 'OPENAI_API_KEY が設定されていません。' };
 
     const me = guild.members.me;
@@ -121,6 +126,7 @@ async function startTranscribing(guild, voiceChannel, textChannel, { announcePre
     }
 
     cleanupGuild(guild.id);
+    announceChannel = announceChannel ?? textChannel;
 
     const connection = joinVoiceChannel({
         channelId: voiceChannel.id,
@@ -141,6 +147,7 @@ async function startTranscribing(guild, voiceChannel, textChannel, { announcePre
         connection,
         receiver: connection.receiver,
         textChannel,
+        announceChannel,
         subscribed: new Set(),
     };
     guildStates.set(guild.id, state);
@@ -158,9 +165,9 @@ async function startTranscribing(guild, voiceChannel, textChannel, { announcePre
         .map(m => m.displayName)
         .join('、') || 'なし';
 
-    await textChannel.send(
+    await announceChannel.send(
         `${announcePrefix}\n` +
-        `${voiceChannel} での発言をこのチャンネルに文字起こしします。\n` +
+        `${voiceChannel} での発言を ${textChannel} に文字起こしします。\n` +
         `現在の参加者: ${memberNames}\n` +
         `⚠️ 通話参加者には文字起こしされることを伝えておいてください。`
     ).catch(() => {});
@@ -183,7 +190,9 @@ async function handleTranscribeJoin(interaction) {
         }
 
         await interaction.deferReply();
-        const result = await startTranscribing(interaction.guild, voiceChannel, interaction.channel);
+        const result = await startTranscribing(interaction.guild, voiceChannel, {
+            textChannel: interaction.channel,
+        });
         if (!result.ok) {
             return interaction.editReply({ content: `❌ ${result.reason}` });
         }
@@ -221,9 +230,15 @@ async function handleTranscribeAuto(interaction) {
         }
 
         const enabled = interaction.options.getBoolean('enabled');
+        const channel = interaction.options.getChannel('channel') ?? interaction.channel;
+        const announceChannel = interaction.options.getChannel('announce_channel') ?? channel;
+
         const settings = getSettings();
         settings.transcribeAutoJoin = enabled;
-        if (enabled) settings.transcribeChannelId = interaction.channel.id;
+        if (enabled) {
+            settings.transcribeChannelId = channel.id;
+            settings.transcribeAnnounceChannelId = announceChannel.id;
+        }
         saveSettings(settings);
 
         if (!enabled) {
@@ -232,7 +247,8 @@ async function handleTranscribeAuto(interaction) {
         return interaction.reply({
             content:
                 `✅ **自動文字起こしをオンにしました**\n` +
-                `誰かがボイスチャンネルに参加すると自動でBotが参加し、発言を ${interaction.channel} に文字起こしします。\n` +
+                `誰かがボイスチャンネルに参加すると自動でBotが参加し、発言を ${channel} に文字起こしします。\n` +
+                `開始・終了のお知らせは ${announceChannel} に投稿されます。\n` +
                 `全員が退出すると自動で終了します。\n` +
                 `⚠️ 通話参加者には文字起こしされることを伝えておいてください。`,
         });
@@ -246,7 +262,7 @@ async function handleTranscribeAuto(interaction) {
 // 誰もいなくなったら自動退出する。
 async function handleTranscribeVoiceState(oldState, newState) {
     try {
-        const { autoJoin, channelId } = getTranscribeSettings();
+        const { autoJoin, channelId, announceChannelId } = getTranscribeSettings();
         if (!autoJoin) return;
 
         const guild = newState.guild;
@@ -258,8 +274,15 @@ async function handleTranscribeVoiceState(oldState, newState) {
 
             const textChannel = channelId ? await guild.channels.fetch(channelId).catch(() => null) : null;
             if (!textChannel) return;
+            const announceChannel = announceChannelId
+                ? await guild.channels.fetch(announceChannelId).catch(() => null)
+                : textChannel;
 
-            await startTranscribing(guild, voiceChannel, textChannel, { announcePrefix: '🎙️ **自動文字起こしを開始しました**' });
+            await startTranscribing(guild, voiceChannel, {
+                textChannel,
+                announceChannel,
+                announcePrefix: '🎙️ **自動文字起こしを開始しました**',
+            });
             return;
         }
 
@@ -268,7 +291,10 @@ async function handleTranscribeVoiceState(oldState, newState) {
             const currentChannelId = state.connection.joinConfig.channelId;
             const vc = guild.channels.cache.get(currentChannelId);
             const humansLeft = vc?.members.filter(m => !m.user.bot).size ?? 0;
-            if (humansLeft === 0) cleanupGuild(guild.id);
+            if (humansLeft === 0) {
+                await state.announceChannel.send('👋 参加者がいなくなったため、自動文字起こしを終了しました。').catch(() => {});
+                cleanupGuild(guild.id);
+            }
         }
     } catch (e) {
         console.error('[Transcribe] 自動参加処理エラー:', e.message);
