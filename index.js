@@ -28,6 +28,7 @@ const { handleClean }              = require('./clean');
 const {
     handleYomiageMessage, handleYomiageJoin, handleYomiageLeave, handleYomiageVoice,
 }                                   = require('./yomiage');
+const { handleTranscribeJoin, handleTranscribeLeave } = require('./transcribe');
 const { checkImageAttachments }    = require('./image_spam_filter');
 const { initShiritori, handleShiritoriMessage } = require('./shiritori');
 const { handleRtaMessage } = require('./rta');
@@ -379,6 +380,8 @@ client.on(Events.InteractionCreate, async i => {
     if (i.commandName === 'yomiage-join')       return handleYomiageJoin(i);
     if (i.commandName === 'yomiage-leave')      return handleYomiageLeave(i);
     if (i.commandName === 'yomiage-voice')      return handleYomiageVoice(i);
+    if (i.commandName === 'transcribe-join')    return handleTranscribeJoin(i);
+    if (i.commandName === 'transcribe-leave')   return handleTranscribeLeave(i);
 
     // ── 管理者のみ ────────────────────────────────────────────────────
 

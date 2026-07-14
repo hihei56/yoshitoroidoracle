@@ -804,6 +804,15 @@ new SlashCommandBuilder()
                 )
         ),
 
+    // 20. VC文字起こしBot（要「サーバー管理」権限／参加者への事前告知が必要）
+    new SlashCommandBuilder()
+        .setName('transcribe-join')
+        .setDescription('あなたのいるボイスチャンネルに参加し、発言をこのチャンネルに文字起こしします（要事前告知）。'),
+
+    new SlashCommandBuilder()
+        .setName('transcribe-leave')
+        .setDescription('文字起こしを終了し、ボイスチャンネルから退出します。'),
+
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
