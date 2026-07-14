@@ -5,6 +5,9 @@ const { getTokenizer } = require('./japanese_tokenizer');
 
 const HISTORY_LIMIT = 200;
 
+// 単語として扱う上限文字数。長文を投げつけるスパム対策（正規の単語はまず超えない）
+const MAX_WORD_LENGTH = 20;
+
 const SMALL_TO_LARGE = {
     'ぁ': 'あ', 'ぃ': 'い', 'ぅ': 'う', 'ぇ': 'え', 'ぉ': 'お',
     'ゃ': 'や', 'ゅ': 'ゆ', 'ょ': 'よ', 'っ': 'つ', 'ゎ': 'わ',
@@ -80,6 +83,13 @@ function buildEmbed(color, description) {
     return new EmbedBuilder().setColor(color).setDescription(description);
 }
 
+// 長文スパム対策の適用対象ロール保持者かどうか（spam_enforcerとは独立した判定）
+function isSpamTarget(member) {
+    if (!member) return false;
+    const targetRoles = getSettings().spamTargetRoles ?? [];
+    return targetRoles.some(id => member.roles.cache.has(id));
+}
+
 async function handleShiritoriMessage(message) {
     try {
         if (message.author.bot || !message.guild) return;
@@ -90,6 +100,12 @@ async function handleShiritoriMessage(message) {
 
         const surface = message.content?.trim();
         if (!surface) return;
+
+        if ([...surface].length > MAX_WORD_LENGTH && isSpamTarget(message.member)) {
+            if (message.deletable) await message.delete().catch(() => {});
+            await sendViaWebhook(message, buildEmbed(0xED4245, `❌ 単語は${MAX_WORD_LENGTH}文字以内で入力してください。`));
+            return;
+        }
 
         let info;
         try {
