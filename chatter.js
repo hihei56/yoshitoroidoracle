@@ -87,7 +87,7 @@ function buildChatterMessages(context, personaName, { personality, isReply = fal
     return [
         {
             role: 'system',
-            content: `${personaLine} ${situation}直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、30文字以内目安）を返してください。質問でも独り言でも構いません。${tone}絵文字は基本的に付けず、文章の最後に毎回絵文字を付けるような機械的なパターンは絶対に避けてください（普通の人はそんなに毎回絵文字を使いません）。発言内容だけを返し、説明や前置きは付けないでください。`,
+            content: `${personaLine} ${situation}直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、30文字以内目安）を返してください。質問でも独り言でも構いません。${tone}絵文字は基本的に付けず、文章の最後に毎回絵文字を付けるような機械的なパターンは絶対に避けてください（普通の人はそんなに毎回絵文字を使いません）。直近の会話は「名前: 発言」の形式で渡していますが、それはあくまで参考情報であり、あなたの返答にはその形式を真似ず「名前:」のような接頭辞を絶対に付けないでください。発言内容だけを、前置きも名乗りもなしにそのまま返してください。`,
         },
         {
             role: 'user',
@@ -150,12 +150,20 @@ async function generateViaCloudflare(context, personaName, model, opts) {
     }
 }
 
+// 「名前: 発言」形式の会話ログを渡している影響で、AIが自分の発言にも
+// 同じ形式の接頭辞（話者名+コロン）を付けてしまうことがあるため、後処理でも保険をかける
+function stripNamePrefix(text) {
+    if (!text) return text;
+    const stripped = text.replace(/^[^\s:：]{1,20}[:：]\s*/, '').trim();
+    return stripped || text.trim();
+}
+
 async function generateChatMessage(context, personaName, opts) {
     const settings = getSettings();
-    if (settings.chatterAiProvider === 'cloudflare') {
-        return generateViaCloudflare(context, personaName, settings.chatterAiModel || DEFAULT_CF_MODEL, opts);
-    }
-    return generateViaGroq(context, personaName, settings.chatterAiModel || DEFAULT_GROQ_MODEL, opts);
+    const raw = settings.chatterAiProvider === 'cloudflare'
+        ? await generateViaCloudflare(context, personaName, settings.chatterAiModel || DEFAULT_CF_MODEL, opts)
+        : await generateViaGroq(context, personaName, settings.chatterAiModel || DEFAULT_GROQ_MODEL, opts);
+    return stripNamePrefix(raw);
 }
 
 async function ensurePersona(guild) {
