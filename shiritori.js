@@ -2,8 +2,12 @@
 const { EmbedBuilder } = require('discord.js');
 const { getSettings, saveSettings } = require('./config');
 const { getTokenizer } = require('./japanese_tokenizer');
+const { enforce: enforceSpam } = require('./spam_enforcer');
 
 const HISTORY_LIMIT = 200;
+
+// 単語として扱う上限文字数。長文を投げつけるスパム対策（正規の単語はまず超えない）
+const MAX_WORD_LENGTH = 20;
 
 const SMALL_TO_LARGE = {
     'ぁ': 'あ', 'ぃ': 'い', 'ぅ': 'う', 'ぇ': 'え', 'ぉ': 'お',
@@ -90,6 +94,13 @@ async function handleShiritoriMessage(message) {
 
         const surface = message.content?.trim();
         if (!surface) return;
+
+        if ([...surface].length > MAX_WORD_LENGTH) {
+            if (message.deletable) await message.delete().catch(() => {});
+            await sendViaWebhook(message, buildEmbed(0xED4245, `❌ 単語は${MAX_WORD_LENGTH}文字以内で入力してください。`));
+            enforceSpam(message, 'shiritori_long_text').catch(e => console.error('[Shiritori] スパム処理エラー:', e.message));
+            return;
+        }
 
         let info;
         try {
