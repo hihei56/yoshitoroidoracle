@@ -1,6 +1,7 @@
 // chatter.js — 1時間無発言時のチャット賑やかし自動投稿
 const axios = require('axios');
 const { pickOneLurker } = require('./lurker_picker');
+const { getPersona, setPersona } = require('./chatter_persona');
 const { getSettings } = require('./config');
 const { checkNgWords, normalizeForDetection } = require('./moderator');
 const { registerChatterMessage } = require('./chatter_registry');
@@ -10,10 +11,24 @@ const COOLDOWN_MS      = 2  * 60 * 60 * 1000; // 投稿後2時間クールダウ
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;      // 5分ごとチェック
 const CONTEXT_FETCH_LIMIT = 10;               // AI生成に渡す直近メッセージ数
 
+// ラリー（固定人格の投稿にほかのlurkerが連鎖して反応する掛け合い）設定
+const RALLY_CHANCE       = 0.6;               // 最初の投稿後にラリーへ発展する確率
+const RALLY_MIN_TURNS    = 1;
+const RALLY_MAX_TURNS    = 3;
+const RALLY_DELAY_MIN_MS = 8_000;
+const RALLY_DELAY_MAX_MS = 25_000;
+
 const webhookCache = new Map();
 let lastMessageTime = Date.now(); // 起動時は「今」扱い
 let lastPostedTime  = 0;
-let _lastLurkerId   = null;
+
+function wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function randomRallyDelay() {
+    return RALLY_DELAY_MIN_MS + Math.random() * (RALLY_DELAY_MAX_MS - RALLY_DELAY_MIN_MS);
+}
 
 function recordMessage(channelId) {
     const settings  = getSettings();
@@ -59,11 +74,17 @@ async function fetchRecentContext(channel) {
 const DEFAULT_CF_MODEL   = '@cf/meta/llama-3.1-8b-instruct-fast';
 const DEFAULT_GROQ_MODEL = 'qwen/qwen3-32b';
 
-function buildChatterMessages(context, personaName) {
+function buildChatterMessages(context, personaName, { personality, isReply = false } = {}) {
+    const personaLine = personality
+        ? `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。性格: ${personality}`
+        : `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。`;
+    const situation = isReply
+        ? '友達同士の雑談チャンネルで、直前の発言にふと相槌や反応を返すところです。'
+        : '友達同士の雑談チャンネルで、しばらく会話が途切れた後にふと一言つぶやくところです。';
     return [
         {
             role: 'system',
-            content: `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。友達同士の雑談チャンネルで、しばらく会話が途切れた後にふと一言つぶやくところです。直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、30文字以内目安）を返してください。質問でも独り言でも構いません。絵文字は基本的に付けず、文章の最後に毎回絵文字を付けるような機械的なパターンは絶対に避けてください（普通の人はそんなに毎回絵文字を使いません）。発言内容だけを返し、説明や前置きは付けないでください。`,
+            content: `${personaLine} ${situation}直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、30文字以内目安）を返してください。質問でも独り言でも構いません。角が立つ言い方や煽り・否定的な言葉は避け、あたたかく居心地の良い空気になるようにしてください。絵文字は基本的に付けず、文章の最後に毎回絵文字を付けるような機械的なパターンは絶対に避けてください（普通の人はそんなに毎回絵文字を使いません）。発言内容だけを返し、説明や前置きは付けないでください。`,
         },
         {
             role: 'user',
@@ -72,14 +93,14 @@ function buildChatterMessages(context, personaName) {
     ];
 }
 
-async function generateViaGroq(context, personaName, model) {
+async function generateViaGroq(context, personaName, model, opts) {
     if (!process.env.GROQ_API_KEY) return null;
     try {
         const body = {
             model,
             max_tokens: 60,
             temperature: 0.9,
-            messages: buildChatterMessages(context, personaName),
+            messages: buildChatterMessages(context, personaName, opts),
         };
         // Qwen3系のみ：思考モードを無効化（雑談一言生成に余計なトークンは不要）
         if (model.startsWith('qwen/')) body.reasoning_effort = 'none';
@@ -99,7 +120,7 @@ async function generateViaGroq(context, personaName, model) {
     }
 }
 
-async function generateViaCloudflare(context, personaName, model) {
+async function generateViaCloudflare(context, personaName, model, opts) {
     const accountId = process.env.CF_ACCOUNT_ID;
     const apiToken  = process.env.CF_API_TOKEN;
     if (!accountId || !apiToken) {
@@ -112,7 +133,7 @@ async function generateViaCloudflare(context, personaName, model) {
             {
                 max_tokens: 60,
                 temperature: 0.9,
-                messages: buildChatterMessages(context, personaName),
+                messages: buildChatterMessages(context, personaName, opts),
             },
             {
                 headers: { Authorization: `Bearer ${apiToken}` },
@@ -126,21 +147,72 @@ async function generateViaCloudflare(context, personaName, model) {
     }
 }
 
-async function generateChatMessage(context, personaName) {
+async function generateChatMessage(context, personaName, opts) {
     const settings = getSettings();
     if (settings.chatterAiProvider === 'cloudflare') {
-        return generateViaCloudflare(context, personaName, settings.chatterAiModel || DEFAULT_CF_MODEL);
+        return generateViaCloudflare(context, personaName, settings.chatterAiModel || DEFAULT_CF_MODEL, opts);
     }
-    return generateViaGroq(context, personaName, settings.chatterAiModel || DEFAULT_GROQ_MODEL);
+    return generateViaGroq(context, personaName, settings.chatterAiModel || DEFAULT_GROQ_MODEL, opts);
+}
+
+async function ensurePersona(guild) {
+    let persona = await getPersona(guild);
+    if (persona) return persona;
+
+    const { member } = await pickOneLurker(guild, {});
+    if (!member) return null;
+    const { personality } = setPersona(member.id);
+    return { lurkerId: member.id, personality, member };
+}
+
+async function sendChatterLine(client, channel, name, avatarURL, content) {
+    const targetChannel = channel.isThread?.() ? channel.parent : channel;
+    const webhook = await getWebhook(targetChannel, client);
+    return webhook.send({
+        content,
+        username: name,
+        avatarURL,
+        allowedMentions: { parse: [] },
+        ...(channel.isThread?.() && { threadId: channel.id }),
+    });
+}
+
+// 固定人格の投稿をきっかけに、ほかのlurkerがランダムな回数だけ連鎖して反応する「ラリー」
+async function runRally(client, guild, channel, baseContext, history, excludeId) {
+    const turns = RALLY_MIN_TURNS + Math.floor(Math.random() * (RALLY_MAX_TURNS - RALLY_MIN_TURNS + 1));
+    let lastSpeakerId = excludeId;
+
+    for (let i = 0; i < turns; i++) {
+        await wait(randomRallyDelay());
+
+        const { member } = await pickOneLurker(guild, { lastPickedId: lastSpeakerId });
+        if (!member) return;
+
+        const rallyContext = `${baseContext ? baseContext + '\n' : ''}${history.map(h => `${h.name}: ${h.content}`).join('\n')}`;
+        const name = member.displayName || member.user.username;
+        const content = await generateChatMessage(rallyContext, name, { isReply: true });
+        if (!content) return; // 生成できなければラリーを打ち切る
+
+        const { hit } = checkNgWords(normalizeForDetection(content));
+        if (hit) return;
+
+        const sent = await sendChatterLine(client, channel, name, member.user.displayAvatarURL({ dynamic: true }), content);
+        registerChatterMessage(sent.id, member.id);
+        console.log(`[Chatter] 🔁 ラリー "${content}" | なりすまし: ${name}`);
+
+        history.push({ name, content });
+        lastSpeakerId = member.id;
+        lastMessageTime = Date.now(); // ラリー継続中も無発言タイマーをリセット
+    }
 }
 
 async function generateAndPost(client, guild, channel) {
-    const { member: lurker } = await pickOneLurker(guild, { lastPickedId: _lastLurkerId });
-    if (!lurker) return { ok: false, reason: 'なりすまし対象のlurkerが見つかりませんでした。' };
-    _lastLurkerId = lurker.id;
+    const persona = await ensurePersona(guild);
+    if (!persona) return { ok: false, reason: 'なりすまし対象のlurkerが見つかりませんでした。' };
+    const personaName = persona.member.displayName || persona.member.user.username;
 
     const context = await fetchRecentContext(channel);
-    let content = await generateChatMessage(context, lurker.displayName || lurker.user.username);
+    let content = await generateChatMessage(context, personaName, { personality: persona.personality });
     let source  = content ? 'AI' : null;
 
     if (content) {
@@ -157,20 +229,17 @@ async function generateAndPost(client, guild, channel) {
     }
     if (!content) return { ok: false, reason: '生成できる内容がありませんでした（サーバーに絵文字がない等）。' };
 
-    const targetChannel = channel.isThread?.() ? channel.parent : channel;
-    const webhook = await getWebhook(targetChannel, client);
+    const sent = await sendChatterLine(client, channel, personaName, persona.member.user.displayAvatarURL({ dynamic: true }), content);
+    registerChatterMessage(sent.id, persona.member.id);
 
-    const sent = await webhook.send({
-        content,
-        username:        lurker.displayName || lurker.user.username,
-        avatarURL:       lurker.user.displayAvatarURL({ dynamic: true }),
-        allowedMentions: { parse: [] },
-        ...(channel.isThread?.() && { threadId: channel.id }),
-    });
-    registerChatterMessage(sent.id, lurker.id);
+    console.log(`[Chatter] ✅ "${content}" | なりすまし: ${personaName} | source: ${source}`);
 
-    console.log(`[Chatter] ✅ "${content}" | 成りすまし: ${lurker.displayName} | source: ${source}`);
-    return { ok: true, content, source, lurkerName: lurker.displayName || lurker.user.username };
+    if (source === 'AI' && Math.random() < RALLY_CHANCE) {
+        runRally(client, guild, channel, context, [{ name: personaName, content }], persona.member.id)
+            .catch(e => console.error('[Chatter] ラリーエラー:', e.message));
+    }
+
+    return { ok: true, content, source, lurkerName: personaName };
 }
 
 async function tryPost(client) {
