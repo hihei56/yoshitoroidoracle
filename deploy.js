@@ -813,6 +813,15 @@ new SlashCommandBuilder()
         .setName('transcribe-leave')
         .setDescription('文字起こしを終了し、ボイスチャンネルから退出します。'),
 
+    new SlashCommandBuilder()
+        .setName('transcribe-auto')
+        .setDescription('誰かがVCに参加したら自動で文字起こしを開始する設定のオン/オフを切り替えます（要事前告知）。')
+        .addBooleanOption(opt =>
+            opt.setName('enabled')
+                .setDescription('true: 自動参加をオン / false: オフ')
+                .setRequired(true)
+        ),
+
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);

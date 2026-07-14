@@ -28,7 +28,9 @@ const { handleClean }              = require('./clean');
 const {
     handleYomiageMessage, handleYomiageJoin, handleYomiageLeave, handleYomiageVoice,
 }                                   = require('./yomiage');
-const { handleTranscribeJoin, handleTranscribeLeave } = require('./transcribe');
+const {
+    handleTranscribeJoin, handleTranscribeLeave, handleTranscribeAuto, handleTranscribeVoiceState,
+} = require('./transcribe');
 const { checkImageAttachments }    = require('./image_spam_filter');
 const { initShiritori, handleShiritoriMessage } = require('./shiritori');
 const { handleRtaMessage } = require('./rta');
@@ -254,6 +256,7 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
 client.on(Events.VoiceStateUpdate, (oldState, newState) => {
     handleVoicePanelVoiceState(oldState, newState).catch(e => console.error('[VoicePanel VC]:', e));
     recordVoiceStateForRecruit(newState.guild);
+    handleTranscribeVoiceState(oldState, newState).catch(e => console.error('[Transcribe VC]:', e));
 });
 
 client.on(Events.InteractionCreate, async i => {
@@ -382,6 +385,7 @@ client.on(Events.InteractionCreate, async i => {
     if (i.commandName === 'yomiage-voice')      return handleYomiageVoice(i);
     if (i.commandName === 'transcribe-join')    return handleTranscribeJoin(i);
     if (i.commandName === 'transcribe-leave')   return handleTranscribeLeave(i);
+    if (i.commandName === 'transcribe-auto')    return handleTranscribeAuto(i);
 
     // ── 管理者のみ ────────────────────────────────────────────────────
 
