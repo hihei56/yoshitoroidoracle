@@ -7,6 +7,7 @@ const BUMP_COOLDOWN_MS  = 2 * 60 * 60 * 1000; // 2時間
 const DEFAULT_REMIND_MIN = 10;
 const HISTORY_LIMIT      = 20;
 const TICK_INTERVAL_MS   = 30 * 1000;
+const NUDGE_INTERVAL_MS  = 60 * 60 * 1000; // Bump可能なのに放置されている間、催促DMを送る間隔
 
 // Bump通知で誘導するチャンネルへのリンク
 const BUMP_GUIDE_LINK = 'https://discord.com/channels/1476939502319698054/1521850350951207094';
@@ -33,6 +34,7 @@ function getGuildState(state, guildId) {
             lastBumpedAt: null,
             remindedSent: false,
             availableNotifiedSent: false,
+            lastNudgeAt: null,
             history: [],
             remindUsers: [],
             totalBumps: 0,
@@ -141,6 +143,7 @@ async function handleBumpMessage(message) {
         g.lastBumpedAt = now;
         g.remindedSent = false;
         g.availableNotifiedSent = false;
+        g.lastNudgeAt = null;
         g.totalBumps = (g.totalBumps ?? 0) + 1;
         g.history.unshift({
             userId: bumper?.id ?? null,
@@ -206,8 +209,22 @@ async function tick(client) {
                 const ok = await sendToChannel(client, g.channelId, { embeds: [embed] });
                 if (ok) {
                     g.availableNotifiedSent = true;
+                    g.lastNudgeAt = now;
                     changed = true;
                     await dmRemindUsers(client, guildId, embed);
+                }
+            } else if (g.availableNotifiedSent && remainMs <= 0) {
+                // Bump可能なのに誰もBumpしていない間、1時間おきに催促DMを送り続ける
+                const nudgeDue = !g.lastNudgeAt || (now - g.lastNudgeAt >= NUDGE_INTERVAL_MS);
+                if (nudgeDue && (g.remindUsers?.length ?? 0) > 0) {
+                    const nudgeEmbed = new EmbedBuilder()
+                        .setTitle('📣 まだBumpされていません')
+                        .setDescription(`Bump可能な状態が続いています。空いた時間に \`/bump\` をお願いします！${BUMP_GUIDE_LINE}`)
+                        .setColor(0xED4245)
+                        .setTimestamp();
+                    await dmRemindUsers(client, guildId, nudgeEmbed);
+                    g.lastNudgeAt = now;
+                    changed = true;
                 }
             }
         }
