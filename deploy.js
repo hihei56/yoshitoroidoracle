@@ -461,6 +461,11 @@ new SlashCommandBuilder()
                     opt.setName('model')
                         .setDescription('Cloudflare AIのモデル名（例: @cf/meta/llama-3.1-8b-instruct-fast）。省略でデフォルト')
                 )
+                .addIntegerOption(opt =>
+                    opt.setName('daily_budget')
+                        .setDescription('1日あたりのAI生成回数上限（無料枠を使い切らないための予算、日本時間0時リセット）')
+                        .setMinValue(1)
+                )
         ),
 
     // 6. ROM専目覚まし（管理者のみ）

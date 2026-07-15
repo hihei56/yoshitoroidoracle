@@ -1,15 +1,24 @@
-// chatter.js — 1時間無発言時のチャット賑やかし自動投稿
+// chatter.js — 日本時間の時間帯や無料枠残量を踏まえて、複数人格が毎日雑談する自動投稿
 const axios = require('axios');
 const { pickOneLurker } = require('./lurker_picker');
 const { getPersona, setPersona, pickPersonality, pickCriticPersonality } = require('./chatter_persona');
 const { getSettings } = require('./config');
 const { checkNgWords, normalizeForDetection } = require('./moderator');
 const { registerChatterMessage } = require('./chatter_registry');
+const { hasBudget, recordUsage, getUsage } = require('./chatter_budget');
 
-const SILENCE_MS       = 60 * 60 * 1000;      // 1時間
-const COOLDOWN_MS      = 2  * 60 * 60 * 1000; // 投稿後2時間クールダウン
-const CHECK_INTERVAL_MS = 5 * 60 * 1000;      // 5分ごとチェック
+const SILENCE_MS        = 60 * 60 * 1000;     // 1時間無発言なら必ず一言挟む
+const MIN_GAP_MS        = 10 * 60 * 1000;     // 自発投稿同士の最低間隔（連投防止）
+const CHECK_INTERVAL_MS = 5  * 60 * 1000;     // 5分ごとチェック
 const CONTEXT_FETCH_LIMIT = 10;               // AI生成に渡す直近メッセージ数
+
+// 深夜帯（日本時間）はみんな寝ている想定で自発発言を控える
+const QUIET_HOUR_START = 2; // 2:00〜
+const QUIET_HOUR_END   = 6; // 〜6:00 未満
+
+// 沈黙していなくても、活動時間中はこの確率(5分チェックごと)でふと自発的に会話に混ざる
+// 無料枠の範囲内でできるだけ「日常会話している感」を出すための調整弁
+const SPONTANEOUS_CHANCE = 0.18;
 
 // ラリー（固定人格の投稿にほかのlurkerが連鎖して反応する掛け合い）設定
 const RALLY_CHANCE       = 0.6;               // 最初の投稿後にラリーへ発展する確率
@@ -21,6 +30,26 @@ const RALLY_DELAY_MAX_MS = 25_000;
 const webhookCache = new Map();
 let lastMessageTime = Date.now(); // 起動時は「今」扱い
 let lastPostedTime  = 0;
+
+// 現在の日本時間を取得
+function getJstParts() {
+    const jst = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+    return { hour: jst.getHours(), minute: jst.getMinutes() };
+}
+
+function describeTimeOfDay(hour) {
+    if (hour >= 5  && hour < 10) return '朝';
+    if (hour >= 10 && hour < 12) return '午前';
+    if (hour >= 12 && hour < 15) return '昼過ぎ';
+    if (hour >= 15 && hour < 18) return '夕方';
+    if (hour >= 18 && hour < 22) return '夜';
+    if (hour >= 22 || hour < QUIET_HOUR_START) return '深夜前';
+    return '深夜';
+}
+
+function isQuietHours(hour) {
+    return hour >= QUIET_HOUR_START && hour < QUIET_HOUR_END;
+}
 
 function wait(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -61,7 +90,9 @@ async function fetchRecentContext(channel) {
     try {
         const messages = await channel.messages.fetch({ limit: CONTEXT_FETCH_LIMIT });
         return [...messages.values()]
-            .filter(m => !m.author.bot && m.content?.trim())
+            // 通常のBotアカウント発言は除外するが、Webhook経由の発言（RSS投稿やなりすまし雑談など）は
+            // 会話の流れの一部として踏まえたいので除外しない
+            .filter(m => (!m.author.bot || m.webhookId) && m.content?.trim())
             .reverse()
             .map(m => `${m.member?.displayName || m.author.username}: ${m.content.slice(0, 200)}`)
             .join('\n');
@@ -84,10 +115,13 @@ function buildChatterMessages(context, personaName, { personality, isReply = fal
     const tone = contrarian
         ? 'みんなが同じ空気で盛り上がっていても、素直に全肯定はせず、ちょっと斜めから一言ツッコミや冷めた視点を入れてください。ただし人を傷つける攻撃的な言い方や暴言は避け、あくまで軽い皮肉・茶化し程度に留めてください。'
         : '角が立つ言い方や煽り・否定的な言葉は避け、あたたかく居心地の良い空気になるようにしてください。';
+    const { hour, minute } = getJstParts();
+    const timeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    const timeLine = `今の日本時間は${timeStr}頃（${describeTimeOfDay(hour)}）です。時間帯に合わせて「おはよう」「そろそろ寝る」「お昼どうする」のような自然な一言になっても構いませんが、毎回時間の話をする必要はなく、あくまで自然な範囲でだけ触れてください。`;
     return [
         {
             role: 'system',
-            content: `${personaLine} ${situation}直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、30文字以内目安）を返してください。質問でも独り言でも構いません。${tone}絵文字は基本的に付けず、文章の最後に毎回絵文字を付けるような機械的なパターンは絶対に避けてください（普通の人はそんなに毎回絵文字を使いません）。直近の会話は「名前: 発言」の形式で渡していますが、それはあくまで参考情報であり、あなたの返答にはその形式を真似ず「名前:」のような接頭辞を絶対に付けないでください。発言内容だけを、前置きも名乗りもなしにそのまま返してください。`,
+            content: `${personaLine} ${situation}${timeLine}直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、30文字以内目安）を返してください。質問でも独り言でも構いません。${tone}絵文字は基本的に付けず、文章の最後に毎回絵文字を付けるような機械的なパターンは絶対に避けてください（普通の人はそんなに毎回絵文字を使いません）。直近の会話は「名前: 発言」の形式で渡していますが、それはあくまで参考情報であり、あなたの返答にはその形式を真似ず「名前:」のような接頭辞を絶対に付けないでください。発言内容だけを、前置きも名乗りもなしにそのまま返してください。`,
         },
         {
             role: 'user',
@@ -159,10 +193,15 @@ function stripNamePrefix(text) {
 }
 
 async function generateChatMessage(context, personaName, opts) {
+    if (!hasBudget()) {
+        console.warn('[Chatter] 本日のAI生成予算（無料枠）を使い切ったため生成をスキップします');
+        return null;
+    }
     const settings = getSettings();
     const raw = settings.chatterAiProvider === 'cloudflare'
         ? await generateViaCloudflare(context, personaName, settings.chatterAiModel || DEFAULT_CF_MODEL, opts)
         : await generateViaGroq(context, personaName, settings.chatterAiModel || DEFAULT_GROQ_MODEL, opts);
+    recordUsage();
     return stripNamePrefix(raw);
 }
 
@@ -211,6 +250,7 @@ async function runRally(client, guild, channel, baseContext, history, excludeId)
 
     for (let i = 0; i < turns; i++) {
         await wait(randomRallyDelay());
+        if (!hasBudget()) return; // 無料枠を使い切ったらラリーもそこで打ち切る
 
         const useCritic = i === criticTurn && critic.member.id !== lastSpeakerId;
         const picked    = useCritic ? critic.member : (await pickOneLurker(guild, { lastPickedId: lastSpeakerId })).member;
@@ -237,6 +277,8 @@ async function runRally(client, guild, channel, baseContext, history, excludeId)
 }
 
 async function generateAndPost(client, guild, channel) {
+    if (!hasBudget()) return { ok: false, reason: '本日のAI生成予算（無料枠）を使い切ったため休止中です。日本時間の日付が変わると復活します。' };
+
     const persona = await ensurePersona(guild);
     if (!persona) return { ok: false, reason: 'なりすまし対象のlurkerが見つかりませんでした。' };
     const personaName = persona.member.displayName || persona.member.user.username;
@@ -277,9 +319,18 @@ async function tryPost(client) {
     const channelId = settings.chatterChannelId ?? settings.lurkerChannelId;
     if (!channelId) return;
 
+    if (!hasBudget()) return; // 無料枠を使い切った日は静かにする
+
+    const { hour } = getJstParts();
+    if (isQuietHours(hour)) return; // 深夜帯はみんな寝ている想定で自発発言しない
+
     const now = Date.now();
-    if (now - lastMessageTime < SILENCE_MS) return;
-    if (now - lastPostedTime  < COOLDOWN_MS) return;
+    if (now - lastPostedTime < MIN_GAP_MS) return; // 連投防止の最低間隔
+
+    const silentLongEnough = now - lastMessageTime >= SILENCE_MS;
+    const spontaneous = Math.random() < SPONTANEOUS_CHANCE;
+    // 沈黙が長ければ必ず一言挟み、そうでなくても活動時間中は一定確率でふと会話に混ざる
+    if (!silentLongEnough && !spontaneous) return;
 
     const guild = client.guilds.cache.first();
     if (!guild) return;
@@ -303,7 +354,8 @@ function initChatter(client) {
     setInterval(() => {
         tryPost(client).catch(e => console.error('[Chatter] エラー:', e.message));
     }, CHECK_INTERVAL_MS);
-    console.log('[Chatter] ✅ 初期化 | 1時間無発言で自動投稿');
+    const { budget } = getUsage();
+    console.log(`[Chatter] ✅ 初期化 | 深夜${QUIET_HOUR_START}〜${QUIET_HOUR_END}時は休止 / 1日の無料枠予算=${budget}回`);
 }
 
 function getLastMessageTime() {

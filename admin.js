@@ -46,6 +46,7 @@ const { getNgWords, addNgWord, removeNgWord } = require('./ng_word_manager');
 const { resetShiritoriGame } = require('./shiritori');
 const { handleBumpRemindCommand } = require('./bump');
 const { forcePost: forceChatterPost } = require('./chatter');
+const { getUsage: getChatterUsage } = require('./chatter_budget');
 const { forceRecruitPost, getVCRecruitSettings } = require('./vc_recruit');
 const { getStrikeCount, resetStrikes } = require('./spam_enforcer');
 const { resetRtaRace } = require('./rta');
@@ -82,6 +83,8 @@ function buildStatusEmbed() {
     const thinker        = thinkerEnabled
         ? `✅ 有効${thinkerExcl.length ? `（例外: ${thinkerExcl.map(id => `<@${id}>`).join(' ')}）` : ''}`
         : '🚫 無効';
+    const chatterUsage = getChatterUsage();
+    const chatterUsageStr = `${chatterUsage.count}/${chatterUsage.budget}回（本日）`;
 
     return new EmbedBuilder()
         .setTitle('🛡️ 管理設定')
@@ -97,6 +100,7 @@ function buildStatusEmbed() {
             { name: '📋 Anonログチャンネル',  value: logCh,                                           inline: false },
             { name: '😴 目覚ましチャンネル',  value: lurkerCh,  inline: false },
             { name: '💬 賑やかしBot投稿チャンネル', value: chatterCh, inline: false },
+            { name: '💬 雑談chatter 無料枠利用状況', value: chatterUsageStr, inline: false },
             { name: '📰 RSS投稿チャンネル', value: rssCh, inline: false },
             { name: '📣 VC募集投稿チャンネル', value: vcRecruitCh, inline: true },
             { name: '📣 VC募集メンションロール', value: vcRecruitRole, inline: true },
@@ -978,14 +982,17 @@ async function handleAdmin2(interaction) {
     const sub = interaction.options.getSubcommand();
 
     if (sub === 'chatter_ai') {
-        const provider = interaction.options.getString('provider');
-        const model    = interaction.options.getString('model');
+        const provider     = interaction.options.getString('provider');
+        const model        = interaction.options.getString('model');
+        const dailyBudget  = interaction.options.getInteger('daily_budget');
         const settings = getSettings();
 
-        if (provider) settings.chatterAiProvider = provider;
-        if (model)    settings.chatterAiModel    = model;
-        if (provider || model) saveSettings(settings);
+        if (provider)              settings.chatterAiProvider = provider;
+        if (model)                 settings.chatterAiModel    = model;
+        if (dailyBudget)           settings.chatterDailyBudget = dailyBudget;
+        if (provider || model || dailyBudget) saveSettings(settings);
 
+        const usage = getChatterUsage();
         return interaction.reply({
             embeds: [
                 new EmbedBuilder()
@@ -993,7 +1000,9 @@ async function handleAdmin2(interaction) {
                     .setColor(COLOR.info)
                     .setDescription(
                         `プロバイダー: **${settings.chatterAiProvider}**\n` +
-                        `モデル: **${settings.chatterAiModel || '(プロバイダーのデフォルト)'}**`
+                        `モデル: **${settings.chatterAiModel || '(プロバイダーのデフォルト)'}**\n` +
+                        `1日の予算: **${usage.budget}回**（日本時間0時リセット）\n` +
+                        `本日の利用: **${usage.count}/${usage.budget}回**`
                     )
                     .setTimestamp()
             ],

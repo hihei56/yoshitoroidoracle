@@ -32,6 +32,7 @@ function getSettings() {
     if (!data.spamTargetRoles) data.spamTargetRoles = [];
     if (!data.chatterAiProvider) data.chatterAiProvider = 'groq';
     if (data.chatterAiModel === undefined) data.chatterAiModel = null;
+    if (data.chatterDailyBudget === undefined) data.chatterDailyBudget = null;
     return data;
 }
 
