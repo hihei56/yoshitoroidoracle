@@ -27,9 +27,18 @@ const RALLY_MAX_TURNS    = 3;
 const RALLY_DELAY_MIN_MS = 8_000;
 const RALLY_DELAY_MAX_MS = 25_000;
 
+// このユーザーの発言を会話の中心にする（会話の主役）
+const TARGET_USER_ID           = '673059482842038274';
+const TARGET_REACT_CHANCE      = 0.85;              // 対象ユーザーの発言に反応する確率
+const TARGET_REACT_COOLDOWN_MS = 3  * 60 * 1000;     // 反応連発を防ぐ最低間隔
+const TARGET_REACT_DELAY_MIN_MS = 5_000;
+const TARGET_REACT_DELAY_MAX_MS = 45_000;
+const TARGET_QUOTE_MAX_LEN      = 60;                // 疑似リプライの引用は短く切り詰める
+
 const webhookCache = new Map();
 let lastMessageTime = Date.now(); // 起動時は「今」扱い
 let lastPostedTime  = 0;
+let lastTargetReactTime = 0;
 
 // 現在の日本時間を取得
 function getJstParts() {
@@ -116,11 +125,13 @@ async function fetchRecentContext(channel) {
 const DEFAULT_CF_MODEL   = '@cf/meta/llama-3.1-8b-instruct-fast';
 const DEFAULT_GROQ_MODEL = 'qwen/qwen3-32b';
 
-function buildChatterMessages(context, personaName, { personality, isReply = false, contrarian = false } = {}) {
+function buildChatterMessages(context, personaName, { personality, isReply = false, contrarian = false, replyTarget = null } = {}) {
     const personaLine = personality
         ? `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。性格: ${personality}`
         : `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。`;
-    const situation = isReply
+    const situation = replyTarget
+        ? `友達同士の雑談チャンネルで、「${replyTarget.name}」が「${replyTarget.content}」と発言したので、それを踏まえて自然に返信するところです。`
+        : isReply
         ? '友達同士の雑談チャンネルで、直前の発言にふと相槌や反応を返すところです。'
         : '友達同士の雑談チャンネルで、しばらく会話が途切れた後にふと一言つぶやくところです。';
     const tone = contrarian
@@ -255,6 +266,16 @@ async function sendChatterLine(client, channel, name, avatarURL, content) {
     });
 }
 
+// Webhook経由の投稿はDiscordの本物のリプライ（message_reference）を張れないため、
+// 引用ブロックで見た目だけ「返信」を再現する疑似リプライ
+function buildPseudoReply(targetName, targetContent, replyBody) {
+    const sanitized = (targetContent || '').replace(/\s+/g, ' ').trim() || '(画像/添付ファイル)';
+    const snippet = sanitized.length > TARGET_QUOTE_MAX_LEN
+        ? sanitized.slice(0, TARGET_QUOTE_MAX_LEN) + '…'
+        : sanitized;
+    return `> **${targetName}**: ${snippet}\n${replyBody}`;
+}
+
 // 固定人格の投稿をきっかけに、ほかのlurkerがランダムな回数だけ連鎖して反応する「ラリー」
 // 全肯定だけで終わらないよう、必ず1回は批評家役が交ざって水を差す
 async function runRally(client, guild, channel, baseContext, history, excludeId) {
@@ -329,6 +350,65 @@ async function generateAndPost(client, guild, channel) {
     return { ok: true, content, source, lurkerName: personaName };
 }
 
+// 会話の中心にするターゲットユーザーの発言に、ランダムなlurkerが疑似リプライで反応する
+async function respondToTargetMessage(client, guild, channel, message) {
+    if (!hasBudget()) return;
+
+    const targetName = message.member?.displayName || message.author.username;
+    const { member } = await pickOneLurker(guild, {});
+    if (!member) return;
+    const personality = pickPersonality();
+    const name = member.displayName || member.user.username;
+
+    const context = await fetchRecentContext(channel);
+    const replyBody = await generateChatMessage(context, name, {
+        personality,
+        isReply: true,
+        replyTarget: { name: targetName, content: message.content.slice(0, 300) },
+    });
+    if (!replyBody) return;
+
+    const { hit } = checkNgWords(normalizeForDetection(replyBody));
+    if (hit) return;
+
+    const content = buildPseudoReply(targetName, message.content, replyBody);
+    const sent = await sendChatterLine(client, channel, name, member.user.displayAvatarURL({ dynamic: true }), content);
+    registerChatterMessage(sent.id, member.id);
+
+    console.log(`[Chatter] 💬 ${targetName}へ疑似リプライ "${replyBody}" | なりすまし: ${name}`);
+
+    lastMessageTime = Date.now();
+    lastPostedTime  = Date.now();
+
+    // ランダムな人数・回数でAI同士が絡んでいく（対象ユーザーへの疑似リプライではない通常のラリー）
+    if (Math.random() < RALLY_CHANCE) {
+        runRally(client, guild, channel, context, [{ name, content: replyBody }], member.id)
+            .catch(e => console.error('[Chatter] ターゲットラリーエラー:', e.message));
+    }
+}
+
+// index.jsのMessageCreateから呼ばれる。会話の主役となるユーザーの発言をトリガーに反応する
+async function handleTargetMessage(client, message) {
+    if (message.author.id !== TARGET_USER_ID) return;
+
+    const settings  = getSettings();
+    const channelId = settings.chatterChannelId ?? settings.lurkerChannelId;
+    if (!channelId) return;
+    if (message.channel.id !== channelId && message.channel.parentId !== channelId) return;
+
+    if (!hasBudget()) return;
+    if (Date.now() - lastTargetReactTime < TARGET_REACT_COOLDOWN_MS) return;
+    if (Math.random() >= TARGET_REACT_CHANCE) return;
+
+    lastTargetReactTime = Date.now();
+
+    const guild = message.guild;
+    if (!guild) return;
+
+    await wait(TARGET_REACT_DELAY_MIN_MS + Math.random() * (TARGET_REACT_DELAY_MAX_MS - TARGET_REACT_DELAY_MIN_MS));
+    await respondToTargetMessage(client, guild, message.channel, message);
+}
+
 async function tryPost(client) {
     const settings  = getSettings();
     const channelId = settings.chatterChannelId ?? settings.lurkerChannelId;
@@ -377,4 +457,4 @@ function getLastMessageTime() {
     return lastMessageTime;
 }
 
-module.exports = { initChatter, recordMessage, forcePost, getLastMessageTime };
+module.exports = { initChatter, recordMessage, forcePost, getLastMessageTime, handleTargetMessage };
