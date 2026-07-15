@@ -8,7 +8,7 @@ const { Client, GatewayIntentBits, Partials, Events } = require('discord.js');
 const { handleAnon }             = require('./anon');
 const { handleCurse }            = require('./curse');
 const { initLurker, handleLurker } = require('./lurker');
-const { initChatter, recordMessage: recordChatterMessage } = require('./chatter');
+const { initChatter, recordMessage: recordChatterMessage, handleTargetMessage: handleChatterTargetMessage } = require('./chatter');
 const { initTopicStarter } = require('./topic_starter');
 const { initVCRecruit, recordVoiceStateForRecruit, handleVCRecruitButton } = require('./vc_recruit');
 const { recordActivity, backfillActivity } = require('./activity_tracker');
@@ -197,6 +197,7 @@ client.on(Events.MessageCreate, async m => {
 
     recordActivity(m.author.id);
     recordChatterMessage(m.channel.id);
+    handleChatterTargetMessage(client, m).catch(err => console.error('[Chatter Target Error]:', err));
     handleInviteFilter(m, client).catch(err => console.error('[InviteFilter Error]:', err));
     handleModerator(m).catch(err => console.error('[Mod Error]:', err));
     handleShiritoriMessage(m).catch(err => console.error('[Shiritori Error]:', err));
