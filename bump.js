@@ -8,6 +8,10 @@ const DEFAULT_REMIND_MIN = 10;
 const HISTORY_LIMIT      = 20;
 const TICK_INTERVAL_MS   = 30 * 1000;
 
+// Bump通知で誘導するチャンネルへのリンク
+const BUMP_GUIDE_LINK = 'https://discord.com/channels/1476939502319698054/1521850350951207094';
+const BUMP_GUIDE_LINE = `\n\n👉 [こちらのチャンネルで \`/bump\` を実行してください](${BUMP_GUIDE_LINK})`;
+
 const STATE_PATH = resolveDataPath('bump_state.json');
 ensureDir(STATE_PATH);
 
@@ -31,6 +35,7 @@ function getGuildState(state, guildId) {
             availableNotifiedSent: false,
             history: [],
             remindUsers: [],
+            totalBumps: 0,
         };
     }
     return state[guildId];
@@ -136,6 +141,7 @@ async function handleBumpMessage(message) {
         g.lastBumpedAt = now;
         g.remindedSent = false;
         g.availableNotifiedSent = false;
+        g.totalBumps = (g.totalBumps ?? 0) + 1;
         g.history.unshift({
             userId: bumper?.id ?? null,
             userTag: bumper?.tag ?? '不明なユーザー',
@@ -180,7 +186,7 @@ async function tick(client) {
                 const nextAt = Math.floor(g.cooldownEnd / 1000);
                 const embed = new EmbedBuilder()
                     .setTitle('⏰ まもなく Bump 可能です')
-                    .setDescription(`あと **${formatDuration(remainMs)}** で Bump 可能になります。（<t:${nextAt}:R>）`)
+                    .setDescription(`あと **${formatDuration(remainMs)}** で Bump 可能になります。（<t:${nextAt}:R>）${BUMP_GUIDE_LINE}`)
                     .setColor(0xFEE75C)
                     .setTimestamp();
                 const ok = await sendToChannel(client, g.channelId, { embeds: [embed] });
@@ -194,7 +200,7 @@ async function tick(client) {
             if (!g.availableNotifiedSent && remainMs <= 0) {
                 const embed = new EmbedBuilder()
                     .setTitle('✅ Bump 可能になりました！')
-                    .setDescription('`/bump` を実行してサーバーの表示順位を上げましょう！')
+                    .setDescription(`\`/bump\` を実行してサーバーの表示順位を上げましょう！${BUMP_GUIDE_LINE}`)
                     .setColor(0x57F287)
                     .setTimestamp();
                 const ok = await sendToChannel(client, g.channelId, { embeds: [embed] });
@@ -299,6 +305,7 @@ async function handleBumpStatus(interaction) {
             { name: '状態', value: isReady ? '✅ Bump 可能です' : `⏳ クールダウン中（残り ${formatDuration(remainMs)}）`, inline: false },
             { name: '通知チャンネル', value: `<#${g.channelId}>`, inline: true },
             { name: 'リマインド設定', value: `${g.remindMinutes ?? DEFAULT_REMIND_MIN}分前`, inline: true },
+            { name: '累計Bump回数', value: `${g.totalBumps ?? 0}回`, inline: true },
         ];
 
         if (g.cooldownEnd) {
@@ -345,7 +352,7 @@ async function handleBumpForceNotify(interaction) {
 
         const embed = new EmbedBuilder()
             .setTitle('📢 Bump 通知（強制送信）')
-            .setDescription(`管理者 <@${interaction.user.id}> による強制通知です。\n\`/bump\` を実行できるか確認してください。`)
+            .setDescription(`管理者 <@${interaction.user.id}> による強制通知です。\n\`/bump\` を実行できるか確認してください。${BUMP_GUIDE_LINE}`)
             .setColor(0xEB459E)
             .setTimestamp();
 
