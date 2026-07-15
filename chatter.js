@@ -51,6 +51,17 @@ function isQuietHours(hour) {
     return hour >= QUIET_HOUR_START && hour < QUIET_HOUR_END;
 }
 
+// 時間帯ごとに連想させたい話題・空気感（発言そのものにその時間帯らしさを滲ませるためのヒント）
+const TIME_TOPIC_HINTS = {
+    '朝':     '朝ごはん、眠さ、「おはよう」、これから学校や仕事に行く感じなど',
+    '午前':   '午前中にやっていること、ちょっと眠い、コーヒー飲んだ、など',
+    '昼過ぎ': 'お昼ごはん食べた／食べる、眠気、休憩中、など',
+    '夕方':   '学校や仕事終わり、疲れた、晩ごはん何しようか、など',
+    '夜':     '晩ごはん、今日あったこと、まったりしてる、お風呂、など',
+    '深夜前': 'そろそろ寝るか迷ってる、夜更かし気味、静かな時間、など',
+    '深夜':   '眠い、静かな時間帯にふと目が覚めた、など',
+};
+
 function wait(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -117,7 +128,11 @@ function buildChatterMessages(context, personaName, { personality, isReply = fal
         : '角が立つ言い方や煽り・否定的な言葉は避け、あたたかく居心地の良い空気になるようにしてください。';
     const { hour, minute } = getJstParts();
     const timeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-    const timeLine = `今の日本時間は${timeStr}頃（${describeTimeOfDay(hour)}）です。時間帯に合わせて「おはよう」「そろそろ寝る」「お昼どうする」のような自然な一言になっても構いませんが、毎回時間の話をする必要はなく、あくまで自然な範囲でだけ触れてください。`;
+    const timeLabel = describeTimeOfDay(hour);
+    const timeHint  = TIME_TOPIC_HINTS[timeLabel] ?? '';
+    const timeLine = isReply
+        ? `今の日本時間は${timeStr}頃（${timeLabel}）です。直前の発言への反応が中心ですが、話題に困ったら${timeHint}のようなこの時間帯らしい空気感を薄く滲ませても構いません。`
+        : `今の日本時間は${timeStr}頃（${timeLabel}）です。${timeHint}など、この時間帯らしさが伝わる内容にしてください。ただし「今${timeStr}だけど」のように時刻をそのまま言うのは不自然なので避け、雰囲気や話題でそれとなく表現してください。`;
     return [
         {
             role: 'system',
