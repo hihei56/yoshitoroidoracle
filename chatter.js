@@ -8,13 +8,18 @@ const { registerChatterMessage } = require('./chatter_registry');
 const { hasBudget, recordUsage, getUsage } = require('./chatter_budget');
 const { fetchRandomQuote } = require('./stock_quote');
 
-const MIN_GAP_MS        = 50 * 1000;          // 自発投稿同士の最低間隔（連投防止。1分間隔のチェックとほぼ同じ）
-const CHECK_INTERVAL_MS = 60 * 1000;          // 1分ごとチェック（activeな時間帯は毎回必ず投稿する）
+const SILENCE_MS        = 60 * 60 * 1000;     // 1時間無発言なら必ず一言挟む
+const MIN_GAP_MS        = 10 * 60 * 1000;     // 自発投稿同士の最低間隔（連投防止）
+const CHECK_INTERVAL_MS = 5  * 60 * 1000;     // 5分ごとチェック
 const CONTEXT_FETCH_LIMIT = 10;               // AI生成に渡す直近メッセージ数
 
 // 深夜帯（日本時間）はみんな寝ている想定で自発発言を控える
 const QUIET_HOUR_START = 2; // 2:00〜
 const QUIET_HOUR_END   = 6; // 〜6:00 未満
+
+// 沈黙していなくても、活動時間中はこの確率(5分チェックごと)でふと自発的に会話に混ざる
+// 無料枠の範囲内でできるだけ「日常会話している感」を出すための調整弁
+const SPONTANEOUS_CHANCE = 0.18;
 
 // ラリー（固定人格の投稿にほかのlurkerが連鎖して反応する掛け合い）設定
 const RALLY_CHANCE       = 0.6;               // 最初の投稿後にラリーへ発展する確率
@@ -542,7 +547,12 @@ async function tryPost(client) {
     if (isQuietHours(hour)) return; // 深夜帯はみんな寝ている想定で自発発言しない
 
     const now = Date.now();
-    if (now - lastPostedTime < MIN_GAP_MS) return; // 連投防止の最低間隔（通常は1分ごとに必ず投稿する）
+    if (now - lastPostedTime < MIN_GAP_MS) return; // 連投防止の最低間隔
+
+    const silentLongEnough = now - lastMessageTime >= SILENCE_MS;
+    const spontaneous = Math.random() < SPONTANEOUS_CHANCE;
+    // 沈黙が長ければ必ず一言挟み、そうでなくても活動時間中は一定確率でふと会話に混ざる
+    if (!silentLongEnough && !spontaneous) return;
 
     const guild = client.guilds.cache.first();
     if (!guild) return;
@@ -567,7 +577,7 @@ function initChatter(client) {
         tryPost(client).catch(e => console.error('[Chatter] エラー:', e.message));
     }, CHECK_INTERVAL_MS);
     const { budget } = getUsage();
-    console.log(`[Chatter] ✅ 初期化 | 活動時間中は毎分必ず投稿 / 深夜${QUIET_HOUR_START}〜${QUIET_HOUR_END}時は休止 / 1日の無料枠予算=${budget}回`);
+    console.log(`[Chatter] ✅ 初期化 | 深夜${QUIET_HOUR_START}〜${QUIET_HOUR_END}時は休止 / 1日の無料枠予算=${budget}回`);
 }
 
 function getLastMessageTime() {
