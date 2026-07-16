@@ -37,6 +37,10 @@ const SPAM_PERSONALITY =
     '「う」「あ〜超うれしい！」「イーッヒッヒッヒッwww😂」のような定型文を連呼してノリで場を荒らす、テンションだけ高いスパム気味なキャラ。' +
     'ただし極稀に人が変わったように真剣なトーンになり、JDI（ジャパンディスプレイ）やキオクシアのような値動きの荒い銘柄の信用買い・投機的な短期売買を好む一面を見せる。';
 
+// 動物画像役（Cat API/Dog APIなどから拾ってきた動物の画像をふと貼ってくるタイプ）
+const ANIMAL_PERSONALITY =
+    '猫や犬、キツネなどの動物画像をどこかから見つけてはふと貼ってくる、動物好きの共有魔。';
+
 let cache; // undefined = 未読込
 
 // 旧形式（フラットにmain相当のデータのみ保持）からの移行。新形式は任意のスロット名を持てるためそのまま保持する
@@ -81,4 +85,4 @@ function setPersona(lurkerId, personality, slot = 'main') {
     return persona;
 }
 
-module.exports = { getPersona, setPersona, pickPersonality, pickCriticPersonality, MOUNT_PERSONALITY, GROOM_PERSONALITY, SPAM_PERSONALITY };
+module.exports = { getPersona, setPersona, pickPersonality, pickCriticPersonality, MOUNT_PERSONALITY, GROOM_PERSONALITY, SPAM_PERSONALITY, ANIMAL_PERSONALITY };
