@@ -141,8 +141,9 @@ async function fetchRecentContext(channel) {
     }
 }
 
-const DEFAULT_CF_MODEL   = '@cf/meta/llama-3.1-8b-instruct-fast';
-const DEFAULT_GROQ_MODEL = 'qwen/qwen3-32b';
+const DEFAULT_CF_MODEL     = '@cf/meta/llama-3.1-8b-instruct-fast';
+const DEFAULT_GROQ_MODEL   = 'qwen/qwen3-32b';
+const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
 
 function buildChatterMessages(context, personaName, { personality, isReply = false, contrarian = false, replyTarget = null, stockMode = false, stockQuote = null } = {}) {
     const personaLine = personality
@@ -233,6 +234,32 @@ async function generateViaCloudflare(context, personaName, model, opts) {
     }
 }
 
+async function generateViaGemini(context, personaName, model, opts) {
+    if (!process.env.GEMINI_API_KEY) return null;
+    try {
+        const messages    = buildChatterMessages(context, personaName, opts);
+        const systemText  = messages.find(m => m.role === 'system')?.content ?? '';
+        const userText    = messages.find(m => m.role === 'user')?.content ?? '';
+
+        const res = await axios.post(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+            {
+                systemInstruction: { parts: [{ text: systemText }] },
+                contents: [{ role: 'user', parts: [{ text: userText }] }],
+                generationConfig: { temperature: 0.9, maxOutputTokens: 60 },
+            },
+            {
+                params: { key: process.env.GEMINI_API_KEY },
+                timeout: 15_000,
+            }
+        );
+        return res.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
+    } catch (e) {
+        console.error(`[Chatter] Gemini生成エラー(model=${model}):`, e.message);
+        return null;
+    }
+}
+
 // 「名前: 発言」形式の会話ログを渡している影響で、AIが自分の発言にも
 // 同じ形式の接頭辞（話者名+コロン）を付けてしまうことがあるため、後処理でも保険をかける
 function stripNamePrefix(text) {
@@ -241,16 +268,60 @@ function stripNamePrefix(text) {
     return stripped || text.trim();
 }
 
+const PROVIDER_DEFAULT_MODELS = {
+    groq: DEFAULT_GROQ_MODEL,
+    cloudflare: DEFAULT_CF_MODEL,
+    gemini: DEFAULT_GEMINI_MODEL,
+};
+
+function isProviderConfigured(provider) {
+    if (provider === 'groq')       return !!process.env.GROQ_API_KEY;
+    if (provider === 'cloudflare') return !!(process.env.CF_ACCOUNT_ID && process.env.CF_API_TOKEN);
+    if (provider === 'gemini')     return !!process.env.GEMINI_API_KEY;
+    return false;
+}
+
+// APIキーが設定済み、かつ本日の無料枠がまだ残っているプロバイダーの一覧
+function availableProviders() {
+    return Object.keys(PROVIDER_DEFAULT_MODELS).filter(p => isProviderConfigured(p) && hasBudget(p));
+}
+
+// いずれかのプロバイダー（設定で固定している場合はそれのみ）で本日まだ生成できるか
+function anyBudgetAvailable() {
+    const settings = getSettings();
+    const forced   = settings.chatterAiProvider;
+    if (forced && forced !== 'auto') return isProviderConfigured(forced) && hasBudget(forced);
+    return availableProviders().length > 0;
+}
+
+async function callProvider(provider, context, personaName, model, opts) {
+    if (provider === 'cloudflare') return generateViaCloudflare(context, personaName, model, opts);
+    if (provider === 'gemini')     return generateViaGemini(context, personaName, model, opts);
+    return generateViaGroq(context, personaName, model, opts);
+}
+
+// 'auto'設定時は、その時点でAPIキーがあり無料枠が残っている複数プロバイダー（Groq/Cloudflare/Gemini）から
+// ランダムに1つ選んで生成させる。特定プロバイダーを指定している場合は従来通りそれ固定で使う
 async function generateChatMessage(context, personaName, opts) {
-    if (!hasBudget()) {
-        console.warn('[Chatter] 本日のAI生成予算（無料枠）を使い切ったため生成をスキップします');
+    const settings = getSettings();
+    const forced   = settings.chatterAiProvider;
+    const isAuto   = !forced || forced === 'auto';
+
+    let provider = null;
+    if (!isAuto) {
+        if (isProviderConfigured(forced) && hasBudget(forced)) provider = forced;
+    } else {
+        const pool = availableProviders();
+        if (pool.length) provider = pool[Math.floor(Math.random() * pool.length)];
+    }
+    if (!provider) {
+        console.warn('[Chatter] 利用可能なAIプロバイダーがない（無料枠切れ or 未設定）ため生成をスキップします');
         return null;
     }
-    const settings = getSettings();
-    const raw = settings.chatterAiProvider === 'cloudflare'
-        ? await generateViaCloudflare(context, personaName, settings.chatterAiModel || DEFAULT_CF_MODEL, opts)
-        : await generateViaGroq(context, personaName, settings.chatterAiModel || DEFAULT_GROQ_MODEL, opts);
-    recordUsage();
+
+    const model = (!isAuto && settings.chatterAiModel) || PROVIDER_DEFAULT_MODELS[provider];
+    const raw = await callProvider(provider, context, personaName, model, opts);
+    recordUsage(provider);
     return stripNamePrefix(raw);
 }
 
@@ -382,7 +453,7 @@ async function runRally(client, guild, channel, baseContext, history, excludeId)
 
     for (let i = 0; i < turns; i++) {
         await wait(randomRallyDelay());
-        if (!hasBudget()) return; // 無料枠を使い切ったらラリーもそこで打ち切る
+        if (!anyBudgetAvailable()) return; // 無料枠を使い切ったらラリーもそこで打ち切る
 
         let special = null;
         let roleLabel = '';
@@ -440,7 +511,7 @@ async function runRally(client, guild, channel, baseContext, history, excludeId)
 }
 
 async function generateAndPost(client, guild, channel) {
-    if (!hasBudget()) return { ok: false, reason: '本日のAI生成予算（無料枠）を使い切ったため休止中です。日本時間の日付が変わると復活します。' };
+    if (!anyBudgetAvailable()) return { ok: false, reason: '本日のAI生成予算（無料枠）を使い切ったため休止中です。日本時間の日付が変わると復活します。' };
 
     const persona = await ensurePersona(guild);
     if (!persona) return { ok: false, reason: 'なりすまし対象のlurkerが見つかりませんでした。' };
@@ -479,7 +550,7 @@ async function generateAndPost(client, guild, channel) {
 
 // 会話の中心にするターゲットユーザーの発言に、ランダムなlurkerが疑似リプライで反応する
 async function respondToTargetMessage(client, guild, channel, message) {
-    if (!hasBudget()) return;
+    if (!anyBudgetAvailable()) return;
 
     const targetName = message.member?.displayName || message.author.username;
     const { member } = await pickOneLurker(guild, {});
@@ -523,7 +594,7 @@ async function handleTargetMessage(client, message) {
     if (!channelId) return;
     if (message.channel.id !== channelId && message.channel.parentId !== channelId) return;
 
-    if (!hasBudget()) return;
+    if (!anyBudgetAvailable()) return;
     if (Date.now() - lastTargetReactTime < TARGET_REACT_COOLDOWN_MS) return;
     if (Math.random() >= TARGET_REACT_CHANCE) return;
 
@@ -541,7 +612,7 @@ async function tryPost(client) {
     const channelId = settings.chatterChannelId ?? settings.lurkerChannelId;
     if (!channelId) return;
 
-    if (!hasBudget()) return; // 無料枠を使い切った日は静かにする
+    if (!anyBudgetAvailable()) return; // 無料枠を使い切った日は静かにする
 
     const { hour } = getJstParts();
     if (isQuietHours(hour)) return; // 深夜帯はみんな寝ている想定で自発発言しない
@@ -576,12 +647,25 @@ function initChatter(client) {
     setInterval(() => {
         tryPost(client).catch(e => console.error('[Chatter] エラー:', e.message));
     }, CHECK_INTERVAL_MS);
-    const { budget } = getUsage();
-    console.log(`[Chatter] ✅ 初期化 | 深夜${QUIET_HOUR_START}〜${QUIET_HOUR_END}時は休止 / 1日の無料枠予算=${budget}回`);
+
+    const configured = Object.keys(PROVIDER_DEFAULT_MODELS).filter(isProviderConfigured);
+    const budgetSummary = configured.length
+        ? configured.map(p => `${p}=${getUsage(p).budget}回`).join(' / ')
+        : 'なし（APIキー未設定）';
+    console.log(`[Chatter] ✅ 初期化 | 深夜${QUIET_HOUR_START}〜${QUIET_HOUR_END}時は休止 / 有効プロバイダーの1日予算: ${budgetSummary}`);
 }
 
 function getLastMessageTime() {
     return lastMessageTime;
 }
 
-module.exports = { initChatter, recordMessage, forcePost, getLastMessageTime, handleTargetMessage };
+// /admin表示用: プロバイダーごとのAPIキー設定有無と本日の無料枠利用状況
+function getProviderStatus() {
+    return Object.keys(PROVIDER_DEFAULT_MODELS).map(provider => ({
+        provider,
+        configured: isProviderConfigured(provider),
+        ...getUsage(provider),
+    }));
+}
+
+module.exports = { initChatter, recordMessage, forcePost, getLastMessageTime, handleTargetMessage, getProviderStatus };

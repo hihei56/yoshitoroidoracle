@@ -451,19 +451,21 @@ new SlashCommandBuilder()
                 .setDescription('雑談chatterのAIプロバイダー/モデルを設定します。')
                 .addStringOption(opt =>
                     opt.setName('provider')
-                        .setDescription('雑談生成に使うAIプロバイダーを切り替えます')
+                        .setDescription('雑談生成に使うAIプロバイダーを切り替えます（Autoは利用可能な複数プロバイダーを自動ローテーション）')
                         .addChoices(
+                            { name: 'Auto（複数プロバイダーを自動ローテーション・推奨）', value: 'auto' },
                             { name: 'Groq',       value: 'groq' },
                             { name: 'Cloudflare', value: 'cloudflare' },
+                            { name: 'Gemini',     value: 'gemini' },
                         )
                 )
                 .addStringOption(opt =>
                     opt.setName('model')
-                        .setDescription('Cloudflare AIのモデル名（例: @cf/meta/llama-3.1-8b-instruct-fast）。省略でデフォルト')
+                        .setDescription('providerを固定した場合のモデル名（例: @cf/meta/llama-3.1-8b-instruct-fast）。省略でデフォルト。Auto時は無視されます')
                 )
                 .addIntegerOption(opt =>
                     opt.setName('daily_budget')
-                        .setDescription('1日あたりのAI生成回数上限（無料枠を使い切らないための予算、日本時間0時リセット）')
+                        .setDescription('1日あたりのAI生成回数上限（無料枠を使い切らないための予算、日本時間0時リセット）。providerと一緒に指定してください')
                         .setMinValue(1)
                 )
         ),
