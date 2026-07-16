@@ -468,6 +468,25 @@ new SlashCommandBuilder()
                         .setDescription('1日あたりのAI生成回数上限（無料枠を使い切らないための予算、日本時間0時リセット）。providerと一緒に指定してください')
                         .setMinValue(1)
                 )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('chatter_persona_reset')
+                .setDescription('雑談chatterの固定キャラ（なりすまし対象）をリセットし、次回投稿時に再抽選させます。')
+                .addStringOption(opt =>
+                    opt.setName('slot')
+                        .setDescription('リセットするキャラ枠')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: 'main（メイン人格）',       value: 'main' },
+                            { name: 'critic（批評家役）',       value: 'critic' },
+                            { name: 'mount（教養マウント役）',   value: 'mount' },
+                            { name: 'groom（グルーミング役）',   value: 'groom' },
+                            { name: 'spam（スパム役）',          value: 'spam' },
+                            { name: 'animal（動物画像役）',      value: 'animal' },
+                            { name: '全部まとめてリセット',       value: 'all' },
+                        )
+                )
         ),
 
     // 6. ROM専目覚まし（管理者のみ）

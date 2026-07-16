@@ -9,17 +9,18 @@ const { hasBudget, recordUsage, getUsage } = require('./chatter_budget');
 const { fetchRandomQuote } = require('./stock_quote');
 const { fetchRandomAnimalImage } = require('./animal_image');
 
-const SILENCE_MS        = 60 * 60 * 1000;     // 1時間無発言なら必ず一言挟む
-const MIN_GAP_MS        = 10 * 60 * 1000;     // 自発投稿同士の最低間隔（連投防止）
-const CHECK_INTERVAL_MS = 5  * 60 * 1000;     // 5分ごとチェック
+const SILENCE_MS        = 20 * 60 * 1000;     // 20分無発言なら必ず一言挟む
+const MIN_GAP_MS        = 4  * 60 * 1000;     // 自発投稿同士の最低間隔（連投防止）
+const CHECK_INTERVAL_MS = 2  * 60 * 1000;     // 2分ごとチェック
 const CONTEXT_FETCH_LIMIT = 10;               // AI生成に渡す直近メッセージ数
 
 // 「深夜」ラベルの境界時刻（時間帯の言い回しにのみ使用。投稿の休止はしない）
 const QUIET_HOUR_START = 2;
 
-// 沈黙していなくても、活動時間中はこの確率(5分チェックごと)でふと自発的に会話に混ざる
-// 無料枠の範囲内でできるだけ「日常会話している感」を出すための調整弁
-const SPONTANEOUS_CHANCE = 0.18;
+// 沈黙していなくても、活動時間中はこの確率(2分チェックごと)でふと自発的に会話に混ざる
+// Groq/Cloudflare/Geminiの複数プロバイダー自動ローテーションで無料枠の合計が増えたため、
+// 頻度を上げても余裕を持って回せる
+const SPONTANEOUS_CHANCE = 0.35;
 
 // ラリー（固定人格の投稿にほかのlurkerが連鎖して反応する掛け合い）設定
 const RALLY_CHANCE       = 0.6;               // 最初の投稿後にラリーへ発展する確率
@@ -51,18 +52,14 @@ const SIGNATURE_CHAIN_MAX_TURNS   = 3;
 const SIGNATURE_CHAIN_DELAY_MIN_MS = 3_000;
 const SIGNATURE_CHAIN_DELAY_MAX_MS = 12_000;
 
-// このユーザーの発言を会話の中心にする（会話の主役）
-const TARGET_USER_ID           = '673059482842038274';
-const TARGET_REACT_CHANCE      = 0.85;              // 対象ユーザーの発言に反応する確率
-const TARGET_REACT_COOLDOWN_MS = 3  * 60 * 1000;     // 反応連発を防ぐ最低間隔
-const TARGET_REACT_DELAY_MIN_MS = 5_000;
-const TARGET_REACT_DELAY_MAX_MS = 45_000;
-const TARGET_QUOTE_MAX_LEN      = 60;                // 疑似リプライの引用は短く切り詰める
+// このユーザーになりすまして「main」人格として固定登場させ、会話の中心にする。
+// 他のAI（lurkerなりすまし）がこの人格の直前の発言に反応するターンだけ疑似リプライを使う
+const TARGET_USER_ID      = '673059482842038274';
+const TARGET_QUOTE_MAX_LEN = 60; // 疑似リプライの引用は短く切り詰める
 
 const webhookCache = new Map();
 let lastMessageTime = Date.now(); // 起動時は「今」扱い
 let lastPostedTime  = 0;
-let lastTargetReactTime = 0;
 
 // 現在の日本時間を取得
 function getJstParts() {
@@ -330,7 +327,9 @@ async function ensurePersona(guild) {
     let persona = await getPersona(guild, 'main');
     if (persona) return persona;
 
-    const { member } = await pickOneLurker(guild, {});
+    // 会話の中心にするTARGET_USER_IDが取得できれば最優先でメイン人格にする
+    const forced = await guild.members.fetch(TARGET_USER_ID).catch(() => null);
+    const member = forced ?? (await pickOneLurker(guild, {})).member;
     if (!member) return null;
     const personality = pickPersonality();
     setPersona(member.id, personality, 'main');
@@ -494,16 +493,23 @@ async function runRally(client, guild, channel, baseContext, history, excludeId)
         const rallyContext = `${baseContext ? baseContext + '\n' : ''}${history.map(h => `${h.name}: ${h.content}`).join('\n')}`;
         const name = picked.displayName || picked.user.username;
 
+        // 直前の発言者が「会話の中心（TARGET_USER_IDのなりすまし）」だったターンだけ疑似リプライにする
+        const replyingToTarget = lastSpeakerId === TARGET_USER_ID;
+        const lastEntry = history[history.length - 1];
+
         let content;
+        let historyText; // AIへの文脈用には引用ブロックを含めない生の発言を残す
         if (special?.role === 'spam' && Math.random() < SPAM_STOCK_CHANCE) {
             // 極稀に真剣な投資トークへ。取得できればJDI/キオクシアの直近終値を添える
             const quote = await fetchRandomQuote().catch(() => null);
             content = await generateChatMessage(rallyContext, name, { ...special.opts, stockMode: true, stockQuote: quote });
+            historyText = content;
         } else if (special?.role === 'spam') {
             // 通常は定型文をそのまま投げる（AI生成を挟まないので無料枠も消費しない）
             content = Math.random() < SPAM_SIGNATURE_CHANCE
                 ? SPAM_SIGNATURE_PHRASE
                 : SPAM_GENERIC_PHRASES[Math.floor(Math.random() * SPAM_GENERIC_PHRASES.length)];
+            historyText = content;
         } else if (special?.role === 'animal') {
             // Cat API/Dog APIなどから画像URLを取得して貼るだけ（AI生成を挟まないので無料枠も消費しない）
             const image = await fetchRandomAnimalImage().catch(() => null);
@@ -511,8 +517,13 @@ async function runRally(client, guild, channel, baseContext, history, excludeId)
             content = Math.random() < ANIMAL_CAPTION_CHANCE
                 ? `${ANIMAL_CAPTIONS[Math.floor(Math.random() * ANIMAL_CAPTIONS.length)]}\n${image.url}`
                 : image.url;
+            historyText = content;
         } else {
-            content = await generateChatMessage(rallyContext, name, special ? special.opts : { isReply: true });
+            const replyBody = await generateChatMessage(rallyContext, name, special ? special.opts : { isReply: true });
+            content = (replyBody && replyingToTarget && lastEntry)
+                ? buildPseudoReply(lastEntry.name, lastEntry.content, replyBody)
+                : replyBody;
+            historyText = replyBody;
         }
         if (!content) return; // 生成できなければラリーを打ち切る
 
@@ -521,14 +532,14 @@ async function runRally(client, guild, channel, baseContext, history, excludeId)
 
         const sent = await sendChatterLine(client, channel, name, picked.user.displayAvatarURL({ dynamic: true }), content);
         registerChatterMessage(sent.id, picked.id);
-        console.log(`[Chatter] 🔁 ラリー "${content}" | なりすまし: ${name}${roleLabel}`);
+        console.log(`[Chatter] 🔁 ラリー "${content}" | なりすまし: ${name}${roleLabel}${replyingToTarget && content !== historyText ? '（疑似リプライ）' : ''}`);
 
         if (content === SPAM_SIGNATURE_PHRASE) {
             runSignatureChain(client, guild, channel, picked.id)
                 .catch(e => console.error('[Chatter] 内輪ノリ連鎖エラー:', e.message));
         }
 
-        history.push({ name, content });
+        history.push({ name, content: historyText });
         lastSpeakerId = picked.id;
         lastMessageTime = Date.now(); // ラリー継続中も無発言タイマーをリセット
     }
@@ -570,93 +581,6 @@ async function generateAndPost(client, guild, channel) {
     }
 
     return { ok: true, content, source, lurkerName: personaName };
-}
-
-// 会話の中心にするターゲットユーザーの発言に、ランダムなlurkerが疑似リプライで反応する
-async function respondToTargetMessage(client, guild, channel, message) {
-    if (!anyBudgetAvailable()) {
-        console.warn('[Chatter] 🎯 ターゲット反応: 無料枠切れのため中止');
-        return;
-    }
-
-    const targetName = message.member?.displayName || message.author.username;
-    const { member } = await pickOneLurker(guild, {});
-    if (!member) {
-        console.warn('[Chatter] 🎯 ターゲット反応: なりすまし対象のlurkerが見つかりませんでした');
-        return;
-    }
-    const personality = pickPersonality();
-    const name = member.displayName || member.user.username;
-
-    const context = await fetchRecentContext(channel);
-    const replyBody = await generateChatMessage(context, name, {
-        personality,
-        isReply: true,
-        replyTarget: { name: targetName, content: message.content.slice(0, 300) },
-    });
-    if (!replyBody) {
-        console.warn('[Chatter] 🎯 ターゲット反応: AI生成に失敗したため中止');
-        return;
-    }
-
-    const { hit } = checkNgWords(normalizeForDetection(replyBody));
-    if (hit) {
-        console.warn('[Chatter] 🎯 ターゲット反応: NGワード抵触のため中止');
-        return;
-    }
-
-    const content = buildPseudoReply(targetName, message.content, replyBody);
-    const sent = await sendChatterLine(client, channel, name, member.user.displayAvatarURL({ dynamic: true }), content);
-    registerChatterMessage(sent.id, member.id);
-
-    console.log(`[Chatter] 💬 ${targetName}へ疑似リプライ "${replyBody}" | なりすまし: ${name}`);
-
-    lastMessageTime = Date.now();
-    lastPostedTime  = Date.now();
-
-    // ランダムな人数・回数でAI同士が絡んでいく（対象ユーザーへの疑似リプライではない通常のラリー）
-    if (Math.random() < RALLY_CHANCE) {
-        runRally(client, guild, channel, context, [{ name, content: replyBody }], member.id)
-            .catch(e => console.error('[Chatter] ターゲットラリーエラー:', e.message));
-    }
-}
-
-// index.jsのMessageCreateから呼ばれる。会話の主役となるユーザーの発言をトリガーに反応する
-async function handleTargetMessage(client, message) {
-    if (message.author.id !== TARGET_USER_ID) return;
-
-    const settings  = getSettings();
-    const channelId = settings.chatterChannelId ?? settings.lurkerChannelId;
-    if (!channelId) {
-        console.warn('[Chatter] 🎯 ターゲット反応: chatterChannelId/lurkerChannelIdが未設定のためスキップ');
-        return;
-    }
-    if (message.channel.id !== channelId && message.channel.parentId !== channelId) {
-        console.log(`[Chatter] 🎯 ターゲット反応: 対象チャンネル外のためスキップ (発言先=${message.channel.id} 設定先=${channelId})`);
-        return;
-    }
-
-    if (!anyBudgetAvailable()) {
-        console.warn('[Chatter] 🎯 ターゲット反応: 無料枠切れのためスキップ');
-        return;
-    }
-    if (Date.now() - lastTargetReactTime < TARGET_REACT_COOLDOWN_MS) {
-        console.log('[Chatter] 🎯 ターゲット反応: クールダウン中のためスキップ');
-        return;
-    }
-    if (Math.random() >= TARGET_REACT_CHANCE) {
-        console.log('[Chatter] 🎯 ターゲット反応: 確率抽選に外れたためスキップ');
-        return;
-    }
-
-    lastTargetReactTime = Date.now();
-
-    const guild = message.guild;
-    if (!guild) return;
-
-    console.log('[Chatter] 🎯 ターゲット反応: 反応をスケジュールしました');
-    await wait(TARGET_REACT_DELAY_MIN_MS + Math.random() * (TARGET_REACT_DELAY_MAX_MS - TARGET_REACT_DELAY_MIN_MS));
-    await respondToTargetMessage(client, guild, message.channel, message);
 }
 
 async function tryPost(client) {
@@ -717,4 +641,4 @@ function getProviderStatus() {
     }));
 }
 
-module.exports = { initChatter, recordMessage, forcePost, getLastMessageTime, handleTargetMessage, getProviderStatus };
+module.exports = { initChatter, recordMessage, forcePost, getLastMessageTime, getProviderStatus };
