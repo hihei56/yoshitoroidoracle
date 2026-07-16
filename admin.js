@@ -46,6 +46,7 @@ const { getNgWords, addNgWord, removeNgWord } = require('./ng_word_manager');
 const { resetShiritoriGame } = require('./shiritori');
 const { handleBumpRemindCommand } = require('./bump');
 const { forcePost: forceChatterPost, getProviderStatus: getChatterProviderStatus } = require('./chatter');
+const { resetPersona: resetChatterPersona } = require('./chatter_persona');
 const { forceRecruitPost, getVCRecruitSettings } = require('./vc_recruit');
 const { getStrikeCount, resetStrikes } = require('./spam_enforcer');
 const { resetRtaRace } = require('./rta');
@@ -1019,6 +1020,17 @@ async function handleAdmin2(interaction) {
                     )
                     .setTimestamp()
             ],
+            ephemeral: true,
+        });
+    }
+
+    if (sub === 'chatter_persona_reset') {
+        const slot = interaction.options.getString('slot');
+        const slots = slot === 'all' ? ['main', 'critic', 'mount', 'groom', 'spam', 'animal'] : [slot];
+        slots.forEach(s => resetChatterPersona(s));
+
+        return interaction.reply({
+            content: `✅ chatterの固定キャラ（${slots.join(', ')}）をリセットしました。次回の投稿時に再抽選されます。`,
             ephemeral: true,
         });
     }

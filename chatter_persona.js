@@ -85,4 +85,11 @@ function setPersona(lurkerId, personality, slot = 'main') {
     return persona;
 }
 
-module.exports = { getPersona, setPersona, pickPersonality, pickCriticPersonality, MOUNT_PERSONALITY, GROOM_PERSONALITY, SPAM_PERSONALITY, ANIMAL_PERSONALITY };
+// 指定スロットの固定キャラをリセットする（次回投稿時に再抽選される）
+function resetPersona(slot) {
+    const store = load();
+    delete store[slot];
+    save();
+}
+
+module.exports = { getPersona, setPersona, resetPersona, pickPersonality, pickCriticPersonality, MOUNT_PERSONALITY, GROOM_PERSONALITY, SPAM_PERSONALITY, ANIMAL_PERSONALITY };
