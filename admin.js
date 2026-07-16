@@ -45,8 +45,7 @@ const { handleKickInactive } = require('./kick_inactive');
 const { getNgWords, addNgWord, removeNgWord } = require('./ng_word_manager');
 const { resetShiritoriGame } = require('./shiritori');
 const { handleBumpRemindCommand } = require('./bump');
-const { forcePost: forceChatterPost } = require('./chatter');
-const { getUsage: getChatterUsage } = require('./chatter_budget');
+const { forcePost: forceChatterPost, getProviderStatus: getChatterProviderStatus } = require('./chatter');
 const { forceRecruitPost, getVCRecruitSettings } = require('./vc_recruit');
 const { getStrikeCount, resetStrikes } = require('./spam_enforcer');
 const { resetRtaRace } = require('./rta');
@@ -83,8 +82,10 @@ function buildStatusEmbed() {
     const thinker        = thinkerEnabled
         ? `✅ 有効${thinkerExcl.length ? `（例外: ${thinkerExcl.map(id => `<@${id}>`).join(' ')}）` : ''}`
         : '🚫 無効';
-    const chatterUsage = getChatterUsage();
-    const chatterUsageStr = `${chatterUsage.count}/${chatterUsage.budget}回（本日）`;
+    const chatterProviders  = getChatterProviderStatus().filter(p => p.configured);
+    const chatterUsageStr   = chatterProviders.length
+        ? chatterProviders.map(p => `${p.provider}: ${p.count}/${p.budget}回`).join('\n')
+        : 'なし（APIキー未設定）';
 
     return new EmbedBuilder()
         .setTitle('🛡️ 管理設定')
@@ -987,22 +988,34 @@ async function handleAdmin2(interaction) {
         const dailyBudget  = interaction.options.getInteger('daily_budget');
         const settings = getSettings();
 
-        if (provider)              settings.chatterAiProvider = provider;
-        if (model)                 settings.chatterAiModel    = model;
-        if (dailyBudget)           settings.chatterDailyBudget = dailyBudget;
-        if (provider || model || dailyBudget) saveSettings(settings);
+        if (provider) settings.chatterAiProvider = provider;
+        if (model)    settings.chatterAiModel    = model;
+        if (dailyBudget != null) {
+            const targetProvider = provider && provider !== 'auto' ? provider : null;
+            if (!targetProvider) {
+                return interaction.reply({
+                    content: '❌ daily_budgetを設定する場合は、provider（groq/cloudflare/geminiのいずれか）も一緒に指定してください。',
+                    ephemeral: true,
+                });
+            }
+            if (!settings.chatterDailyBudgets) settings.chatterDailyBudgets = {};
+            settings.chatterDailyBudgets[targetProvider] = dailyBudget;
+        }
+        if (provider || model || dailyBudget != null) saveSettings(settings);
 
-        const usage = getChatterUsage();
+        const providerLines = getChatterProviderStatus()
+            .map(p => `${p.configured ? '✅' : '🚫'} ${p.provider}: ${p.count}/${p.budget}回${p.configured ? '' : '（APIキー未設定）'}`)
+            .join('\n');
+
         return interaction.reply({
             embeds: [
                 new EmbedBuilder()
                     .setTitle('💬 雑談chatter — AI設定')
                     .setColor(COLOR.info)
                     .setDescription(
-                        `プロバイダー: **${settings.chatterAiProvider}**\n` +
-                        `モデル: **${settings.chatterAiModel || '(プロバイダーのデフォルト)'}**\n` +
-                        `1日の予算: **${usage.budget}回**（日本時間0時リセット）\n` +
-                        `本日の利用: **${usage.count}/${usage.budget}回**`
+                        `プロバイダー設定: **${settings.chatterAiProvider}**${settings.chatterAiProvider === 'auto' ? '（利用可能なプロバイダーを自動ローテーション）' : ''}\n` +
+                        `モデル: **${settings.chatterAiModel || '(プロバイダーのデフォルト。autoでは各プロバイダー個別のデフォルトを使用)'}**\n\n` +
+                        `本日の利用状況（日本時間0時リセット）:\n${providerLines}`
                     )
                     .setTimestamp()
             ],

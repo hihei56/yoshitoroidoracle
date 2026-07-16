@@ -30,9 +30,15 @@ function getSettings() {
     if (!data.cryAllowedUsers)                        data.cryAllowedUsers = [];
     if (data.rtaChannelId === undefined) data.rtaChannelId = null;
     if (!data.spamTargetRoles) data.spamTargetRoles = [];
-    if (!data.chatterAiProvider) data.chatterAiProvider = 'groq';
+    // chatterAiProvider: 'groq' | 'cloudflare' | 'gemini' | 'auto'（利用可能な複数プロバイダーを自動でローテーション）
+    if (!data.chatterAiProvider) data.chatterAiProvider = 'auto';
     if (data.chatterAiModel === undefined) data.chatterAiModel = null;
-    if (data.chatterDailyBudget === undefined) data.chatterDailyBudget = null;
+    if (data.chatterDailyBudget === undefined) data.chatterDailyBudget = null; // 旧形式（groq専用の単一予算）
+    if (!data.chatterDailyBudgets) data.chatterDailyBudgets = {};
+    // 旧形式の値が残っていればgroqの予算として引き継ぐ
+    if (data.chatterDailyBudget != null && data.chatterDailyBudgets.groq == null) {
+        data.chatterDailyBudgets.groq = data.chatterDailyBudget;
+    }
     return data;
 }
 
