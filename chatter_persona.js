@@ -23,12 +23,21 @@ const CRITIC_PERSONALITIES = [
     '妙に評論家ぶった物言いをするタイプ。「まあそれもわかるけど」的なワンクッション置いた反応をしがち。',
 ];
 
+// 教養マウント役（脱構築・ポストモダン・カントなど誰も興味のない哲学の小話をドヤ顔で披露する高IQ自慢キャラ）
+const MOUNT_PERSONALITY =
+    '脱構築だのポストモダンだのカントだの、誰も興味のない哲学の小話をドヤ顔で披露してマウントを取りたがる教養マウント系。' +
+    '高IQ自慢がにじむインテリぶった言い回しをする。';
+
+// グルーミング仕草役（「よしよし」「すきだよ」「かわいい」など構って甘やかしてくるタイプ）
+const GROOM_PERSONALITY =
+    '「よしよし」「すきだよ」「かわいいね」のような、猫可愛がりするグルーミング仕草でみんなを甘やかしてくる溺愛タイプ。';
+
 let cache; // undefined = 未読込
 
-// 旧形式（フラットにmain相当のデータのみ保持）からの移行
+// 旧形式（フラットにmain相当のデータのみ保持）からの移行。新形式は任意のスロット名を持てるためそのまま保持する
 function migrate(raw) {
     if (!raw) return { main: null, critic: null };
-    if ('main' in raw || 'critic' in raw) return { main: raw.main ?? null, critic: raw.critic ?? null };
+    if ('main' in raw || 'critic' in raw) return raw;
     return { main: raw, critic: null };
 }
 
@@ -67,4 +76,4 @@ function setPersona(lurkerId, personality, slot = 'main') {
     return persona;
 }
 
-module.exports = { getPersona, setPersona, pickPersonality, pickCriticPersonality };
+module.exports = { getPersona, setPersona, pickPersonality, pickCriticPersonality, MOUNT_PERSONALITY, GROOM_PERSONALITY };
