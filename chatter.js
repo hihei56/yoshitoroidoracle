@@ -1,12 +1,13 @@
 // chatter.js — 日本時間の時間帯や無料枠残量を踏まえて、複数人格が毎日雑談する自動投稿
 const axios = require('axios');
 const { pickOneLurker } = require('./lurker_picker');
-const { getPersona, setPersona, pickPersonality, pickCriticPersonality, MOUNT_PERSONALITY, GROOM_PERSONALITY, SPAM_PERSONALITY } = require('./chatter_persona');
+const { getPersona, setPersona, pickPersonality, pickCriticPersonality, MOUNT_PERSONALITY, GROOM_PERSONALITY, SPAM_PERSONALITY, ANIMAL_PERSONALITY } = require('./chatter_persona');
 const { getSettings } = require('./config');
 const { checkNgWords, normalizeForDetection } = require('./moderator');
 const { registerChatterMessage } = require('./chatter_registry');
 const { hasBudget, recordUsage, getUsage } = require('./chatter_budget');
 const { fetchRandomQuote } = require('./stock_quote');
+const { fetchRandomAnimalImage } = require('./animal_image');
 
 const SILENCE_MS        = 60 * 60 * 1000;     // 1時間無発言なら必ず一言挟む
 const MIN_GAP_MS        = 10 * 60 * 1000;     // 自発投稿同士の最低間隔（連投防止）
@@ -28,9 +29,14 @@ const RALLY_DELAY_MIN_MS = 8_000;
 const RALLY_DELAY_MAX_MS = 25_000;
 
 // ラリーに味変で交ざる固定キャラたち（毎回は出さず、たまに登場する程度の確率）
-const MOUNT_APPEAR_CHANCE = 0.4; // 教養マウント役
-const GROOM_APPEAR_CHANCE = 0.4; // グルーミング仕草役
-const SPAM_APPEAR_CHANCE  = 0.4; // スパム役
+const MOUNT_APPEAR_CHANCE  = 0.4; // 教養マウント役
+const GROOM_APPEAR_CHANCE  = 0.4; // グルーミング仕草役
+const SPAM_APPEAR_CHANCE   = 0.4; // スパム役
+const ANIMAL_APPEAR_CHANCE = 0.4; // 動物画像役
+
+// 動物画像役の設定（画像単体、またはキャプション付きで貼る）
+const ANIMAL_CAPTION_CHANCE = 0.5;
+const ANIMAL_CAPTIONS = ['見て！', 'かわいすぎる', 'これは癒される', 'めっちゃかわいくない？', '和むわ〜'];
 
 // スパム役の定型文設定
 const SPAM_GENERIC_PHRASES  = ['う', 'あ〜超うれしい！'];
@@ -376,6 +382,17 @@ async function ensureSpamPersona(guild, excludeId) {
     return { lurkerId: member.id, personality: SPAM_PERSONALITY, member };
 }
 
+// 動物画像役。Cat API/Dog APIなどから拾ってきた動物画像をふと貼ってくる固定キャラ
+async function ensureAnimalPersona(guild, excludeId) {
+    let persona = await getPersona(guild, 'animal');
+    if (persona) return persona;
+
+    const { member } = await pickOneLurker(guild, { lastPickedId: excludeId });
+    if (!member) return null;
+    setPersona(member.id, ANIMAL_PERSONALITY, 'animal');
+    return { lurkerId: member.id, personality: ANIMAL_PERSONALITY, member };
+}
+
 async function sendChatterLine(client, channel, name, avatarURL, content) {
     const targetChannel = channel.isThread?.() ? channel.parent : channel;
     const webhook = await getWebhook(targetChannel, client);
@@ -428,9 +445,10 @@ async function runRally(client, guild, channel, baseContext, history, excludeId)
     const turns = RALLY_MIN_TURNS + Math.floor(Math.random() * (RALLY_MAX_TURNS - RALLY_MIN_TURNS + 1));
 
     const critic = await ensureCriticPersona(guild, excludeId);
-    const mount  = Math.random() < MOUNT_APPEAR_CHANCE ? await ensureMountPersona(guild, excludeId) : null;
-    const groom  = Math.random() < GROOM_APPEAR_CHANCE ? await ensureGroomPersona(guild, excludeId) : null;
-    const spam   = Math.random() < SPAM_APPEAR_CHANCE  ? await ensureSpamPersona(guild, excludeId)  : null;
+    const mount  = Math.random() < MOUNT_APPEAR_CHANCE  ? await ensureMountPersona(guild, excludeId)  : null;
+    const groom  = Math.random() < GROOM_APPEAR_CHANCE  ? await ensureGroomPersona(guild, excludeId)  : null;
+    const spam   = Math.random() < SPAM_APPEAR_CHANCE   ? await ensureSpamPersona(guild, excludeId)   : null;
+    const animal = Math.random() < ANIMAL_APPEAR_CHANCE ? await ensureAnimalPersona(guild, excludeId) : null;
 
     // ターンが重複しないよう、登場が決まったキャラから順にターン番号を抽選で割り当てる
     const availableTurns = Array.from({ length: turns }, (_, i) => i);
@@ -443,6 +461,7 @@ async function runRally(client, guild, channel, baseContext, history, excludeId)
     const mountTurn  = mount  ? assignTurn() : -1;
     const groomTurn  = groom  ? assignTurn() : -1;
     const spamTurn   = spam   ? assignTurn() : -1;
+    const animalTurn = animal ? assignTurn() : -1;
 
     let lastSpeakerId = excludeId;
 
@@ -464,6 +483,9 @@ async function runRally(client, guild, channel, baseContext, history, excludeId)
         } else if (i === spamTurn && spam.member.id !== lastSpeakerId) {
             special = { member: spam.member, role: 'spam', opts: { isReply: true, personality: spam.personality } };
             roleLabel = '（スパム役）';
+        } else if (i === animalTurn && animal.member.id !== lastSpeakerId) {
+            special = { member: animal.member, role: 'animal', opts: {} };
+            roleLabel = '（動物画像役）';
         }
 
         const picked = special ? special.member : (await pickOneLurker(guild, { lastPickedId: lastSpeakerId })).member;
@@ -482,6 +504,13 @@ async function runRally(client, guild, channel, baseContext, history, excludeId)
             content = Math.random() < SPAM_SIGNATURE_CHANCE
                 ? SPAM_SIGNATURE_PHRASE
                 : SPAM_GENERIC_PHRASES[Math.floor(Math.random() * SPAM_GENERIC_PHRASES.length)];
+        } else if (special?.role === 'animal') {
+            // Cat API/Dog APIなどから画像URLを取得して貼るだけ（AI生成を挟まないので無料枠も消費しない）
+            const image = await fetchRandomAnimalImage().catch(() => null);
+            if (!image) return; // 取得できなければラリーを打ち切る
+            content = Math.random() < ANIMAL_CAPTION_CHANCE
+                ? `${ANIMAL_CAPTIONS[Math.floor(Math.random() * ANIMAL_CAPTIONS.length)]}\n${image.url}`
+                : image.url;
         } else {
             content = await generateChatMessage(rallyContext, name, special ? special.opts : { isReply: true });
         }
@@ -545,11 +574,17 @@ async function generateAndPost(client, guild, channel) {
 
 // 会話の中心にするターゲットユーザーの発言に、ランダムなlurkerが疑似リプライで反応する
 async function respondToTargetMessage(client, guild, channel, message) {
-    if (!anyBudgetAvailable()) return;
+    if (!anyBudgetAvailable()) {
+        console.warn('[Chatter] 🎯 ターゲット反応: 無料枠切れのため中止');
+        return;
+    }
 
     const targetName = message.member?.displayName || message.author.username;
     const { member } = await pickOneLurker(guild, {});
-    if (!member) return;
+    if (!member) {
+        console.warn('[Chatter] 🎯 ターゲット反応: なりすまし対象のlurkerが見つかりませんでした');
+        return;
+    }
     const personality = pickPersonality();
     const name = member.displayName || member.user.username;
 
@@ -559,10 +594,16 @@ async function respondToTargetMessage(client, guild, channel, message) {
         isReply: true,
         replyTarget: { name: targetName, content: message.content.slice(0, 300) },
     });
-    if (!replyBody) return;
+    if (!replyBody) {
+        console.warn('[Chatter] 🎯 ターゲット反応: AI生成に失敗したため中止');
+        return;
+    }
 
     const { hit } = checkNgWords(normalizeForDetection(replyBody));
-    if (hit) return;
+    if (hit) {
+        console.warn('[Chatter] 🎯 ターゲット反応: NGワード抵触のため中止');
+        return;
+    }
 
     const content = buildPseudoReply(targetName, message.content, replyBody);
     const sent = await sendChatterLine(client, channel, name, member.user.displayAvatarURL({ dynamic: true }), content);
@@ -586,18 +627,34 @@ async function handleTargetMessage(client, message) {
 
     const settings  = getSettings();
     const channelId = settings.chatterChannelId ?? settings.lurkerChannelId;
-    if (!channelId) return;
-    if (message.channel.id !== channelId && message.channel.parentId !== channelId) return;
+    if (!channelId) {
+        console.warn('[Chatter] 🎯 ターゲット反応: chatterChannelId/lurkerChannelIdが未設定のためスキップ');
+        return;
+    }
+    if (message.channel.id !== channelId && message.channel.parentId !== channelId) {
+        console.log(`[Chatter] 🎯 ターゲット反応: 対象チャンネル外のためスキップ (発言先=${message.channel.id} 設定先=${channelId})`);
+        return;
+    }
 
-    if (!anyBudgetAvailable()) return;
-    if (Date.now() - lastTargetReactTime < TARGET_REACT_COOLDOWN_MS) return;
-    if (Math.random() >= TARGET_REACT_CHANCE) return;
+    if (!anyBudgetAvailable()) {
+        console.warn('[Chatter] 🎯 ターゲット反応: 無料枠切れのためスキップ');
+        return;
+    }
+    if (Date.now() - lastTargetReactTime < TARGET_REACT_COOLDOWN_MS) {
+        console.log('[Chatter] 🎯 ターゲット反応: クールダウン中のためスキップ');
+        return;
+    }
+    if (Math.random() >= TARGET_REACT_CHANCE) {
+        console.log('[Chatter] 🎯 ターゲット反応: 確率抽選に外れたためスキップ');
+        return;
+    }
 
     lastTargetReactTime = Date.now();
 
     const guild = message.guild;
     if (!guild) return;
 
+    console.log('[Chatter] 🎯 ターゲット反応: 反応をスケジュールしました');
     await wait(TARGET_REACT_DELAY_MIN_MS + Math.random() * (TARGET_REACT_DELAY_MAX_MS - TARGET_REACT_DELAY_MIN_MS));
     await respondToTargetMessage(client, guild, message.channel, message);
 }
