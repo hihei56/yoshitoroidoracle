@@ -32,6 +32,11 @@ const MOUNT_PERSONALITY =
 const GROOM_PERSONALITY =
     '「よしよし」「すきだよ」「かわいいね」のような、猫可愛がりするグルーミング仕草でみんなを甘やかしてくる溺愛タイプ。';
 
+// スパム役（定型文を連呼して場を荒らすが、極稀に人が変わったように真剣な話をする）
+const SPAM_PERSONALITY =
+    '「う」「あ〜超うれしい！」「イーッヒッヒッヒッwww😂」のような定型文を連呼してノリで場を荒らす、テンションだけ高いスパム気味なキャラ。' +
+    'ただし極稀に人が変わったように真剣なトーンになる一面もある。';
+
 let cache; // undefined = 未読込
 
 // 旧形式（フラットにmain相当のデータのみ保持）からの移行。新形式は任意のスロット名を持てるためそのまま保持する
@@ -76,4 +81,4 @@ function setPersona(lurkerId, personality, slot = 'main') {
     return persona;
 }
 
-module.exports = { getPersona, setPersona, pickPersonality, pickCriticPersonality, MOUNT_PERSONALITY, GROOM_PERSONALITY };
+module.exports = { getPersona, setPersona, pickPersonality, pickCriticPersonality, MOUNT_PERSONALITY, GROOM_PERSONALITY, SPAM_PERSONALITY };

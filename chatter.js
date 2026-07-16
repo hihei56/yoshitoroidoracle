@@ -1,7 +1,7 @@
 // chatter.js — 日本時間の時間帯や無料枠残量を踏まえて、複数人格が毎日雑談する自動投稿
 const axios = require('axios');
 const { pickOneLurker } = require('./lurker_picker');
-const { getPersona, setPersona, pickPersonality, pickCriticPersonality, MOUNT_PERSONALITY, GROOM_PERSONALITY } = require('./chatter_persona');
+const { getPersona, setPersona, pickPersonality, pickCriticPersonality, MOUNT_PERSONALITY, GROOM_PERSONALITY, SPAM_PERSONALITY } = require('./chatter_persona');
 const { getSettings } = require('./config');
 const { checkNgWords, normalizeForDetection } = require('./moderator');
 const { registerChatterMessage } = require('./chatter_registry');
@@ -30,6 +30,20 @@ const RALLY_DELAY_MAX_MS = 25_000;
 // ラリーに味変で交ざる固定キャラたち（毎回は出さず、たまに登場する程度の確率）
 const MOUNT_APPEAR_CHANCE = 0.4; // 教養マウント役
 const GROOM_APPEAR_CHANCE = 0.4; // グルーミング仕草役
+const SPAM_APPEAR_CHANCE  = 0.4; // スパム役
+
+// スパム役の定型文設定
+const SPAM_GENERIC_PHRASES  = ['う', 'あ〜超うれしい！'];
+const SPAM_SIGNATURE_PHRASE = 'イーッヒッヒッヒッwww😂';
+const SPAM_SIGNATURE_CHANCE = 0.4;  // 定型文を出すとき、内輪ノリの決まり文句を選ぶ確率
+const SPAM_STOCK_CHANCE     = 0.05; // 極稀に人が変わったように真剣な投資トークをする確率
+
+// スパム役が決まり文句を言うと、内輪ノリとして他のlurkerも連鎖して同じ台詞を繰り返すことがある
+const SIGNATURE_CHAIN_CHANCE      = 0.5;
+const SIGNATURE_CHAIN_MIN_TURNS   = 1;
+const SIGNATURE_CHAIN_MAX_TURNS   = 3;
+const SIGNATURE_CHAIN_DELAY_MIN_MS = 3_000;
+const SIGNATURE_CHAIN_DELAY_MAX_MS = 12_000;
 
 // このユーザーの発言を会話の中心にする（会話の主役）
 const TARGET_USER_ID           = '673059482842038274';
@@ -129,11 +143,13 @@ async function fetchRecentContext(channel) {
 const DEFAULT_CF_MODEL   = '@cf/meta/llama-3.1-8b-instruct-fast';
 const DEFAULT_GROQ_MODEL = 'qwen/qwen3-32b';
 
-function buildChatterMessages(context, personaName, { personality, isReply = false, contrarian = false, replyTarget = null } = {}) {
+function buildChatterMessages(context, personaName, { personality, isReply = false, contrarian = false, replyTarget = null, stockMode = false } = {}) {
     const personaLine = personality
         ? `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。性格: ${personality}`
         : `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。`;
-    const situation = replyTarget
+    const situation = stockMode
+        ? 'いつもは定型文の連呼で場を荒らしているキャラですが、今だけは人が変わったように急に真剣なトーンになり、株や投資について一言だけ話すところです。普段とのギャップが伝わるようにしてください。ただし実際の株価やニュースは分からないので、具体的な銘柄名や数値を断定的に言うのは避け、心構えや考え方についての一言にとどめてください。'
+        : replyTarget
         ? `友達同士の雑談チャンネルで、「${replyTarget.name}」が「${replyTarget.content}」と発言したので、それを踏まえて自然に返信するところです。`
         : isReply
         ? '友達同士の雑談チャンネルで、直前の発言にふと相槌や反応を返すところです。'
@@ -280,6 +296,17 @@ async function ensureGroomPersona(guild, excludeId) {
     return { lurkerId: member.id, personality: GROOM_PERSONALITY, member };
 }
 
+// スパム役。定型文を連呼して荒らすが、極稀に真剣な投資トークをする固定キャラ
+async function ensureSpamPersona(guild, excludeId) {
+    let persona = await getPersona(guild, 'spam');
+    if (persona) return persona;
+
+    const { member } = await pickOneLurker(guild, { lastPickedId: excludeId });
+    if (!member) return null;
+    setPersona(member.id, SPAM_PERSONALITY, 'spam');
+    return { lurkerId: member.id, personality: SPAM_PERSONALITY, member };
+}
+
 async function sendChatterLine(client, channel, name, avatarURL, content) {
     const targetChannel = channel.isThread?.() ? channel.parent : channel;
     const webhook = await getWebhook(targetChannel, client);
@@ -302,15 +329,39 @@ function buildPseudoReply(targetName, targetContent, replyBody) {
     return `> **${targetName}**: ${snippet}\n${replyBody}`;
 }
 
+// スパム役が決まり文句「イーッヒッヒッヒッwww😂」を言うと、内輪ノリとして他のlurkerも
+// 連鎖して同じ台詞を繰り返すことがある。AI生成を挟まないので無料枠は消費しない
+async function runSignatureChain(client, guild, channel, excludeId) {
+    if (Math.random() >= SIGNATURE_CHAIN_CHANCE) return;
+    const turns = SIGNATURE_CHAIN_MIN_TURNS + Math.floor(Math.random() * (SIGNATURE_CHAIN_MAX_TURNS - SIGNATURE_CHAIN_MIN_TURNS + 1));
+    let lastSpeakerId = excludeId;
+
+    for (let i = 0; i < turns; i++) {
+        await wait(SIGNATURE_CHAIN_DELAY_MIN_MS + Math.random() * (SIGNATURE_CHAIN_DELAY_MAX_MS - SIGNATURE_CHAIN_DELAY_MIN_MS));
+
+        const { member } = await pickOneLurker(guild, { lastPickedId: lastSpeakerId });
+        if (!member) return;
+        const name = member.displayName || member.user.username;
+
+        const sent = await sendChatterLine(client, channel, name, member.user.displayAvatarURL({ dynamic: true }), SPAM_SIGNATURE_PHRASE);
+        registerChatterMessage(sent.id, member.id);
+        console.log(`[Chatter] 🔁 内輪ノリ連鎖 "${SPAM_SIGNATURE_PHRASE}" | なりすまし: ${name}`);
+
+        lastSpeakerId = member.id;
+        lastMessageTime = Date.now();
+    }
+}
+
 // 固定人格の投稿をきっかけに、ほかのlurkerがランダムな回数だけ連鎖して反応する「ラリー」
-// 全肯定だけで終わらないよう、必ず1回は批評家役が交ざって水を差す。教養マウント役・グルーミング役は
-// 味変としてたまに交ざる程度（ターン数が足りなければ登場しないこともある）
+// 全肯定だけで終わらないよう、必ず1回は批評家役が交ざって水を差す。教養マウント役・グルーミング役・
+// スパム役は味変としてたまに交ざる程度（ターン数が足りなければ登場しないこともある）
 async function runRally(client, guild, channel, baseContext, history, excludeId) {
     const turns = RALLY_MIN_TURNS + Math.floor(Math.random() * (RALLY_MAX_TURNS - RALLY_MIN_TURNS + 1));
 
     const critic = await ensureCriticPersona(guild, excludeId);
     const mount  = Math.random() < MOUNT_APPEAR_CHANCE ? await ensureMountPersona(guild, excludeId) : null;
     const groom  = Math.random() < GROOM_APPEAR_CHANCE ? await ensureGroomPersona(guild, excludeId) : null;
+    const spam   = Math.random() < SPAM_APPEAR_CHANCE  ? await ensureSpamPersona(guild, excludeId)  : null;
 
     // ターンが重複しないよう、登場が決まったキャラから順にターン番号を抽選で割り当てる
     const availableTurns = Array.from({ length: turns }, (_, i) => i);
@@ -322,6 +373,7 @@ async function runRally(client, guild, channel, baseContext, history, excludeId)
     const criticTurn = critic ? assignTurn() : -1;
     const mountTurn  = mount  ? assignTurn() : -1;
     const groomTurn  = groom  ? assignTurn() : -1;
+    const spamTurn   = spam   ? assignTurn() : -1;
 
     let lastSpeakerId = excludeId;
 
@@ -332,14 +384,17 @@ async function runRally(client, guild, channel, baseContext, history, excludeId)
         let special = null;
         let roleLabel = '';
         if (i === criticTurn && critic.member.id !== lastSpeakerId) {
-            special = { member: critic.member, opts: { isReply: true, personality: critic.personality, contrarian: true } };
+            special = { member: critic.member, role: 'critic', opts: { isReply: true, personality: critic.personality, contrarian: true } };
             roleLabel = '（批評家役）';
         } else if (i === mountTurn && mount.member.id !== lastSpeakerId) {
-            special = { member: mount.member, opts: { isReply: true, personality: mount.personality } };
+            special = { member: mount.member, role: 'mount', opts: { isReply: true, personality: mount.personality } };
             roleLabel = '（教養マウント役）';
         } else if (i === groomTurn && groom.member.id !== lastSpeakerId) {
-            special = { member: groom.member, opts: { isReply: true, personality: groom.personality } };
+            special = { member: groom.member, role: 'groom', opts: { isReply: true, personality: groom.personality } };
             roleLabel = '（グルーミング役）';
+        } else if (i === spamTurn && spam.member.id !== lastSpeakerId) {
+            special = { member: spam.member, role: 'spam', opts: { isReply: true, personality: spam.personality } };
+            roleLabel = '（スパム役）';
         }
 
         const picked = special ? special.member : (await pickOneLurker(guild, { lastPickedId: lastSpeakerId })).member;
@@ -347,7 +402,18 @@ async function runRally(client, guild, channel, baseContext, history, excludeId)
 
         const rallyContext = `${baseContext ? baseContext + '\n' : ''}${history.map(h => `${h.name}: ${h.content}`).join('\n')}`;
         const name = picked.displayName || picked.user.username;
-        const content = await generateChatMessage(rallyContext, name, special ? special.opts : { isReply: true });
+
+        let content;
+        if (special?.role === 'spam' && Math.random() >= SPAM_STOCK_CHANCE) {
+            // 通常は定型文をそのまま投げる（AI生成を挟まないので無料枠も消費しない）
+            content = Math.random() < SPAM_SIGNATURE_CHANCE
+                ? SPAM_SIGNATURE_PHRASE
+                : SPAM_GENERIC_PHRASES[Math.floor(Math.random() * SPAM_GENERIC_PHRASES.length)];
+        } else {
+            content = await generateChatMessage(rallyContext, name, special
+                ? { ...special.opts, stockMode: special.role === 'spam' }
+                : { isReply: true });
+        }
         if (!content) return; // 生成できなければラリーを打ち切る
 
         const { hit } = checkNgWords(normalizeForDetection(content));
@@ -356,6 +422,11 @@ async function runRally(client, guild, channel, baseContext, history, excludeId)
         const sent = await sendChatterLine(client, channel, name, picked.user.displayAvatarURL({ dynamic: true }), content);
         registerChatterMessage(sent.id, picked.id);
         console.log(`[Chatter] 🔁 ラリー "${content}" | なりすまし: ${name}${roleLabel}`);
+
+        if (content === SPAM_SIGNATURE_PHRASE) {
+            runSignatureChain(client, guild, channel, picked.id)
+                .catch(e => console.error('[Chatter] 内輪ノリ連鎖エラー:', e.message));
+        }
 
         history.push({ name, content });
         lastSpeakerId = picked.id;
