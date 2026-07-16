@@ -178,6 +178,19 @@ function buildChatterMessages(context, personaName, { personality, isReply = fal
     ];
 }
 
+// プロバイダーがレート制限(429)を返した場合、この期間は候補から外してフォールバックさせる
+const RATE_LIMIT_COOLDOWN_MS = 5 * 60 * 1000;
+const rateLimitedUntil = {}; // provider -> 復帰予定time(ms)
+
+function markRateLimited(provider) {
+    rateLimitedUntil[provider] = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+    console.warn(`[Chatter] ⚠️ ${provider}がレート制限中の可能性 → ${RATE_LIMIT_COOLDOWN_MS / 60000}分間フォールバック対象から外します`);
+}
+
+function isRateLimited(provider) {
+    return (rateLimitedUntil[provider] ?? 0) > Date.now();
+}
+
 async function generateViaGroq(context, personaName, model, opts) {
     if (!process.env.GROQ_API_KEY) return null;
     try {
@@ -200,6 +213,7 @@ async function generateViaGroq(context, personaName, model, opts) {
         );
         return res.data.choices[0]?.message?.content?.trim() || null;
     } catch (e) {
+        if (e.response?.status === 429) markRateLimited('groq');
         console.error(`[Chatter] Groq生成エラー(model=${model}):`, e.message);
         return null;
     }
@@ -227,6 +241,7 @@ async function generateViaCloudflare(context, personaName, model, opts) {
         );
         return res.data?.result?.response?.trim() || null;
     } catch (e) {
+        if (e.response?.status === 429) markRateLimited('cloudflare');
         console.error(`[Chatter] Cloudflare AI生成エラー(model=${model}):`, e.message);
         return null;
     }
@@ -253,6 +268,7 @@ async function generateViaGemini(context, personaName, model, opts) {
         );
         return res.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
     } catch (e) {
+        if (e.response?.status === 429) markRateLimited('gemini');
         console.error(`[Chatter] Gemini生成エラー(model=${model}):`, e.message);
         return null;
     }
@@ -272,6 +288,9 @@ const PROVIDER_DEFAULT_MODELS = {
     gemini: DEFAULT_GEMINI_MODEL,
 };
 
+// フォールバックの優先順位（普段はgroqを使い、ダメなら順に切り替える）
+const PROVIDER_PRIORITY = ['groq', 'cloudflare', 'gemini'];
+
 function isProviderConfigured(provider) {
     if (provider === 'groq')       return !!process.env.GROQ_API_KEY;
     if (provider === 'cloudflare') return !!(process.env.CF_ACCOUNT_ID && process.env.CF_API_TOKEN);
@@ -279,17 +298,17 @@ function isProviderConfigured(provider) {
     return false;
 }
 
-// APIキーが設定済み、かつ本日の無料枠がまだ残っているプロバイダーの一覧
-function availableProviders() {
-    return Object.keys(PROVIDER_DEFAULT_MODELS).filter(p => isProviderConfigured(p) && hasBudget(p));
+// APIキーが設定済み、本日の無料枠が残っていて、直近レート制限に引っかかっていないプロバイダーか
+function isProviderReady(provider) {
+    return isProviderConfigured(provider) && hasBudget(provider) && !isRateLimited(provider);
 }
 
-// いずれかのプロバイダー（設定で固定している場合はそれのみ）で本日まだ生成できるか
+// いずれかのプロバイダー（設定で固定している場合はそれのみ）で今すぐ生成できるか
 function anyBudgetAvailable() {
     const settings = getSettings();
     const forced   = settings.chatterAiProvider;
-    if (forced && forced !== 'auto') return isProviderConfigured(forced) && hasBudget(forced);
-    return availableProviders().length > 0;
+    if (forced && forced !== 'auto') return isProviderReady(forced);
+    return PROVIDER_PRIORITY.some(isProviderReady);
 }
 
 async function callProvider(provider, context, personaName, model, opts) {
@@ -298,29 +317,27 @@ async function callProvider(provider, context, personaName, model, opts) {
     return generateViaGroq(context, personaName, model, opts);
 }
 
-// 'auto'設定時は、その時点でAPIキーがあり無料枠が残っている複数プロバイダー（Groq/Cloudflare/Gemini）から
-// ランダムに1つ選んで生成させる。特定プロバイダーを指定している場合は従来通りそれ固定で使う
+// 'auto'設定時は、普段はGroqを優先して使い、無料枠切れ・レート制限などで使えない時だけ
+// Cloudflare→Geminiの順にフォールバックする。特定プロバイダーを指定している場合はそれ固定
 async function generateChatMessage(context, personaName, opts) {
     const settings = getSettings();
     const forced   = settings.chatterAiProvider;
     const isAuto   = !forced || forced === 'auto';
 
-    let provider = null;
-    if (!isAuto) {
-        if (isProviderConfigured(forced) && hasBudget(forced)) provider = forced;
-    } else {
-        const pool = availableProviders();
-        if (pool.length) provider = pool[Math.floor(Math.random() * pool.length)];
-    }
-    if (!provider) {
-        console.warn('[Chatter] 利用可能なAIプロバイダーがない（無料枠切れ or 未設定）ため生成をスキップします');
-        return null;
+    const candidates = isAuto
+        ? PROVIDER_PRIORITY.filter(isProviderReady)
+        : (isProviderReady(forced) ? [forced] : []);
+
+    for (const provider of candidates) {
+        const model = (!isAuto && settings.chatterAiModel) || PROVIDER_DEFAULT_MODELS[provider];
+        const raw = await callProvider(provider, context, personaName, model, opts);
+        recordUsage(provider);
+        if (raw) return stripNamePrefix(raw);
+        // 失敗（レート制限・生成エラー等）した場合は次の候補にフォールバック
     }
 
-    const model = (!isAuto && settings.chatterAiModel) || PROVIDER_DEFAULT_MODELS[provider];
-    const raw = await callProvider(provider, context, personaName, model, opts);
-    recordUsage(provider);
-    return stripNamePrefix(raw);
+    console.warn('[Chatter] 利用可能なAIプロバイダーがない（無料枠切れ・レート制限・未設定）ため生成をスキップします');
+    return null;
 }
 
 async function ensurePersona(guild) {
@@ -621,11 +638,11 @@ function initChatter(client) {
         tryPost(client).catch(e => console.error('[Chatter] エラー:', e.message));
     }, CHECK_INTERVAL_MS);
 
-    const configured = Object.keys(PROVIDER_DEFAULT_MODELS).filter(isProviderConfigured);
+    const configured = PROVIDER_PRIORITY.filter(isProviderConfigured);
     const budgetSummary = configured.length
         ? configured.map(p => `${p}=${getUsage(p).budget}回`).join(' / ')
         : 'なし（APIキー未設定）';
-    console.log(`[Chatter] ✅ 初期化 | 24時間休止なし / 有効プロバイダーの1日予算: ${budgetSummary}`);
+    console.log(`[Chatter] ✅ 初期化 | 24時間休止なし / フォールバック順=${PROVIDER_PRIORITY.join('→')} / 有効プロバイダーの1日予算: ${budgetSummary}`);
 }
 
 function getLastMessageTime() {
@@ -634,7 +651,7 @@ function getLastMessageTime() {
 
 // /admin表示用: プロバイダーごとのAPIキー設定有無と本日の無料枠利用状況
 function getProviderStatus() {
-    return Object.keys(PROVIDER_DEFAULT_MODELS).map(provider => ({
+    return PROVIDER_PRIORITY.map(provider => ({
         provider,
         configured: isProviderConfigured(provider),
         ...getUsage(provider),
