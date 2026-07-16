@@ -6,6 +6,7 @@ const { getSettings } = require('./config');
 const { checkNgWords, normalizeForDetection } = require('./moderator');
 const { registerChatterMessage } = require('./chatter_registry');
 const { hasBudget, recordUsage, getUsage } = require('./chatter_budget');
+const { fetchRandomQuote } = require('./stock_quote');
 
 const SILENCE_MS        = 60 * 60 * 1000;     // 1時間無発言なら必ず一言挟む
 const MIN_GAP_MS        = 10 * 60 * 1000;     // 自発投稿同士の最低間隔（連投防止）
@@ -143,12 +144,14 @@ async function fetchRecentContext(channel) {
 const DEFAULT_CF_MODEL   = '@cf/meta/llama-3.1-8b-instruct-fast';
 const DEFAULT_GROQ_MODEL = 'qwen/qwen3-32b';
 
-function buildChatterMessages(context, personaName, { personality, isReply = false, contrarian = false, replyTarget = null, stockMode = false } = {}) {
+function buildChatterMessages(context, personaName, { personality, isReply = false, contrarian = false, replyTarget = null, stockMode = false, stockQuote = null } = {}) {
     const personaLine = personality
         ? `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。性格: ${personality}`
         : `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。`;
     const situation = stockMode
-        ? 'いつもは定型文の連呼で場を荒らしているキャラですが、今だけは人が変わったように急に真剣なトーンになり、株や投資について一言だけ話すところです。普段とのギャップが伝わるようにしてください。ただし実際の株価やニュースは分からないので、具体的な銘柄名や数値を断定的に言うのは避け、心構えや考え方についての一言にとどめてください。'
+        ? (stockQuote
+            ? `いつもは定型文の連呼で場を荒らしているキャラですが、今だけは人が変わったように急に真剣なトーンになり、株や投資について一言だけ話すところです。普段とのギャップが伝わるようにしてください。ちなみに直近の${stockQuote.name}の終値は${stockQuote.close}円（${stockQuote.date}時点）でした。信用取引・投機的な短期売買を好む口調で、この値動きに軽く触れても構いません。`
+            : 'いつもは定型文の連呼で場を荒らしているキャラですが、今だけは人が変わったように急に真剣なトーンになり、株や投資について一言だけ話すところです。普段とのギャップが伝わるようにしてください。ただし実際の株価やニュースは分からないので、具体的な銘柄名や数値を断定的に言うのは避け、信用取引・投機的な短期売買を好む心構えについての一言にとどめてください。')
         : replyTarget
         ? `友達同士の雑談チャンネルで、「${replyTarget.name}」が「${replyTarget.content}」と発言したので、それを踏まえて自然に返信するところです。`
         : isReply
@@ -404,15 +407,17 @@ async function runRally(client, guild, channel, baseContext, history, excludeId)
         const name = picked.displayName || picked.user.username;
 
         let content;
-        if (special?.role === 'spam' && Math.random() >= SPAM_STOCK_CHANCE) {
+        if (special?.role === 'spam' && Math.random() < SPAM_STOCK_CHANCE) {
+            // 極稀に真剣な投資トークへ。取得できればJDI/キオクシアの直近終値を添える
+            const quote = await fetchRandomQuote().catch(() => null);
+            content = await generateChatMessage(rallyContext, name, { ...special.opts, stockMode: true, stockQuote: quote });
+        } else if (special?.role === 'spam') {
             // 通常は定型文をそのまま投げる（AI生成を挟まないので無料枠も消費しない）
             content = Math.random() < SPAM_SIGNATURE_CHANCE
                 ? SPAM_SIGNATURE_PHRASE
                 : SPAM_GENERIC_PHRASES[Math.floor(Math.random() * SPAM_GENERIC_PHRASES.length)];
         } else {
-            content = await generateChatMessage(rallyContext, name, special
-                ? { ...special.opts, stockMode: special.role === 'spam' }
-                : { isReply: true });
+            content = await generateChatMessage(rallyContext, name, special ? special.opts : { isReply: true });
         }
         if (!content) return; // 生成できなければラリーを打ち切る
 
