@@ -1,7 +1,7 @@
 // chatter.js — 日本時間の時間帯や無料枠残量を踏まえて、複数人格が毎日雑談する自動投稿
 const axios = require('axios');
 const { pickOneLurker } = require('./lurker_picker');
-const { getPersona, setPersona, pickPersonality, pickCriticPersonality } = require('./chatter_persona');
+const { getPersona, setPersona, pickPersonality, pickCriticPersonality, MOUNT_PERSONALITY, GROOM_PERSONALITY } = require('./chatter_persona');
 const { getSettings } = require('./config');
 const { checkNgWords, normalizeForDetection } = require('./moderator');
 const { registerChatterMessage } = require('./chatter_registry');
@@ -26,6 +26,10 @@ const RALLY_MIN_TURNS    = 1;
 const RALLY_MAX_TURNS    = 3;
 const RALLY_DELAY_MIN_MS = 8_000;
 const RALLY_DELAY_MAX_MS = 25_000;
+
+// ラリーに味変で交ざる固定キャラたち（毎回は出さず、たまに登場する程度の確率）
+const MOUNT_APPEAR_CHANCE = 0.4; // 教養マウント役
+const GROOM_APPEAR_CHANCE = 0.4; // グルーミング仕草役
 
 // このユーザーの発言を会話の中心にする（会話の主役）
 const TARGET_USER_ID           = '673059482842038274';
@@ -254,6 +258,28 @@ async function ensureCriticPersona(guild, excludeId) {
     return { lurkerId: member.id, personality, member };
 }
 
+// 教養マウント役。誰も興味のない哲学トークをドヤ顔で披露する固定キャラ
+async function ensureMountPersona(guild, excludeId) {
+    let persona = await getPersona(guild, 'mount');
+    if (persona) return persona;
+
+    const { member } = await pickOneLurker(guild, { lastPickedId: excludeId });
+    if (!member) return null;
+    setPersona(member.id, MOUNT_PERSONALITY, 'mount');
+    return { lurkerId: member.id, personality: MOUNT_PERSONALITY, member };
+}
+
+// グルーミング仕草役。「よしよし」「すきだよ」で構ってくる固定キャラ
+async function ensureGroomPersona(guild, excludeId) {
+    let persona = await getPersona(guild, 'groom');
+    if (persona) return persona;
+
+    const { member } = await pickOneLurker(guild, { lastPickedId: excludeId });
+    if (!member) return null;
+    setPersona(member.id, GROOM_PERSONALITY, 'groom');
+    return { lurkerId: member.id, personality: GROOM_PERSONALITY, member };
+}
+
 async function sendChatterLine(client, channel, name, avatarURL, content) {
     const targetChannel = channel.isThread?.() ? channel.parent : channel;
     const webhook = await getWebhook(targetChannel, client);
@@ -277,26 +303,51 @@ function buildPseudoReply(targetName, targetContent, replyBody) {
 }
 
 // 固定人格の投稿をきっかけに、ほかのlurkerがランダムな回数だけ連鎖して反応する「ラリー」
-// 全肯定だけで終わらないよう、必ず1回は批評家役が交ざって水を差す
+// 全肯定だけで終わらないよう、必ず1回は批評家役が交ざって水を差す。教養マウント役・グルーミング役は
+// 味変としてたまに交ざる程度（ターン数が足りなければ登場しないこともある）
 async function runRally(client, guild, channel, baseContext, history, excludeId) {
-    const turns  = RALLY_MIN_TURNS + Math.floor(Math.random() * (RALLY_MAX_TURNS - RALLY_MIN_TURNS + 1));
+    const turns = RALLY_MIN_TURNS + Math.floor(Math.random() * (RALLY_MAX_TURNS - RALLY_MIN_TURNS + 1));
+
     const critic = await ensureCriticPersona(guild, excludeId);
-    const criticTurn = critic ? Math.floor(Math.random() * turns) : -1;
+    const mount  = Math.random() < MOUNT_APPEAR_CHANCE ? await ensureMountPersona(guild, excludeId) : null;
+    const groom  = Math.random() < GROOM_APPEAR_CHANCE ? await ensureGroomPersona(guild, excludeId) : null;
+
+    // ターンが重複しないよう、登場が決まったキャラから順にターン番号を抽選で割り当てる
+    const availableTurns = Array.from({ length: turns }, (_, i) => i);
+    function assignTurn() {
+        if (!availableTurns.length) return -1;
+        const idx = Math.floor(Math.random() * availableTurns.length);
+        return availableTurns.splice(idx, 1)[0];
+    }
+    const criticTurn = critic ? assignTurn() : -1;
+    const mountTurn  = mount  ? assignTurn() : -1;
+    const groomTurn  = groom  ? assignTurn() : -1;
+
     let lastSpeakerId = excludeId;
 
     for (let i = 0; i < turns; i++) {
         await wait(randomRallyDelay());
         if (!hasBudget()) return; // 無料枠を使い切ったらラリーもそこで打ち切る
 
-        const useCritic = i === criticTurn && critic.member.id !== lastSpeakerId;
-        const picked    = useCritic ? critic.member : (await pickOneLurker(guild, { lastPickedId: lastSpeakerId })).member;
+        let special = null;
+        let roleLabel = '';
+        if (i === criticTurn && critic.member.id !== lastSpeakerId) {
+            special = { member: critic.member, opts: { isReply: true, personality: critic.personality, contrarian: true } };
+            roleLabel = '（批評家役）';
+        } else if (i === mountTurn && mount.member.id !== lastSpeakerId) {
+            special = { member: mount.member, opts: { isReply: true, personality: mount.personality } };
+            roleLabel = '（教養マウント役）';
+        } else if (i === groomTurn && groom.member.id !== lastSpeakerId) {
+            special = { member: groom.member, opts: { isReply: true, personality: groom.personality } };
+            roleLabel = '（グルーミング役）';
+        }
+
+        const picked = special ? special.member : (await pickOneLurker(guild, { lastPickedId: lastSpeakerId })).member;
         if (!picked) return;
 
         const rallyContext = `${baseContext ? baseContext + '\n' : ''}${history.map(h => `${h.name}: ${h.content}`).join('\n')}`;
         const name = picked.displayName || picked.user.username;
-        const content = await generateChatMessage(rallyContext, name, useCritic
-            ? { isReply: true, personality: critic.personality, contrarian: true }
-            : { isReply: true });
+        const content = await generateChatMessage(rallyContext, name, special ? special.opts : { isReply: true });
         if (!content) return; // 生成できなければラリーを打ち切る
 
         const { hit } = checkNgWords(normalizeForDetection(content));
@@ -304,7 +355,7 @@ async function runRally(client, guild, channel, baseContext, history, excludeId)
 
         const sent = await sendChatterLine(client, channel, name, picked.user.displayAvatarURL({ dynamic: true }), content);
         registerChatterMessage(sent.id, picked.id);
-        console.log(`[Chatter] 🔁 ラリー "${content}" | なりすまし: ${name}${useCritic ? '（批評家役）' : ''}`);
+        console.log(`[Chatter] 🔁 ラリー "${content}" | なりすまし: ${name}${roleLabel}`);
 
         history.push({ name, content });
         lastSpeakerId = picked.id;
