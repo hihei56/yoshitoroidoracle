@@ -23,9 +23,9 @@ const QUIET_HOUR_START = 2;
 const SPONTANEOUS_CHANCE = 0.35;
 
 // ラリー（固定人格の投稿にほかのlurkerが連鎖して反応する掛け合い）設定
-const RALLY_CHANCE       = 0.6;               // 最初の投稿後にラリーへ発展する確率
-const RALLY_MIN_TURNS    = 1;
-const RALLY_MAX_TURNS    = 3;
+const RALLY_CHANCE       = 0.85;              // 最初の投稿後にラリーへ発展する確率
+const RALLY_MIN_TURNS    = 2;
+const RALLY_MAX_TURNS    = 5;
 const RALLY_DELAY_MIN_MS = 8_000;
 const RALLY_DELAY_MAX_MS = 25_000;
 
@@ -167,10 +167,11 @@ function buildChatterMessages(context, personaName, { personality, isReply = fal
         ? `参考: 今は${timeLabel}の時間帯です。直前の発言への反応が中心ですが、話題に困ったら${timeHint}を話題の種にしても構いません。`
         : `参考: 今は${timeLabel}の時間帯なので、${timeHint}あたりを話題の種にしてもいいですが、あくまで一例です。他の話題でも構いません。`;
     const varietyLine = '「この時間、誰か〜してない？」「〜な気分」のような、毎回同じ構文・同じ書き出しのテンプレートは絶対に使わないでください。独り言・ぼやき・感想・驚き・愚痴・質問など、文の型は投稿のたびに大きく変えてください。「時間帯」「この時間」という単語そのものを文章に含めないでください。';
+    const punctuationLine = '実際のDiscordユーザーの書き込みのように、句点「。」は付けず、読点「、」も律儀に毎回入れず、必要な時だけ最小限にしてください（読点をリズムよく毎回打つのは不自然で機械的に見えます）。';
     return [
         {
             role: 'system',
-            content: `${personaLine} ${situation}${timeLine}${varietyLine}直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、30文字以内目安）を返してください。${tone}絵文字は基本的に付けず、文章の最後に毎回絵文字を付けるような機械的なパターンは絶対に避けてください（普通の人はそんなに毎回絵文字を使いません）。直近の会話は「名前: 発言」の形式で渡していますが、それはあくまで参考情報であり、あなたの返答にはその形式を真似ず「名前:」のような接頭辞を絶対に付けないでください。発言内容だけを、前置きも名乗りもなしにそのまま返してください。`,
+            content: `${personaLine} ${situation}${timeLine}${varietyLine}${punctuationLine}直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、30文字以内目安）を返してください。${tone}絵文字は基本的に付けず、文章の最後に毎回絵文字を付けるような機械的なパターンは絶対に避けてください（普通の人はそんなに毎回絵文字を使いません）。直近の会話は「名前: 発言」の形式で渡していますが、それはあくまで参考情報であり、あなたの返答にはその形式を真似ず「名前:」のような接頭辞を絶対に付けないでください。発言内容だけを、前置きも名乗りもなしにそのまま返してください。`,
         },
         {
             role: 'user',
@@ -283,6 +284,12 @@ function stripNamePrefix(text) {
     return stripped || text.trim();
 }
 
+// 実際のDiscordユーザーは文末に句点を付けないため、プロンプトの指示をすり抜けた分を保険で除去する
+function stripTrailingPeriod(text) {
+    if (!text) return text;
+    return text.replace(/。+$/, '').trim() || text.trim();
+}
+
 const PROVIDER_DEFAULT_MODELS = {
     groq: DEFAULT_GROQ_MODEL,
     cloudflare: DEFAULT_CF_MODEL,
@@ -333,7 +340,7 @@ async function generateChatMessage(context, personaName, opts) {
         const model = (!isAuto && settings.chatterAiModel) || PROVIDER_DEFAULT_MODELS[provider];
         const raw = await callProvider(provider, context, personaName, model, opts);
         recordUsage(provider);
-        if (raw) return stripNamePrefix(raw);
+        if (raw) return stripTrailingPeriod(stripNamePrefix(raw));
         // 失敗（レート制限・生成エラー等）した場合は次の候補にフォールバック
     }
 
