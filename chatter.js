@@ -544,7 +544,11 @@ async function runRally(client, guild, channel, baseContext, history, excludeId)
                 : image.url;
             historyText = content;
         } else {
-            const replyBody = await generateChatMessage(rallyContext, name, special ? special.opts : { isReply: true });
+            // 直前の発言者が誰であっても、その発言宛てだと分かる形で返信させる
+            // （見た目の疑似リプライ引用は会話の中心＝TARGET_USER_IDへの返信の時だけ）
+            const baseOpts = special ? special.opts : { isReply: true };
+            const opts = lastEntry ? { ...baseOpts, replyTarget: { name: lastEntry.name, content: lastEntry.content } } : baseOpts;
+            const replyBody = await generateChatMessage(rallyContext, name, opts);
             content = (replyBody && replyingToTarget && lastEntry)
                 ? buildPseudoReply(lastEntry.name, lastEntry.content, replyBody)
                 : replyBody;
