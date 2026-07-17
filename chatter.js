@@ -145,7 +145,7 @@ const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
 
 function buildChatterMessages(context, personaName, { personality, isReply = false, contrarian = false, replyTarget = null, stockMode = false, stockQuote = null } = {}) {
     const personaLine = personality
-        ? `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。性格: ${personality}`
+        ? `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。性格: ${personality} この性格が口調や話の入り方ににじみ出るようにしてください。`
         : `あなたは「${personaName}」というDiscordサーバーの一般メンバーです。`;
     const situation = stockMode
         ? (stockQuote
@@ -164,12 +164,13 @@ function buildChatterMessages(context, personaName, { personality, isReply = fal
     const timeLabel = describeTimeOfDay(hour);
     const timeHint  = TIME_TOPIC_HINTS[timeLabel] ?? '';
     const timeLine = isReply
-        ? `今の日本時間は${timeStr}頃（${timeLabel}）です。直前の発言への反応が中心ですが、話題に困ったら${timeHint}のようなこの時間帯らしい空気感を薄く滲ませても構いません。`
-        : `今の日本時間は${timeStr}頃（${timeLabel}）です。${timeHint}など、この時間帯らしさが伝わる内容にしてください。ただし「今${timeStr}だけど」のように時刻をそのまま言うのは不自然なので避け、雰囲気や話題でそれとなく表現してください。`;
+        ? `参考: 今は${timeLabel}の時間帯です。直前の発言への反応が中心ですが、話題に困ったら${timeHint}を話題の種にしても構いません。`
+        : `参考: 今は${timeLabel}の時間帯なので、${timeHint}あたりを話題の種にしてもいいですが、あくまで一例です。他の話題でも構いません。`;
+    const varietyLine = '「この時間、誰か〜してない？」「〜な気分」のような、毎回同じ構文・同じ書き出しのテンプレートは絶対に使わないでください。独り言・ぼやき・感想・驚き・愚痴・質問など、文の型は投稿のたびに大きく変えてください。「時間帯」「この時間」という単語そのものを文章に含めないでください。';
     return [
         {
             role: 'system',
-            content: `${personaLine} ${situation}${timeLine}直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、30文字以内目安）を返してください。質問でも独り言でも構いません。${tone}絵文字は基本的に付けず、文章の最後に毎回絵文字を付けるような機械的なパターンは絶対に避けてください（普通の人はそんなに毎回絵文字を使いません）。直近の会話は「名前: 発言」の形式で渡していますが、それはあくまで参考情報であり、あなたの返答にはその形式を真似ず「名前:」のような接頭辞を絶対に付けないでください。発言内容だけを、前置きも名乗りもなしにそのまま返してください。`,
+            content: `${personaLine} ${situation}${timeLine}${varietyLine}直近の会話の流れを踏まえて、くだけた自然な日本語で短い一言（1文、30文字以内目安）を返してください。${tone}絵文字は基本的に付けず、文章の最後に毎回絵文字を付けるような機械的なパターンは絶対に避けてください（普通の人はそんなに毎回絵文字を使いません）。直近の会話は「名前: 発言」の形式で渡していますが、それはあくまで参考情報であり、あなたの返答にはその形式を真似ず「名前:」のような接頭辞を絶対に付けないでください。発言内容だけを、前置きも名乗りもなしにそのまま返してください。`,
         },
         {
             role: 'user',
