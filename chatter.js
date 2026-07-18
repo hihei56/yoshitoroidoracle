@@ -140,7 +140,7 @@ async function fetchRecentContext(channel) {
 }
 
 const DEFAULT_CF_MODEL     = '@cf/meta/llama-3.1-8b-instruct-fast';
-const DEFAULT_GROQ_MODEL   = 'qwen/qwen3-32b';
+const DEFAULT_GROQ_MODEL   = 'qwen/qwen3.6-27b';
 const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
 
 function buildChatterMessages(context, personaName, { personality, isReply = false, contrarian = false, replyTarget = null, stockMode = false, stockQuote = null } = {}) {
