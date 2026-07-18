@@ -588,14 +588,22 @@ async function generateAndPost(client, guild, channel) {
     if (content) {
         const { hit } = checkNgWords(normalizeForDetection(content));
         if (hit) {
-            console.warn(`[Chatter] ${source}生成文がNGワードに抵触したため絵文字にフォールバック`);
+            console.warn(`[Chatter] AI生成文がNGワードに抵触したため破棄: "${content}"`);
             content = null;
             source = null;
         }
     }
     if (!content) {
-        content = buildEmojiContent(guild);
-        source  = content ? '絵文字' : null;
+        // APIキーが1つも設定されていない（=AIでの生成手段が本当にない）時だけ絵文字で代替する。
+        // プロバイダーが設定済みなのに失敗した場合は、絵文字スパムにせずこのサイクルは投稿を見送る
+        const noProviderAtAll = PROVIDER_PRIORITY.every(p => !isProviderConfigured(p));
+        if (noProviderAtAll) {
+            content = buildEmojiContent(guild);
+            source  = content ? '絵文字' : null;
+        } else {
+            console.warn('[Chatter] AI生成に失敗したため今回は投稿を見送ります（原因は直前のエラーログを参照）');
+            return { ok: false, reason: 'AI生成に失敗したため投稿を見送りました。' };
+        }
     }
     if (!content) return { ok: false, reason: '生成できる内容がありませんでした（サーバーに絵文字がない等）。' };
 
