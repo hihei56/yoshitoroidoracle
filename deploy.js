@@ -860,16 +860,28 @@ new SlashCommandBuilder()
                 )
         ),
 
-    // 20. 指定ユーザーの直近発言を全チャンネルから一括削除（BANはしない、管理者専用）
+    // 20. 指定ユーザーの直近発言を一括削除（BANはしない、管理者専用）
     new SlashCommandBuilder()
         .setName('nekoclear')
-        .setDescription('指定ユーザーの直近の発言をサーバー全体から削除します（BANはしません、管理者専用）。')
+        .setDescription('指定ユーザーの直近の発言を削除します（BANはしません、管理者専用）。')
         .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー').setRequired(true))
-        .addIntegerOption(opt =>
-            opt.setName('days')
-                .setDescription('遡る日数（デフォルト: 7日、最大14日）')
-                .setMinValue(1)
-                .setMaxValue(14)
+        .addStringOption(opt =>
+            opt.setName('period')
+                .setDescription('遡る期間（デフォルト: 7日）')
+                .addChoices(
+                    { name: '1時間',  value: '1h'  },
+                    { name: '6時間',  value: '6h'  },
+                    { name: '12時間', value: '12h' },
+                    { name: '1日',    value: '1d'  },
+                    { name: '3日',    value: '3d'  },
+                    { name: '7日',    value: '7d'  },
+                    { name: '14日',   value: '14d' },
+                )
+        )
+        .addChannelOption(opt =>
+            opt.setName('channel')
+                .setDescription('このチャンネルのみ対象にする（省略でサーバー全体）')
+                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
         ),
 
 ].map(command => command.toJSON());
