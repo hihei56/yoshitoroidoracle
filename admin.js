@@ -50,6 +50,7 @@ const { resetPersona: resetChatterPersona } = require('./chatter_persona');
 const { forceRecruitPost, getVCRecruitSettings } = require('./vc_recruit');
 const { getStrikeCount, resetStrikes } = require('./spam_enforcer');
 const { resetRtaRace } = require('./rta');
+const { addTarget: addLongTextTarget, removeTarget: removeLongTextTarget, listTargets: listLongTextTargets, DEFAULT_MAX_LINES } = require('./long_text_filter');
 
 const COLOR = {
     add:    0x57F287, // 緑
@@ -1033,6 +1034,59 @@ async function handleAdmin2(interaction) {
             content: `✅ chatterの固定キャラ（${slots.join(', ')}）をリセットしました。次回の投稿時に再抽選されます。`,
             ephemeral: true,
         });
+    }
+
+    if (sub === 'longtext') {
+        const action  = interaction.options.getString('action');
+        const user    = interaction.options.getUser('user');
+        const channel = interaction.options.getChannel('channel');
+        const lines   = interaction.options.getInteger('lines');
+
+        if (action === 'add') {
+            if (!user || !channel) {
+                return interaction.reply({ content: '❌ `user` と `channel` の両方を指定してください。', ephemeral: true });
+            }
+            const maxLines = lines ?? DEFAULT_MAX_LINES;
+            addLongTextTarget(user.id, channel.id, maxLines);
+            return interaction.reply({
+                content: `✅ ${channel} で <@${user.id}> の **${maxLines}行** 超えの長文発言を自動削除するよう設定しました。`,
+                ephemeral: true,
+            });
+        }
+
+        if (action === 'remove') {
+            if (!user) {
+                return interaction.reply({ content: '❌ `user` を指定してください。', ephemeral: true });
+            }
+            const removed = removeLongTextTarget(user.id, channel?.id ?? null);
+            if (!removed) {
+                return interaction.reply({ content: 'ℹ️ 該当する設定はありませんでした。', ephemeral: true });
+            }
+            return interaction.reply({
+                content: channel
+                    ? `✅ ${channel} での <@${user.id}> の長文自動削除設定を解除しました。`
+                    : `✅ <@${user.id}> の長文自動削除設定を全チャンネル分解除しました。`,
+                ephemeral: true,
+            });
+        }
+
+        if (action === 'list') {
+            const list = listLongTextTargets();
+            if (!list.length) {
+                return interaction.reply({ content: '📋 長文自動削除の設定はありません。', ephemeral: true });
+            }
+            const text = list.map(t => `<@${t.userId}> in <#${t.channelId}> — ${t.maxLines}行超で削除`).join('\n');
+            return interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('📋 長文自動削除 設定一覧')
+                        .setColor(COLOR.info)
+                        .setDescription(text)
+                        .setTimestamp()
+                ],
+                ephemeral: true,
+            });
+        }
     }
 }
 

@@ -487,6 +487,36 @@ new SlashCommandBuilder()
                             { name: '全部まとめてリセット',       value: 'all' },
                         )
                 )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('longtext')
+                .setDescription('指定チャンネルで、対象ユーザーの規定行数を超える長文（Wikipediaコピペ等）を自動削除する設定を管理します。')
+                .addStringOption(opt =>
+                    opt.setName('action')
+                        .setDescription('操作を選択')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: '追加', value: 'add'    },
+                            { name: '解除', value: 'remove' },
+                            { name: '一覧', value: 'list'   },
+                        )
+                )
+                .addUserOption(opt =>
+                    opt.setName('user')
+                        .setDescription('対象ユーザー（add/remove時は必須）')
+                )
+                .addChannelOption(opt =>
+                    opt.setName('channel')
+                        .setDescription('対象チャンネル（add時は必須。remove時省略で全チャンネル解除）')
+                        .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+                )
+                .addIntegerOption(opt =>
+                    opt.setName('lines')
+                        .setDescription('この行数を超えたら削除（add時のみ、省略でデフォルト15行）')
+                        .setMinValue(1)
+                        .setMaxValue(1000)
+                )
         ),
 
     // 6. ROM専目覚まし（管理者のみ）

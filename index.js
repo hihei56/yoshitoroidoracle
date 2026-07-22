@@ -29,6 +29,7 @@ const {
     handleYomiageMessage, handleYomiageJoin, handleYomiageLeave, handleYomiageVoice,
 }                                   = require('./yomiage');
 const { checkImageAttachments }    = require('./image_spam_filter');
+const { checkLongText }            = require('./long_text_filter');
 const { initShiritori, handleShiritoriMessage } = require('./shiritori');
 const { handleRtaMessage } = require('./rta');
 const { initXpAnnounce }          = require('./xp_announce');
@@ -202,6 +203,7 @@ client.on(Events.MessageCreate, async m => {
     handleShiritoriMessage(m).catch(err => console.error('[Shiritori Error]:', err));
     handleRtaMessage(m).catch(err => console.error('[RTA Error]:', err));
     checkImageAttachments(m).catch(err => console.error('[ImageSpam Error]:', err));
+    checkLongText(m).catch(err => console.error('[LongTextFilter Error]:', err));
     checkFloodSpam(m).catch(err => console.error('[SpamEnforcer Flood Error]:', err));
     handleYomiageMessage(m).catch(err => console.error('[Yomiage Error]:', err));
 
