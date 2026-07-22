@@ -25,7 +25,7 @@ const {
 }                                 = require('./bump');
 const { handleTimeout }           = require('./timeout');
 const { handleClean }              = require('./clean');
-const { handleNekoclear }          = require('./nekoclear');
+const { handleNekoclear, handleNekoclearConfirm, handleNekoclearCancel } = require('./nekoclear');
 const {
     handleYomiageMessage, handleYomiageJoin, handleYomiageLeave, handleYomiageVoice,
 }                                   = require('./yomiage');
@@ -269,6 +269,11 @@ client.on(Events.InteractionCreate, async i => {
         return handleServersLeaveConfirm(i, i.customId.split(':')[2]).catch(e => console.error('[ServersConfirm]:', e));
     if (i.isButton() && i.customId === 'admin_servers:leave_cancel')
         return handleServersLeaveCancel(i).catch(e => console.error('[ServersCancel]:', e));
+
+    if (i.isButton() && i.customId.startsWith('nekoclear_confirm:'))
+        return handleNekoclearConfirm(i, i.customId.split(':')[1]).catch(e => console.error('[NekoclearConfirm]:', e));
+    if (i.isButton() && i.customId.startsWith('nekoclear_cancel:'))
+        return handleNekoclearCancel(i, i.customId.split(':')[1]).catch(e => console.error('[NekoclearCancel]:', e));
 
     if (i.isButton() && i.customId === 'vcrecruit_press')
         return handleVCRecruitButton(i).catch(e => console.error('[VCRecruit Btn]:', e));

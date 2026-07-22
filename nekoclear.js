@@ -1,10 +1,15 @@
-// nekoclear.js — 指定ユーザーの直近発言を一括削除（BANはしない、管理者専用）
-const { EmbedBuilder, PermissionsBitField, ChannelType } = require('discord.js');
+// nekoclear.js — 指定ユーザーの直近発言を一括削除（BANはしない、管理者専用、実行前に件数確認あり）
+const crypto = require('crypto');
+const {
+    EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
+    PermissionsBitField, ChannelType,
+} = require('discord.js');
 
 const ADMIN_ROLE_ID = '1495971497016164492';
 const MAX_AGE_MS = 13.5 * 24 * 60 * 60 * 1000; // Discordのbulk delete制限(14日)より少し手前で打ち切る
 const FETCH_BATCH = 100;
 const MAX_BATCHES_PER_CHANNEL = 30; // 1チャンネルあたり最大3000件まで走査
+const PENDING_TTL_MS = 10 * 60 * 1000; // 確認待ちは10分で失効
 
 const HOUR = 60 * 60 * 1000;
 const DAY  = 24 * HOUR;
@@ -27,6 +32,16 @@ const SCAN_PERMS = [
     PermissionsBitField.Flags.ManageMessages,
     PermissionsBitField.Flags.ReadMessageHistory,
 ];
+
+// token -> { user, periodLabel, scopeLabel, perChannel: [{channel, messages}], scannedChannels, anyTruncated }
+const pendingClears = new Map();
+
+function hasAdminPermission(member) {
+    if (!member) return false;
+    if (member.id === member.guild.ownerId) return true;
+    if (member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
+    return member.roles.cache.has(ADMIN_ROLE_ID);
+}
 
 function canScanChannel(channel, me) {
     const perms = channel.permissionsFor(me);
@@ -58,11 +73,38 @@ async function collectUserMessages(channel, userId, earliest) {
     return { messages: collected, truncated };
 }
 
-function hasAdminPermission(member) {
-    if (!member) return false;
-    if (member.id === member.guild.ownerId) return true;
-    if (member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
-    return member.roles.cache.has(ADMIN_ROLE_ID);
+async function deleteMessages(perChannel) {
+    let deletedCount = 0;
+    for (const { channel, messages } of perChannel) {
+        for (let i = 0; i < messages.length; i += FETCH_BATCH) {
+            const chunk = messages.slice(i, i + FETCH_BATCH);
+            try {
+                if (chunk.length === 1) {
+                    await chunk[0].delete();
+                    deletedCount += 1;
+                } else {
+                    const deleted = await channel.bulkDelete(chunk, true);
+                    deletedCount += deleted.size;
+                }
+            } catch (e) {
+                console.error(`[Nekoclear] #${channel.name} の削除エラー:`, e.message);
+            }
+        }
+    }
+    return deletedCount;
+}
+
+function buildNoteLines(anyTruncated) {
+    const lines = ['※14日以上前のメッセージは削除できません。'];
+    if (anyTruncated) lines.push('※一部のチャンネルはメッセージ数が多く、走査上限に達したため一部が対象外の可能性があります。');
+    return lines;
+}
+
+function buildConfirmRow(token) {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`nekoclear_confirm:${token}`).setLabel('削除を実行').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(`nekoclear_cancel:${token}`).setLabel('キャンセル').setStyle(ButtonStyle.Secondary),
+    );
 }
 
 async function handleNekoclear(interaction) {
@@ -103,9 +145,10 @@ async function handleNekoclear(interaction) {
 
         await interaction.deferReply({ ephemeral: true });
 
-        let deletedCount = 0;
+        const perChannel = [];
         let scannedChannels = 0;
         let anyTruncated = false;
+        let totalCount = 0;
 
         for (const channel of channels) {
             let result;
@@ -117,46 +160,57 @@ async function handleNekoclear(interaction) {
             }
             scannedChannels += 1;
             if (result.truncated) anyTruncated = true;
-
-            const toDelete = result.messages;
-            if (toDelete.length === 0) continue;
-
-            for (let i = 0; i < toDelete.length; i += FETCH_BATCH) {
-                const chunk = toDelete.slice(i, i + FETCH_BATCH);
-                try {
-                    if (chunk.length === 1) {
-                        await chunk[0].delete();
-                        deletedCount += 1;
-                    } else {
-                        const deleted = await channel.bulkDelete(chunk, true);
-                        deletedCount += deleted.size;
-                    }
-                } catch (e) {
-                    console.error(`[Nekoclear] #${channel.name} の削除エラー:`, e.message);
-                }
+            if (result.messages.length > 0) {
+                perChannel.push({ channel, messages: result.messages });
+                totalCount += result.messages.length;
             }
         }
 
         const periodLabel = PERIOD_LABELS[period] ?? PERIOD_LABELS['7d'];
-        const noteLines = ['※14日以上前のメッセージは削除できません。'];
-        if (anyTruncated) noteLines.push('※一部のチャンネルはメッセージ数が多く、走査上限に達したため一部が対象外の可能性があります。');
+        const scopeLabel  = targetChannel ? `<#${targetChannel.id}>` : 'サーバー全体';
+        const noteLines   = buildNoteLines(anyTruncated);
+
+        if (totalCount === 0) {
+            return interaction.editReply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('🐱 nekoclear')
+                        .setColor(0x99AAB5)
+                        .setDescription(`<@${user.id}> (${user.tag}) の削除対象メッセージは見つかりませんでした。`)
+                        .addFields(
+                            { name: '走査チャンネル数', value: `${scannedChannels}件`, inline: true },
+                            { name: '遡り範囲', value: periodLabel, inline: true },
+                            { name: '対象', value: scopeLabel, inline: true },
+                        )
+                        .setTimestamp(),
+                ],
+            });
+        }
+
+        const token = crypto.randomUUID();
+        pendingClears.set(token, {
+            requestedBy: interaction.user.id,
+            user, periodLabel, scopeLabel, perChannel, scannedChannels, anyTruncated,
+        });
+        setTimeout(() => pendingClears.delete(token), PENDING_TTL_MS).unref?.();
 
         return interaction.editReply({
             embeds: [
                 new EmbedBuilder()
-                    .setTitle('🐱 nekoclear 実行結果')
-                    .setColor(0x57F287)
-                    .setDescription(`<@${user.id}> (${user.tag}) の発言を削除しました。\n※BANは行っていません。`)
+                    .setTitle('⚠️ nekoclear 実行確認')
+                    .setColor(0xFF6600)
+                    .setDescription(`<@${user.id}> (${user.tag}) の発言を削除しますか？\n※BANは行いません。この操作は元に戻せません。`)
                     .addFields(
-                        { name: '削除件数', value: `${deletedCount}件`, inline: true },
+                        { name: '削除予定件数', value: `${totalCount}件`, inline: true },
                         { name: '走査チャンネル数', value: `${scannedChannels}件`, inline: true },
                         { name: '遡り範囲', value: periodLabel, inline: true },
-                        { name: '対象', value: targetChannel ? `<#${targetChannel.id}>` : 'サーバー全体', inline: true },
+                        { name: '対象', value: scopeLabel, inline: true },
                         { name: '注意事項', value: noteLines.join('\n'), inline: false },
                     )
-                    .setFooter({ text: `実行者: ${interaction.user.tag}` })
+                    .setFooter({ text: '10分以内に確認しない場合、この確認は失効します。' })
                     .setTimestamp(),
             ],
+            components: [buildConfirmRow(token)],
         });
     } catch (e) {
         console.error('[Nekoclear] エラー:', e);
@@ -167,4 +221,52 @@ async function handleNekoclear(interaction) {
     }
 }
 
-module.exports = { handleNekoclear };
+async function handleNekoclearConfirm(interaction, token) {
+    if (!hasAdminPermission(interaction.member)) {
+        return interaction.reply({ content: '❌ このコマンドは管理者のみ実行できます。', ephemeral: true });
+    }
+
+    const data = pendingClears.get(token);
+    if (!data) {
+        return interaction.update({ content: '⌛ この確認は失効しました。もう一度 `/nekoclear` を実行してください。', embeds: [], components: [] });
+    }
+    pendingClears.delete(token);
+
+    await interaction.deferUpdate();
+
+    let deletedCount = 0;
+    try {
+        deletedCount = await deleteMessages(data.perChannel);
+    } catch (e) {
+        console.error('[Nekoclear] 削除処理エラー:', e);
+        return interaction.editReply({ content: '❌ 削除処理中にエラーが発生しました。', embeds: [], components: [] }).catch(() => {});
+    }
+
+    const noteLines = buildNoteLines(data.anyTruncated);
+
+    return interaction.editReply({
+        embeds: [
+            new EmbedBuilder()
+                .setTitle('🐱 nekoclear 実行結果')
+                .setColor(0x57F287)
+                .setDescription(`<@${data.user.id}> (${data.user.tag}) の発言を削除しました。\n※BANは行っていません。`)
+                .addFields(
+                    { name: '削除件数', value: `${deletedCount}件`, inline: true },
+                    { name: '走査チャンネル数', value: `${data.scannedChannels}件`, inline: true },
+                    { name: '遡り範囲', value: data.periodLabel, inline: true },
+                    { name: '対象', value: data.scopeLabel, inline: true },
+                    { name: '注意事項', value: noteLines.join('\n'), inline: false },
+                )
+                .setFooter({ text: `実行者: ${interaction.user.tag}` })
+                .setTimestamp(),
+        ],
+        components: [],
+    });
+}
+
+async function handleNekoclearCancel(interaction, token) {
+    pendingClears.delete(token);
+    return interaction.update({ content: 'キャンセルしました。削除は行われていません。', embeds: [], components: [] });
+}
+
+module.exports = { handleNekoclear, handleNekoclearConfirm, handleNekoclearCancel };
