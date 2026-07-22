@@ -25,6 +25,7 @@ const {
 }                                 = require('./bump');
 const { handleTimeout }           = require('./timeout');
 const { handleClean }              = require('./clean');
+const { handleNekoclear, handleNekoclearConfirm, handleNekoclearCancel } = require('./nekoclear');
 const {
     handleYomiageMessage, handleYomiageJoin, handleYomiageLeave, handleYomiageVoice,
 }                                   = require('./yomiage');
@@ -269,6 +270,11 @@ client.on(Events.InteractionCreate, async i => {
     if (i.isButton() && i.customId === 'admin_servers:leave_cancel')
         return handleServersLeaveCancel(i).catch(e => console.error('[ServersCancel]:', e));
 
+    if (i.isButton() && i.customId.startsWith('nekoclear_confirm:'))
+        return handleNekoclearConfirm(i, i.customId.split(':')[1]).catch(e => console.error('[NekoclearConfirm]:', e));
+    if (i.isButton() && i.customId.startsWith('nekoclear_cancel:'))
+        return handleNekoclearCancel(i, i.customId.split(':')[1]).catch(e => console.error('[NekoclearCancel]:', e));
+
     if (i.isButton() && i.customId === 'vcrecruit_press')
         return handleVCRecruitButton(i).catch(e => console.error('[VCRecruit Btn]:', e));
 
@@ -389,6 +395,7 @@ client.on(Events.InteractionCreate, async i => {
 
     try {
         if (i.commandName === 'timeoutlist') await handleTimeoutList(i);
+        if (i.commandName === 'nekoclear')   await handleNekoclear(i);
         if (i.commandName === 'dice')        await handleDeathmatch(i);
         if (i.commandName === 'anon')        await handleAnon(i);
         if (i.commandName === 'curse')       await handleCurse(i);
