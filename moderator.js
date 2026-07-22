@@ -11,7 +11,6 @@ const { pickOneLurker } = require('./lurker_picker');
 const { getLastActivity } = require('./activity_tracker');
 const { getNgWords } = require('./ng_word_manager');
 const { getChatterLurkerId } = require('./chatter_registry');
-const { enforce: enforceSpam } = require('./spam_enforcer');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -146,24 +145,6 @@ function hasModPermission(member) {
     if (member.roles.cache.has(ADMIN_ROLE_ID)) return true;
     return ALLOWED_ROLES.some(id => member.roles.cache.has(id));
 }
-
-const spamTracker = new Map();
-
-function checkSpam(userId) {
-    const now   = Date.now();
-    const times = (spamTracker.get(userId) || []).filter(t => now - t < 10_000);
-    if (times.length >= 5 || (times.length >= 3 && now - times[0] < 3_000)) return true;
-    times.push(now);
-    spamTracker.set(userId, times);
-    return false;
-}
-
-setInterval(() => {
-    const now = Date.now();
-    for (const [id, times] of spamTracker) {
-        if (times.every(t => now - t >= 10_000)) spamTracker.delete(id);
-    }
-}, 60_000);
 
 function normalizeForDetection(text) {
     if (!text) return '';
@@ -1085,13 +1066,6 @@ async function handleModerator(message) {
 
     const rawContent = message.content || '';
     if (TUPPERBOX_PREFIX_REGEX.test(rawContent)) return;
-
-    if (checkSpam(message.author.id)) {
-        console.warn(`[MOD SPAM] ${message.author.tag}`);
-        await message.delete().catch(() => {});
-        enforceSpam(message, 'flood').catch(e => console.error('[SpamEnforcer Error]:', e));
-        return;
-    }
 
     const excl     = getModExcludeList();
     const isExempt =
