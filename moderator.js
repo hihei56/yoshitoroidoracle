@@ -10,6 +10,7 @@ const { isImpersonated } = require('./impersonate_manager');
 const { pickOneLurker } = require('./lurker_picker');
 const { getLastActivity } = require('./activity_tracker');
 const { getNgWords } = require('./ng_word_manager');
+const { checkChildSafetyEmbedding } = require('./embedding_filter');
 const { getChatterLurkerId } = require('./chatter_registry');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -748,7 +749,7 @@ async function instantDeleteAndRecode(message) {
 }
 
 const CSAM_LOG_CHANNEL_ID = process.env.CSAM_LOG_CHANNEL_ID || '1511683026948587620';
-const CSAM_CATEGORIES     = new Set(['loli_shota', 'age', 'sexual/minors']);
+const CSAM_CATEGORIES     = new Set(['loli_shota', 'age', 'sexual/minors', 'embedding_csam']);
 
 function isCsamMatch(matched) {
     return matched.some(m => CSAM_CATEGORIES.has(m.split('(')[0]));
@@ -808,12 +809,16 @@ async function handleForeignerMessage(message) {
     const origCheck  = checkNgWords(normalizedOrig);
     const transCheck = checkNgWords(normalizedTrans);
     const aiCheck    = await checkAiModeration(message.content);
+    const embCheck   = (!origCheck.hit && !transCheck.hit && !aiCheck.flagged)
+        ? await checkChildSafetyEmbedding(translated)
+        : { hit: false, score: 0, matched: null };
 
-    if (origCheck.hit || transCheck.hit || aiCheck.flagged) {
+    if (origCheck.hit || transCheck.hit || aiCheck.flagged || embCheck.hit) {
         const allMatched = [
             ...origCheck.matched,
             ...transCheck.matched,
             ...(aiCheck.reason ? [aiCheck.reason] : []),
+            ...(embCheck.hit ? [`embedding_csam(${embCheck.score.toFixed(2)})`] : []),
         ];
         logDeletion({ message, matched: allMatched });
         if (isCsamMatch(allMatched)) await postCsamLog(message, allMatched);
@@ -1055,8 +1060,15 @@ async function handleModerator(message) {
         const normalized = normalizeForDetection(message.content);
         const { hit, matched } = checkNgWords(normalized);
         const aiResult = !hit ? await checkAiModeration(message.content) : { flagged: false, reason: null };
-        if (hit || aiResult.flagged) {
-            const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
+        const embResult = (!hit && !aiResult.flagged)
+            ? await checkChildSafetyEmbedding(message.content)
+            : { hit: false, score: 0, matched: null };
+        if (hit || aiResult.flagged || embResult.hit) {
+            const allMatched = [
+                ...matched,
+                ...(aiResult.reason ? [aiResult.reason] : []),
+                ...(embResult.hit ? [`embedding_csam(${embResult.score.toFixed(2)})`] : []),
+            ];
             logDeletion({ message, matched: allMatched });
             if (isCsamMatch(allMatched)) await postCsamLog(message, allMatched);
             await message.delete().catch(() => {});
@@ -1081,6 +1093,10 @@ async function handleModerator(message) {
         ? await checkAiModeration(strippedContent)
         : { flagged: false, reason: null };
 
+    const embResult = strippedContent.trim() && !isExempt && !hit && !aiResult.flagged
+        ? await checkChildSafetyEmbedding(strippedContent)
+        : { hit: false, score: 0, matched: null };
+
     if (hit && isExempt) {
         console.info(`[MOD EXEMPT] ${message.author.tag} NGワードヒットだが免除: ${matched}`);
     }
@@ -1093,13 +1109,17 @@ async function handleModerator(message) {
     }
 
     // 画像スキャン（免除なし・テキストNG未ヒット時）ログのみ
-    if (!isExempt && !hit && !aiResult.flagged && message.attachments.size > 0) {
+    if (!isExempt && !hit && !aiResult.flagged && !embResult.hit && message.attachments.size > 0) {
         const imgResult = await checkNsfwImages(message.attachments);
         if (imgResult.nsfw) await postCsamLog(message, [`nsfw_image(${imgResult.reason})`]);
     }
 
-    if ((hit || aiResult.flagged) && !isExempt) {
-        const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
+    if ((hit || aiResult.flagged || embResult.hit) && !isExempt) {
+        const allMatched = [
+            ...matched,
+            ...(aiResult.reason ? [aiResult.reason] : []),
+            ...(embResult.hit ? [`embedding_csam(${embResult.score.toFixed(2)})`] : []),
+        ];
         logDeletion({ message, matched: allMatched });
         if (isCsamMatch(allMatched)) await postCsamLog(message, allMatched);
         await instantDeleteAndRecode(message);
@@ -1271,10 +1291,19 @@ async function handleEmbedModerator(oldMessage, newMessage) {
         ? await checkAiModeration(embedText)
         : { flagged: false, reason: null };
 
-    if (!hit && !aiResult.flagged) return;
+    const embResult = (!hit && !aiResult.flagged)
+        ? await checkChildSafetyEmbedding(embedText)
+        : { hit: false, score: 0, matched: null };
 
-    const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
+    if (!hit && !aiResult.flagged && !embResult.hit) return;
+
+    const allMatched = [
+        ...matched,
+        ...(aiResult.reason ? [aiResult.reason] : []),
+        ...(embResult.hit ? [`embedding_csam(${embResult.score.toFixed(2)})`] : []),
+    ];
     logDeletion({ message: newMessage, matched: allMatched });
+    if (isCsamMatch(allMatched)) await postCsamLog(newMessage, allMatched);
     await instantDeleteAndRecode(newMessage);
 }
 
