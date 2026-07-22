@@ -4,6 +4,7 @@
 const MODEL_NAME          = process.env.EMBEDDING_MODEL || 'Xenova/paraphrase-multilingual-MiniLM-L12-v2';
 const SIMILARITY_THRESHOLD = Number(process.env.EMBEDDING_CSAM_THRESHOLD) || 0.72;
 const MIN_TEXT_LENGTH      = 4;
+const MAX_QUEUE_SIZE       = Number(process.env.EMBEDDING_MAX_QUEUE) || 20;
 
 // 児童性的搾取の典型的な言い回し（言い換え検知の基準文）
 const REFERENCE_TEXTS = [
@@ -60,8 +61,7 @@ async function ensureReferenceEmbeddings(extractor) {
     return referenceEmbeddings;
 }
 
-async function checkChildSafetyEmbedding(text) {
-    if (!text || text.trim().length < MIN_TEXT_LENGTH) return { hit: false, score: 0, matched: null };
+async function runCheck(text) {
     try {
         const extractor = await getExtractor();
         const refs      = await ensureReferenceEmbeddings(extractor);
@@ -82,6 +82,29 @@ async function checkChildSafetyEmbedding(text) {
     } catch (e) {
         console.error('[EMBEDDING] チェック失敗:', e.message);
         return { hit: false, score: 0, matched: null };
+    }
+}
+
+// 同時実行数1に直列化するキュー。溜まりすぎたら新規分はスキップして安全側にフォールバック
+// （Botの応答が詰まるのを防ぐため。誤って見逃した分は正規表現/AIモデレーション側の網に任せる）
+let queueDepth = 0;
+let tail       = Promise.resolve();
+
+async function checkChildSafetyEmbedding(text) {
+    if (!text || text.trim().length < MIN_TEXT_LENGTH) return { hit: false, score: 0, matched: null };
+
+    if (queueDepth >= MAX_QUEUE_SIZE) {
+        console.warn(`[EMBEDDING] キュー超過(${queueDepth}件待ち)のためスキップ`);
+        return { hit: false, score: 0, matched: null };
+    }
+
+    queueDepth++;
+    const result = tail.then(() => runCheck(text));
+    tail = result.catch(() => {});
+    try {
+        return await result;
+    } finally {
+        queueDepth--;
     }
 }
 
