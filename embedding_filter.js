@@ -2,7 +2,7 @@
 // APIキー不要・課金なし。@huggingface/transformersでモデルをローカル実行し、
 // 正規表現(LOLI_SHOTA_REGEX等)が拾えない言い換え・婉曲表現を意味的類似度で補足する。
 const MODEL_NAME          = process.env.EMBEDDING_MODEL || 'Xenova/paraphrase-multilingual-MiniLM-L12-v2';
-const SIMILARITY_THRESHOLD = Number(process.env.EMBEDDING_CSAM_THRESHOLD) || 0.82;
+const SIMILARITY_THRESHOLD = Number(process.env.EMBEDDING_CSAM_THRESHOLD) || 0.72;
 const MIN_TEXT_LENGTH      = 4;
 
 // 児童性的搾取の典型的な言い回し（言い換え検知の基準文）
@@ -19,6 +19,10 @@ const REFERENCE_TEXTS = [
     '子供を騙してわいせつなことをする方法',
     '中学生に卑猥なことを言いたい',
     '小さい子とそういう関係になりたい',
+    'ちっちゃい子とえっちなことしたい',
+    '小さい女の子と二人きりでイケナイことしたい',
+    '幼い子にいたずらしたい',
+    '子供とそういう関係になりたい',
     'i want to have sex with a child',
     'looking for child porn images',
     'nude photos of young girls for sale',
