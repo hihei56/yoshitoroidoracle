@@ -860,6 +860,18 @@ new SlashCommandBuilder()
                 )
         ),
 
+    // 20. 指定ユーザーの直近発言を全チャンネルから一括削除（BANはしない、管理者専用）
+    new SlashCommandBuilder()
+        .setName('nekoclear')
+        .setDescription('指定ユーザーの直近の発言をサーバー全体から削除します（BANはしません、管理者専用）。')
+        .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー').setRequired(true))
+        .addIntegerOption(opt =>
+            opt.setName('days')
+                .setDescription('遡る日数（デフォルト: 7日、最大14日）')
+                .setMinValue(1)
+                .setMaxValue(14)
+        ),
+
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
