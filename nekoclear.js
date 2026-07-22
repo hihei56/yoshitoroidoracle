@@ -8,7 +8,7 @@ const {
 const ADMIN_ROLE_ID = '1495971497016164492';
 const MAX_AGE_MS = 13.5 * 24 * 60 * 60 * 1000; // Discordのbulk delete制限(14日)より少し手前で打ち切る
 const FETCH_BATCH = 100;
-const MAX_BATCHES_PER_CHANNEL = 30; // 1チャンネルあたり最大3000件まで走査
+const SCAN_TIME_BUDGET_MS = 10 * 60 * 1000; // 走査全体でこの時間を超えたら打ち切る（応答期限15分に対し余裕を残す）
 const PENDING_TTL_MS = 10 * 60 * 1000; // 確認待ちは10分で失効
 
 const HOUR = 60 * 60 * 1000;
@@ -48,12 +48,14 @@ function canScanChannel(channel, me) {
     return Boolean(perms) && SCAN_PERMS.every(flag => perms.has(flag));
 }
 
-async function collectUserMessages(channel, userId, earliest) {
+async function collectUserMessages(channel, userId, earliest, deadline) {
     const collected = [];
     let before;
     let truncated = false;
 
-    for (let batchCount = 0; batchCount < MAX_BATCHES_PER_CHANNEL; batchCount++) {
+    while (true) {
+        if (Date.now() >= deadline) { truncated = true; break; }
+
         const batch = await channel.messages.fetch({ limit: FETCH_BATCH, ...(before && { before }) });
         if (batch.size === 0) break;
 
@@ -66,8 +68,6 @@ async function collectUserMessages(channel, userId, earliest) {
 
         before = batch.last().id;
         if (batch.size < FETCH_BATCH) break;
-
-        if (batchCount === MAX_BATCHES_PER_CHANNEL - 1) truncated = true;
     }
 
     return { messages: collected, truncated };
@@ -96,7 +96,7 @@ async function deleteMessages(perChannel) {
 
 function buildNoteLines(anyTruncated) {
     const lines = ['※14日以上前のメッセージは削除できません。'];
-    if (anyTruncated) lines.push('※一部のチャンネルはメッセージ数が多く、走査上限に達したため一部が対象外の可能性があります。');
+    if (anyTruncated) lines.push('※メッセージ数が多く、走査の時間制限に達したため一部が対象外の可能性があります。');
     return lines;
 }
 
@@ -149,11 +149,14 @@ async function handleNekoclear(interaction) {
         let scannedChannels = 0;
         let anyTruncated = false;
         let totalCount = 0;
+        const deadline = Date.now() + SCAN_TIME_BUDGET_MS;
 
         for (const channel of channels) {
+            if (Date.now() >= deadline) { anyTruncated = true; break; }
+
             let result;
             try {
-                result = await collectUserMessages(channel, user.id, earliest);
+                result = await collectUserMessages(channel, user.id, earliest, deadline);
             } catch (e) {
                 console.error(`[Nekoclear] #${channel.name} の走査エラー:`, e.message);
                 continue;
