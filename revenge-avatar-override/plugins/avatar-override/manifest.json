@@ -1,0 +1,14 @@
+{
+    "name": "Avatar Override",
+    "description": "指定したユーザーIDのアバターをローカル表示のみで好きな画像に差し替えます (自分の端末上でのみ見た目が変わり、他人には送信・共有されません)。",
+    "authors": [
+        {
+            "name": "You",
+            "id": "YOUR_ID_HERE"
+        }
+    ],
+    "main": "src/index.ts",
+    "vendetta": {
+        "icon": "ImageIcon"
+    }
+}
