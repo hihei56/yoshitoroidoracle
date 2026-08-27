@@ -5,6 +5,8 @@ const ADMIN_ROLE_ID = '1495971497016164492';
 const FETCH_BATCH = 100;
 const SCAN_TIME_BUDGET_MS = 10 * 60 * 1000; // 走査全体でこの時間を超えたら打ち切る（応答期限15分に対し余裕を残す）
 const MAX_EXPORT_MESSAGES = 10000; // ファイルサイズ・処理時間の上限
+const MAX_LINES_PER_FILE = 2000; // 1ファイルあたりの上限（テキスト:行数 / JSON:メッセージ数）。超える場合は分割出力する
+const MAX_FILES = 10; // Discordの添付ファイル数上限
 
 const HOUR = 60 * 60 * 1000;
 const DAY  = 24 * HOUR;
@@ -73,20 +75,49 @@ async function collectUserMessages(channel, userId, earliest, deadline, remainin
 
 // マルコフ連鎖の学習コーパス向け: メタデータなしで発言本文のみを1行1発言で並べる
 // （本文中の改行はスペースに畳んで1メッセージ=1行を保証し、本文が空の発言は除外する）
-function buildTextExport(entries) {
+function buildTextLines(entries) {
     return entries
         .map(e => (e.content || '').replace(/\s*\n\s*/g, ' ').trim())
-        .filter(line => line.length > 0)
-        .join('\n');
+        .filter(line => line.length > 0);
 }
 
-function buildJsonExport(user, entries) {
+function buildJsonChunk(user, chunk, part, totalParts, totalCount) {
     return JSON.stringify({
         user: { id: user.id, tag: user.tag },
         exportedAt: new Date().toISOString(),
-        count: entries.length,
-        messages: entries,
+        part, totalParts,
+        count: chunk.length,
+        totalCount,
+        messages: chunk,
     }, null, 2);
+}
+
+function chunkArray(arr, size) {
+    const chunks = [];
+    for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+    return chunks;
+}
+
+// メッセージ数が多い場合、Discordの添付ファイル数上限(10)に収まるよう
+// チャンクサイズを底上げして分割数を抑える
+function chunkForExport(arr) {
+    const size = Math.max(MAX_LINES_PER_FILE, Math.ceil(arr.length / MAX_FILES));
+    return chunkArray(arr, size);
+}
+
+function buildExportFiles({ user, entries, isJson, safeName, timestamp }) {
+    const ext = isJson ? 'json' : 'txt';
+    const items = isJson ? entries : buildTextLines(entries);
+    const chunks = chunkForExport(items);
+    const totalParts = chunks.length;
+
+    return chunks.map((chunk, i) => {
+        const content = isJson
+            ? buildJsonChunk(user, chunk, i + 1, totalParts, entries.length)
+            : chunk.join('\n');
+        const suffix = totalParts > 1 ? `_part${i + 1}of${totalParts}` : '';
+        return new AttachmentBuilder(Buffer.from(content, 'utf8'), { name: `chatlog_${safeName}_${timestamp}${suffix}.${ext}` });
+    });
 }
 
 async function handleChatlog(interaction) {
@@ -181,13 +212,16 @@ async function handleChatlog(interaction) {
         }
 
         const isJson = format === 'json';
-        const fileContent = isJson ? buildJsonExport(user, entries) : buildTextExport(entries);
-        const ext = isJson ? 'json' : 'txt';
         const safeName = user.username.replace(/[^\w.-]/g, '_');
-        const file = new AttachmentBuilder(Buffer.from(fileContent, 'utf8'), { name: `chatlog_${safeName}_${Date.now()}.${ext}` });
+        const files = buildExportFiles({ user, entries, isJson, safeName, timestamp: Date.now() });
+
+        if (files.length === 0) {
+            return interaction.editReply({ content: 'ℹ️ 本文のある発言が見つからなかったため、テキストとして出力できませんでした（画像・添付のみの発言など）。JSON形式で試してみてください。' });
+        }
 
         const noteLines = ['※Botが閲覧権限を持つチャンネルのみが対象です。'];
         if (anyTruncated) noteLines.push(`※メッセージ数が多いため、走査の時間/件数制限（最大${MAX_EXPORT_MESSAGES}件）に達し一部が対象外の可能性があります。`);
+        if (files.length > 1) noteLines.push(`※メッセージ数が多いため、ファイルを${files.length}個に分割しました。`);
 
         return interaction.editReply({
             embeds: [
@@ -205,7 +239,7 @@ async function handleChatlog(interaction) {
                     .setFooter({ text: `実行者: ${interaction.user.tag}` })
                     .setTimestamp(),
             ],
-            files: [file],
+            files,
         });
     } catch (e) {
         console.error('[Chatlog] エラー:', e);
