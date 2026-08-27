@@ -26,6 +26,7 @@ const {
 const { handleTimeout }           = require('./timeout');
 const { handleClean }              = require('./clean');
 const { handleNekoclear, handleNekoclearConfirm, handleNekoclearCancel } = require('./nekoclear');
+const { handleChatlog } = require('./chatlog');
 const {
     handleYomiageMessage, handleYomiageJoin, handleYomiageLeave, handleYomiageVoice,
 }                                   = require('./yomiage');
@@ -396,6 +397,7 @@ client.on(Events.InteractionCreate, async i => {
     try {
         if (i.commandName === 'timeoutlist') await handleTimeoutList(i);
         if (i.commandName === 'nekoclear')   await handleNekoclear(i);
+        if (i.commandName === 'chatlog')     await handleChatlog(i);
         if (i.commandName === 'dice')        await handleDeathmatch(i);
         if (i.commandName === 'anon')        await handleAnon(i);
         if (i.commandName === 'curse')       await handleCurse(i);

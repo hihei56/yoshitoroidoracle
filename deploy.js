@@ -884,6 +884,38 @@ new SlashCommandBuilder()
                 .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
         ),
 
+    // 21. 指定ユーザーの発言ログをエクスポート（管理者専用）
+    new SlashCommandBuilder()
+        .setName('chatlog')
+        .setDescription('指定ユーザーの発言ログをファイルにエクスポートします（管理者専用）。')
+        .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー').setRequired(true))
+        .addStringOption(opt =>
+            opt.setName('period')
+                .setDescription('遡る期間（デフォルト: 30日）')
+                .addChoices(
+                    { name: '1日',   value: '1d'  },
+                    { name: '3日',   value: '3d'  },
+                    { name: '7日',   value: '7d'  },
+                    { name: '14日',  value: '14d' },
+                    { name: '30日',  value: '30d' },
+                    { name: '90日',  value: '90d' },
+                    { name: '全期間', value: 'all' },
+                )
+        )
+        .addStringOption(opt =>
+            opt.setName('format')
+                .setDescription('出力形式（デフォルト: テキスト）')
+                .addChoices(
+                    { name: 'テキスト（本文のみ1行1発言、マルコフ連鎖用）', value: 'txt'  },
+                    { name: 'JSON（チャンネル・日時等のメタデータ付き）',   value: 'json' },
+                )
+        )
+        .addChannelOption(opt =>
+            opt.setName('channel')
+                .setDescription('このチャンネルのみ対象にする（省略でサーバー全体）')
+                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+        ),
+
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
