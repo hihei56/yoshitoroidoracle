@@ -129,8 +129,12 @@ async function handleChatlog(interaction) {
             return interaction.reply({ content: '❌ このコマンドは管理者のみ実行できます。', ephemeral: true });
         }
 
+        const userId = interaction.options.getString('user_id').trim();
+        if (!/^\d{17,20}$/.test(userId)) {
+            return interaction.reply({ content: '❌ `user_id` に有効なユーザーIDを入力してください（17〜20桁の数字）。', ephemeral: true });
+        }
+
         const me = interaction.guild.members.me;
-        const user = interaction.options.getUser('user');
         const period = interaction.options.getString('period') ?? '30d';
         const format = interaction.options.getString('format') ?? 'txt';
         const targetChannel = interaction.options.getChannel('channel');
@@ -158,6 +162,11 @@ async function handleChatlog(interaction) {
         }
 
         await interaction.deferReply({ ephemeral: true });
+
+        // サーバー退出済み・BAN済みでもIDが分かればエクスポートできるよう、
+        // メンバー一覧ではなくDiscordのユーザーAPIから直接引く（取得できなくてもIDだけで続行する）
+        const fetchedUser = await interaction.client.users.fetch(userId).catch(() => null);
+        const user = fetchedUser ?? { id: userId, tag: userId, username: userId };
 
         const entries = [];
         let scannedChannels = 0;

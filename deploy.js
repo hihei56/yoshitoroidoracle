@@ -888,7 +888,11 @@ new SlashCommandBuilder()
     new SlashCommandBuilder()
         .setName('chatlog')
         .setDescription('指定ユーザーの発言ログをファイルにエクスポートします（管理者専用）。')
-        .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー').setRequired(true))
+        .addStringOption(opt =>
+            opt.setName('user_id')
+                .setDescription('対象ユーザーのID（サーバー退出済み・BAN済みのユーザーも指定可能）')
+                .setRequired(true)
+        )
         .addStringOption(opt =>
             opt.setName('period')
                 .setDescription('遡る期間（デフォルト: 30日）')
