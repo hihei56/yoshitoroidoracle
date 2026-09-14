@@ -76,6 +76,10 @@ function buildStatusEmbed() {
     const lurkerCh  = settings.lurkerChannelId  ? `<#${settings.lurkerChannelId}>`  : '未設定';
     const chatterCh = settings.chatterChannelId ? `<#${settings.chatterChannelId}>` : '未設定（目覚ましチャンネルと共通）';
     const rssCh = settings.rssChannelId ? `<#${settings.rssChannelId}>` : '未設定';
+    const mirrorSourceCh = settings.mirrorSourceChannelId ? `<#${settings.mirrorSourceChannelId}>` : '未設定';
+    const mirrorTargetCh = (settings.mirrorTargetChannelIds ?? []).length
+        ? settings.mirrorTargetChannelIds.map(id => `<#${id}>`).join(' ')
+        : 'なし';
     const vcRecruit = getVCRecruitSettings();
     const vcRecruitCh   = vcRecruit.channelId ? `<#${vcRecruit.channelId}>` : '未設定';
     const vcRecruitRole = vcRecruit.roleId    ? `<@&${vcRecruit.roleId}>`   : 'なし';
@@ -109,6 +113,8 @@ function buildStatusEmbed() {
             { name: '📣 VC募集メンションロール', value: vcRecruitRole, inline: true },
             { name: '🀄 中国思想家置き換え',  value: thinker,   inline: false },
             { name: '😿 Webhook化許可ユーザー', value: fmtUsers(settings.cryAllowedUsers), inline: false },
+            { name: '🔁 チャンネルミラー — 監視元', value: mirrorSourceCh, inline: false },
+            { name: '🔁 チャンネルミラー — 転送先', value: mirrorTargetCh, inline: false },
         )
         .setTimestamp();
 }
@@ -1087,6 +1093,70 @@ async function handleAdmin2(interaction) {
                 ephemeral: true,
             });
         }
+    }
+
+    // ── チャンネルミラー — 監視元チャンネル ──
+    if (sub === 'mirror_source') {
+        const ch       = interaction.options.getChannel('channel');
+        const settings = getSettings();
+        settings.mirrorSourceChannelId = ch?.id ?? null;
+        saveSettings(settings);
+        const verb = ch ? `<#${ch.id}> に設定` : '解除';
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle('🔁 チャンネルミラー — 監視元')
+                    .setColor(ch ? COLOR.add : COLOR.remove)
+                    .setDescription(verb)
+                    .setTimestamp()
+            ],
+            ephemeral: true,
+        });
+    }
+
+    // ── チャンネルミラー — 転送先チャンネル ──
+    if (sub === 'mirror_target') {
+        const action  = interaction.options.getString('action');
+        const channel = interaction.options.getChannel('channel');
+        const settings = getSettings();
+        if (!settings.mirrorTargetChannelIds) settings.mirrorTargetChannelIds = [];
+
+        if (action === 'list') {
+            const list = settings.mirrorTargetChannelIds;
+            return interaction.reply({
+                embeds: [
+                    new EmbedBuilder()
+                        .setTitle('🔁 チャンネルミラー — 転送先一覧')
+                        .setColor(COLOR.info)
+                        .setDescription(list.length ? list.map(id => `<#${id}>`).join('\n') : 'なし')
+                        .setTimestamp()
+                ],
+                ephemeral: true,
+            });
+        }
+
+        if (!channel) {
+            return interaction.reply({ content: 'channelを指定してください。', ephemeral: true });
+        }
+
+        if (action === 'add') {
+            if (!settings.mirrorTargetChannelIds.includes(channel.id)) settings.mirrorTargetChannelIds.push(channel.id);
+        } else {
+            settings.mirrorTargetChannelIds = settings.mirrorTargetChannelIds.filter(id => id !== channel.id);
+        }
+        saveSettings(settings);
+
+        const verb = action === 'add' ? '追加' : '解除';
+        return interaction.reply({
+            embeds: [
+                new EmbedBuilder()
+                    .setTitle(`🔁 チャンネルミラー — 転送先${verb}`)
+                    .setColor(action === 'add' ? COLOR.add : COLOR.remove)
+                    .setDescription(`<#${channel.id}>`)
+                    .setTimestamp()
+            ],
+            ephemeral: true,
+        });
     }
 }
 

@@ -40,6 +40,7 @@ const { handleTimeoutList }      = require('./timeoutlist');
 const { initSecurity, handlePermList } = require('./security');
 const { handleInviteFilter, handleNGServer } = require('./invite_filter');
 const { handleEditMonitor } = require('./edit_monitor');
+const { handleChannelMirror } = require('./channel_mirror');
 const { generateRankCard, saveBgFromUrl, saveBgFromAttachment, deleteBg, getBgPath } = require('./rankCard');
 const {
     handleVoicePanel, handleVoicePanelVoiceState, handleVoicePanelButton,
@@ -200,6 +201,7 @@ client.on(Events.MessageCreate, async m => {
 
     recordActivity(m.author.id);
     recordChatterMessage(m.channel.id);
+    handleChannelMirror(m, client);
     handleInviteFilter(m, client).catch(err => console.error('[InviteFilter Error]:', err));
     handleModerator(m).catch(err => console.error('[Mod Error]:', err));
     handleShiritoriMessage(m).catch(err => console.error('[Shiritori Error]:', err));

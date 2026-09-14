@@ -517,6 +517,36 @@ new SlashCommandBuilder()
                         .setMinValue(1)
                         .setMaxValue(1000)
                 )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('mirror_source')
+                .setDescription('チャンネルミラー（投稿の複製転送）の監視元チャンネルを設定します。未指定で解除。')
+                .addChannelOption(opt =>
+                    opt.setName('channel')
+                        .setDescription('監視するチャンネル（省略で解除）')
+                        .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('mirror_target')
+                .setDescription('チャンネルミラーの転送先チャンネルを管理します（複数指定可）。')
+                .addStringOption(opt =>
+                    opt.setName('action')
+                        .setDescription('操作を選択')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: '追加', value: 'add'    },
+                            { name: '解除', value: 'remove' },
+                            { name: '一覧', value: 'list'   },
+                        )
+                )
+                .addChannelOption(opt =>
+                    opt.setName('channel')
+                        .setDescription('対象チャンネル（add/remove時は必須）')
+                        .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+                )
         ),
 
     // 6. ROM専目覚まし（管理者のみ）

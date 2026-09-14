@@ -35,6 +35,9 @@ function getSettings() {
     if (data.chatterAiModel === undefined) data.chatterAiModel = null;
     if (data.chatterDailyBudget === undefined) data.chatterDailyBudget = null; // 旧形式（groq専用の単一予算）
     if (!data.chatterDailyBudgets) data.chatterDailyBudgets = {};
+    // チャンネルミラー（特定チャンネルの投稿を別チャンネルへ複製転送）
+    if (data.mirrorSourceChannelId === undefined) data.mirrorSourceChannelId = null;
+    if (!data.mirrorTargetChannelIds) data.mirrorTargetChannelIds = [];
     // 旧形式の値が残っていればgroqの予算として引き継ぐ
     if (data.chatterDailyBudget != null && data.chatterDailyBudgets.groq == null) {
         data.chatterDailyBudgets.groq = data.chatterDailyBudget;
