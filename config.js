@@ -18,7 +18,6 @@ function getSettings() {
     if (!data.lurkerChannelId)        data.lurkerChannelId        = null;
     if (data.chatterChannelId === undefined) data.chatterChannelId = null;
     if (data.shiritoriChannelId === undefined) data.shiritoriChannelId = null;
-    if (data.rankingChannelId === undefined) data.rankingChannelId = null;
     if (data.vcRecruitChannelId === undefined) data.vcRecruitChannelId = null;
     if (data.vcRecruitRoleId === undefined) data.vcRecruitRoleId = null;
     if (!data.editMonitorExcludedUsers) data.editMonitorExcludedUsers = [];
