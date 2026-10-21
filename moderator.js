@@ -1049,20 +1049,7 @@ async function handleModerator(message) {
     if (message.author.bot) return;
 
     const hasRequiredRole = REQUIRED_ROLES.some(id => message.member?.roles.cache.has(id));
-    if (!hasRequiredRole) {
-        if (message.member?.roles.cache.size > 1) return;
-        if (!message.content?.trim()) return;
-        const normalized = normalizeForDetection(message.content);
-        const { hit, matched } = checkNgWords(normalized);
-        const aiResult = !hit ? await checkAiModeration(message.content) : { flagged: false, reason: null };
-        if (hit || aiResult.flagged) {
-            const allMatched = aiResult.reason ? [...matched, aiResult.reason] : matched;
-            logDeletion({ message, matched: allMatched });
-            if (isCsamMatch(allMatched)) await postCsamLog(message, allMatched);
-            await message.delete().catch(() => {});
-        }
-        return;
-    }
+    if (!hasRequiredRole) return;
 
     const rawContent = message.content || '';
     if (TUPPERBOX_PREFIX_REGEX.test(rawContent)) return;

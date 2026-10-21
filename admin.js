@@ -643,25 +643,6 @@ async function handleAdmin(interaction) {
         return handleBumpRemindCommand(interaction);
     }
 
-    // ── XPランキング発表チャンネル ──
-    if (sub === 'ranking_channel') {
-        const ch       = interaction.options.getChannel('channel');
-        const settings = getSettings();
-        settings.rankingChannelId = ch?.id ?? null;
-        saveSettings(settings);
-        const verb = ch ? `<#${ch.id}> に設定しました` : '解除しました';
-        return interaction.reply({
-            embeds: [
-                new EmbedBuilder()
-                    .setTitle('🏆 XPランキング発表チャンネル')
-                    .setColor(ch ? COLOR.add : COLOR.remove)
-                    .setDescription(verb)
-                    .setTimestamp()
-            ],
-            ephemeral: true,
-        });
-    }
-
     // ── しりとりチャンネル ──
     if (sub === 'shiritori_channel') {
         const ch       = interaction.options.getChannel('channel');

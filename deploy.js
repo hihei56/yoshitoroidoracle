@@ -311,15 +311,6 @@ new SlashCommandBuilder()
         )
         .addSubcommand(subcommand =>
             subcommand
-                .setName('ranking_channel')
-                .setDescription('週間/月間XPランキングを自動発表するチャンネルを設定します。未指定で解除。')
-                .addChannelOption(opt =>
-                    opt.setName('channel')
-                        .setDescription('発表先チャンネル（省略で解除）')
-                )
-        )
-        .addSubcommand(subcommand =>
-            subcommand
                 .setName('shiritori_channel')
                 .setDescription('しりとりゲームを行うチャンネルを設定します。未指定で解除（ゲームもリセット）。')
                 .addChannelOption(opt =>
@@ -584,114 +575,6 @@ new SlashCommandBuilder()
     new SlashCommandBuilder()
         .setName('permlist')
         .setDescription('危険な権限を持つロール・メンバーを一覧表示します。'),
-
-    // 12. ランクカード背景設定（全員）
-    new SlashCommandBuilder()
-        .setName('setbg')
-        .setDescription('ランクカードの背景画像を設定します。')
-        .addAttachmentOption(opt => opt.setName('image').setDescription('背景にする画像ファイル'))
-        .addStringOption(opt => opt.setName('url').setDescription('背景にする画像のURL')),
-
-    new SlashCommandBuilder()
-        .setName('delbg')
-        .setDescription('ランクカードの背景をデフォルトに戻します。'),
-
-    // 13. レベルバッジ表示切替（全員）
-    new SlashCommandBuilder()
-        .setName('xp')
-        .setDescription('ニックネームのレベルバッジ表示を切り替えます。')
-        .addSubcommand(sub => sub.setName('hide').setDescription('バッジを非表示にする'))
-        .addSubcommand(sub => sub.setName('show').setDescription('バッジを表示に戻す')),
-
-    // 13. XP・レベル確認（全員）
-    new SlashCommandBuilder()
-        .setName('rank')
-        .setDescription('自分または指定ユーザーの経験値・レベルを表示します。')
-        .addUserOption(opt =>
-            opt.setName('user').setDescription('確認するユーザー（省略時は自分）')
-        ),
-
-    // 13. XPランキング（全員）
-    new SlashCommandBuilder()
-        .setName('top')
-        .setDescription('XPランキング TOP10 を表示します。')
-        .addStringOption(opt =>
-            opt.setName('period')
-                .setDescription('集計期間（デフォルト: トータル）')
-                .addChoices(
-                    { name: 'トータル', value: 'total' },
-                    { name: '本日',     value: 'day'   },
-                    { name: '今週',     value: 'week'  },
-                    { name: '今月',     value: 'month' },
-                )
-        ),
-
-    // 14. XP管理（管理者のみ）
-    new SlashCommandBuilder()
-        .setName('xpadmin')
-        .setDescription('XP・レベルを管理します（管理者のみ）。')
-        .addSubcommand(sub =>
-            sub.setName('set')
-                .setDescription('ユーザーのレベルを直接設定します。')
-                .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー').setRequired(true))
-                .addIntegerOption(opt => opt.setName('level').setDescription('設定するレベル').setRequired(true).setMinValue(0).setMaxValue(999))
-        )
-        .addSubcommand(sub =>
-            sub.setName('add')
-                .setDescription('ユーザーのXPを加算・減算します。')
-                .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー').setRequired(true))
-                .addIntegerOption(opt => opt.setName('amount').setDescription('XP量（マイナスで減算）').setRequired(true))
-        )
-        .addSubcommand(sub =>
-            sub.setName('reset')
-                .setDescription('ユーザーのXP・レベルをリセットします。')
-                .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー').setRequired(true))
-        )
-        .addSubcommand(sub =>
-            sub.setName('exclude')
-                .setDescription('XP対象外ロールを管理します。')
-                .addStringOption(opt =>
-                    opt.setName('action').setDescription('操作').setRequired(true)
-                        .addChoices(
-                            { name: '追加', value: 'add' },
-                            { name: '解除', value: 'remove' },
-                            { name: '一覧', value: 'list' },
-                        )
-                )
-                .addRoleOption(opt => opt.setName('role').setDescription('対象ロール（add/remove時は必須）'))
-        )
-        .addSubcommand(sub =>
-            sub.setName('syncnicks')
-                .setDescription('全ユーザーのニックネームにレベルバッジを一括反映します。')
-        )
-        .addSubcommand(sub =>
-            sub.setName('setmonth')
-                .setDescription('月間ランキングを翌月モード/通常モードでトグルします。')
-        )
-        .addSubcommand(sub =>
-            sub.setName('alias')
-                .setDescription('ニックネームに使う通称を設定します（長い名前の短縮用）。')
-                .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー').setRequired(true))
-                .addStringOption(opt => opt.setName('name').setDescription('通称（省略するとリセット）').setMaxLength(20))
-        )
-        .addSubcommand(sub =>
-            sub.setName('hidebadge')
-                .setDescription('ユーザーまたはロール単位でバッジ表示を強制オン/オフします。')
-                .addBooleanOption(opt => opt.setName('hide').setDescription('true=非表示 / false=表示').setRequired(true))
-                .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー（userかroleどちらか必須）'))
-                .addRoleOption(opt => opt.setName('role').setDescription('対象ロール（そのロールの全メンバーに適用）'))
-        )
-        .addSubcommand(sub =>
-            sub.setName('levelnotif')
-                .setDescription('レベルアップ通知のON/OFFを切り替えます。')
-                .addBooleanOption(opt => opt.setName('enable').setDescription('true=ON / false=OFF').setRequired(true))
-        )
-        .addSubcommand(sub =>
-            sub.setName('transfer')
-                .setDescription('BANされたユーザーのXP・レベルを別ユーザーに引き継ぎます。')
-                .addStringOption(opt => opt.setName('from_id').setDescription('引き継ぎ元のユーザーID（BAN済み）').setRequired(true))
-                .addUserOption(opt => opt.setName('to').setDescription('引き継ぎ先のユーザー').setRequired(true))
-        ),
 
     // 16. Disboard Bump リマインダー
     new SlashCommandBuilder()
