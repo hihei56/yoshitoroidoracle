@@ -1,0 +1,20 @@
+{
+	"name": "revenge-avatar-override",
+	"private": true,
+	"scripts": {
+		"build": "node build.mjs",
+		"serve": "npx http-server dist -p 4040"
+	},
+	"dependencies": {
+		"@swc/helpers": "^0.5.13"
+	},
+	"devDependencies": {
+		"@rollup/plugin-commonjs": "^25.0.8",
+		"@rollup/plugin-node-resolve": "^15.2.3",
+		"@swc/core": "^1.7.26",
+		"esbuild": "^0.24.0",
+		"rollup": "^4.24.0",
+		"rollup-plugin-esbuild": "^6.1.1",
+		"vendetta-types": "latest"
+	}
+}
